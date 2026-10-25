@@ -1,0 +1,80 @@
+package com.march7th.hkrpg.data.model
+
+import com.march7th.hkrpg.data.repository.DepotRepository
+import com.march7th.hkrpg.data.repository.OperBoxRepository
+import com.march7th.hkrpg.data.resource.ActivityManager
+import com.march7th.hkrpg.data.resource.ItemHelper
+import com.march7th.hkrpg.data.resource.ResourceDataManager
+import com.march7th.hkrpg.data.resource.StageItem
+import com.march7th.hkrpg.domain.models.ReportOptions
+import com.march7th.hkrpg.domain.service.FightDropsRefresher
+import io.mockk.every
+import io.mockk.mockk
+
+/**
+ * 测试用 [TaskParamContext] 工厂。
+ *
+ * 依赖默认用 relaxed mock；需要特定行为时用具名参数覆盖。
+ * 不给 [TaskParamContext] 本身加默认值 —— 那会在生产路径里滋生「说谎的默认」。
+ *
+ * 默认 [logSink] 为新的 [CollectingPreflightLogSink]，可从返回的 context 侧读取
+ * （保留引用）或通过 [withLogSink] 显式传入同一实例。
+ */
+fun testTaskParamContext(
+    clientType: String = "Official",
+    chainAllowsCreditFight: Boolean = false,
+    node: TaskChainNode = testTaskChainNode(),
+    activityManager: ActivityManager = mockk(relaxed = true),
+    depotRepository: DepotRepository = mockk(relaxed = true),
+    operBoxRepository: OperBoxRepository = mockk(relaxed = true),
+    itemHelper: ItemHelper = mockk(relaxed = true),
+    resourceDataManager: ResourceDataManager = mockk(relaxed = true),
+    dropsRefresher: FightDropsRefresher = mockk(relaxed = true),
+    logSink: PreflightLogSink = CollectingPreflightLogSink(),
+    report: ReportOptions = ReportOptions.DEFAULT,
+    operBoxUseYituliuApi: Boolean = false,
+): TaskParamContext = TaskParamContext(
+    clientType = clientType,
+    chainAllowsCreditFight = chainAllowsCreditFight,
+    node = node,
+    activityManager = activityManager,
+    depotRepository = depotRepository,
+    operBoxRepository = operBoxRepository,
+    itemHelper = itemHelper,
+    resourceDataManager = resourceDataManager,
+    dropsRefresher = dropsRefresher,
+    logSink = logSink,
+    report = report,
+    operBoxUseYituliuApi = operBoxUseYituliuApi,
+)
+
+/** 最小节点；config 仅占位，展开逻辑以 toTaskParams 的 receiver 为准。 */
+fun testTaskChainNode(
+    id: String = "test-node",
+    name: String = "Fight",
+    config: TaskParamProvider = WakeUpConfig(),
+): TaskChainNode = TaskChainNode(id = id, name = name, config = config)
+
+/** 始终视为开放的 ActivityManager，适合只关心 JSON 组装的 FightConfig 单测。 */
+fun alwaysOpenActivityManager(): ActivityManager = mockk {
+    every { isStageOpen(any(), any()) } returns true
+    every { isStageOpen(any()) } returns true
+    every { getYjDayOfWeek() } returns java.time.DayOfWeek.MONDAY
+    every { getMergedStageList(any()) } returns emptyList()
+    every { getActivityAwareExpireDays() } returns 0
+    every { isActivityOpen() } returns false
+    every { isResourceCollectionOpen() } returns false
+}
+
+/** 仅 openStages 内关卡视为开放；mergedStages 供 CURRENT 模式成员过滤分支 */
+fun stagedActivityManager(
+    openStages: Set<String>,
+    mergedStages: List<String> = emptyList(),
+): ActivityManager = mockk {
+    every { getYjDayOfWeek() } returns java.time.DayOfWeek.MONDAY
+    every { isStageOpen(any(), any()) } answers { firstArg<String>() in openStages }
+    every { isStageOpen(any()) } answers { firstArg<String>() in openStages }
+    every { getMergedStageList(any()) } returns mergedStages.map {
+        StageItem(code = it, displayName = it)
+    }
+}

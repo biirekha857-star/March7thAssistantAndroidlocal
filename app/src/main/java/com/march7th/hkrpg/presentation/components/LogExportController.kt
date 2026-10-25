@@ -1,0 +1,105 @@
+package com.march7th.hkrpg.presentation.components
+
+import android.content.Intent
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import com.march7th.hkrpg.R
+import com.march7th.hkrpg.domain.service.LogExportService
+import kotlinx.coroutines.launch
+import org.koin.compose.koinInject
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
+
+/**
+ * 日志导出统一控制器：管理 BottomSheet 显隐、SAF 文件选择、分享 Intent、
+ * 重复点击保护与 Toast 反馈。调用方只需维护 [sheetVisible] 状态。
+ *
+ * 必须在 Composable 顶层无条件调用，保证 launcher 注册稳定。
+ */
+@Composable
+fun LogExportController(
+    sheetVisible: Boolean,
+    onSheetDismiss: () -> Unit,
+    logExportService: LogExportService = koinInject(),
+) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var isExporting by remember { mutableStateOf(false) }
+    var toastMessage by remember { mutableStateOf<String?>(null) }
+
+    val chooserTitle = stringResource(R.string.settings_log_export_chooser_title)
+    val inProgressText = stringResource(R.string.log_export_in_progress)
+    val failedText = stringResource(R.string.log_export_failed)
+    val saveSuccessTemplate = stringResource(R.string.log_export_save_success)
+
+    LaunchedEffect(toastMessage) {
+        toastMessage?.let { msg ->
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+            toastMessage = null
+        }
+    }
+
+    val saveLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        if (uri == null) {
+            isExporting = false
+            return@rememberLauncherForActivityResult
+        }
+        coroutineScope.launch {
+            val name = logExportService.exportToUri(uri)
+            isExporting = false
+            toastMessage = if (name != null) {
+                saveSuccessTemplate.format(name)
+            } else {
+                failedText
+            }
+        }
+    }
+
+    if (!sheetVisible) return
+
+    LogExportBottomSheet(
+        onDismiss = onSheetDismiss,
+        onSave = {
+            onSheetDismiss()
+            if (isExporting) return@LogExportBottomSheet
+            isExporting = true
+            toastMessage = inProgressText
+            saveLauncher.launch(makeExportZipName())
+        },
+        onShare = {
+            onSheetDismiss()
+            if (isExporting) return@LogExportBottomSheet
+            isExporting = true
+            coroutineScope.launch {
+                val intent = logExportService.exportAllLogs()
+                isExporting = false
+                if (intent != null) {
+                    context.startActivity(Intent.createChooser(intent, chooserTitle))
+                } else {
+                    toastMessage = failedText
+                }
+            }
+        },
+    )
+}
+
+/**
+ * 预览用的导出包名。
+ *
+ * ⚠️ 前缀必须与 [LogExportService] 实际生成的文件名一致，
+ * 否则这里显示的预览名和真正导出的文件对不上（用户会以为导出失败）。
+ */
+private fun makeExportZipName(): String =
+    "m7a_logs_${ZonedDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"))}.zip"

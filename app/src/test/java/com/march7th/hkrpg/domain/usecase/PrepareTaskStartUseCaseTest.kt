@@ -1,0 +1,193 @@
+package com.march7th.hkrpg.domain.usecase
+
+import com.march7th.hkrpg.R
+import com.march7th.hkrpg.data.model.AwardConfig
+import com.march7th.hkrpg.data.model.UserDataUpdateConfig
+import com.march7th.hkrpg.data.model.TaskChainNode
+import com.march7th.hkrpg.data.model.WakeUpConfig
+import com.march7th.hkrpg.data.preferences.AppSettingsManager
+import com.march7th.hkrpg.data.preferences.TaskChainState
+import com.march7th.hkrpg.data.repository.OperBoxSnapshot
+import com.march7th.hkrpg.data.resource.ResourceDataManager
+import com.march7th.hkrpg.domain.models.RunMode
+import com.march7th.hkrpg.domain.models.PlanSideTask
+import com.march7th.hkrpg.domain.service.AchievementReporter
+import com.march7th.hkrpg.domain.service.AppAliveChecker
+import com.march7th.hkrpg.remote.AppAliveStatus
+import com.march7th.hkrpg.utils.i18n.uiTextDynamic
+import com.march7th.hkrpg.utils.i18n.uiTextJoin
+import com.march7th.hkrpg.utils.i18n.uiTextLines
+import com.march7th.hkrpg.utils.i18n.uiTextOf
+import io.mockk.every
+import io.mockk.mockk
+import junit.framework.TestCase.assertEquals
+import junit.framework.TestCase.assertTrue
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.runBlocking
+import org.junit.Test
+
+/**
+ * 关注「链分析 + 就绪性闸门」的组合与决策映射；闸门自身的判定矩阵见 [CheckGameReadinessUseCaseTest]。
+ */
+class PrepareTaskStartUseCaseTest {
+
+    private val taskChainState = mockk<TaskChainState> {
+        every { clientType } returns "Official"
+    }
+    private val resourceDataManager = mockk<ResourceDataManager>(relaxed = true)
+    private val operBoxViaYituliu = MutableStateFlow(false)
+    private val analyzeTaskChainUseCase = AnalyzeTaskChainUseCase(
+        taskChainState = taskChainState,
+        resourceDataManager = resourceDataManager,
+        activityManager = mockk(relaxed = true),
+        // isLoaded 必须显式给 —— relaxed mock 的 StateFlow 不会 emit，
+        // 分析阶段的 `isLoaded.first { it }` 会挂死
+        depotRepository = mockk(relaxed = true) {
+            every { isLoaded } returns MutableStateFlow(true)
+        },
+        operBoxRepository = mockk(relaxed = true) {
+            every { isLoaded } returns MutableStateFlow(true)
+            every { snapshot } returns MutableStateFlow(OperBoxSnapshot())
+        },
+        itemHelper = mockk(relaxed = true),
+        dropsRefresher = mockk(relaxed = true),
+        appSettingsManager = mockk {
+            every { reportToPenguin } returns MutableStateFlow(true)
+            every { reportToYituliu } returns MutableStateFlow(true)
+            every { penguinId } returns MutableStateFlow("")
+            every { operBoxUseYituliuApi } returns operBoxViaYituliu
+        },
+    )
+
+    private fun useCase(aliveStatus: Int) = PrepareTaskStartUseCase(
+        analyzeTaskChainUseCase = analyzeTaskChainUseCase,
+        checkGameReadiness = CheckGameReadinessUseCase(
+            appAliveChecker = FakeAppAliveChecker(aliveStatus),
+            appSettings = mockk<AppSettingsManager> {
+                every { runMode } returns MutableStateFlow(RunMode.BACKGROUND)
+            },
+            achievementReporter = mockk<AchievementReporter>(relaxed = true),
+        ),
+    )
+
+    @Test
+    fun analysisFailure_isForwardedAsBlockedDecision() = runBlocking {
+        val result = useCase(AppAliveStatus.ALIVE)(
+            chain = emptyList(),
+            context = TaskStartContext(mode = TaskStartMode.MANUAL),
+        )
+
+        assertEquals(
+            TaskStartDecision.Blocked(reason = TaskStartDecisionReason.NO_TASK_SELECTED),
+            result
+        )
+    }
+
+    @Test
+    fun conflictingClientTypes_listsLocalizedNamesAsDetail() = runBlocking {
+        val result = useCase(AppAliveStatus.ALIVE)(
+            chain = listOf(
+                TaskChainNode(
+                    name = "开始唤醒1",
+                    order = 1,
+                    enabled = true,
+                    config = WakeUpConfig(clientType = "Official"),
+                ),
+                TaskChainNode(
+                    name = "开始唤醒2",
+                    order = 2,
+                    enabled = true,
+                    config = WakeUpConfig(clientType = "Bilibili"),
+                ),
+            ),
+            context = TaskStartContext(mode = TaskStartMode.SCHEDULED),
+        )
+
+        assertEquals(
+            TaskStartDecision.Blocked(
+                reason = TaskStartDecisionReason.CONFLICTING_CLIENT_TYPES,
+                details = listOf(
+                    uiTextJoin(
+                        uiTextOf(R.string.panel_wakeup_client_official),
+                        uiTextOf(R.string.panel_wakeup_client_bilibili),
+                        separator = uiTextOf(R.string.common_enumeration_separator),
+                    ),
+                ),
+            ),
+            result
+        )
+    }
+
+    @Test
+    fun blockedMessage_isReasonTextFollowedByDetails() {
+        val detail = uiTextDynamic("detail")
+        val decision = TaskStartDecision.Blocked(
+            reason = TaskStartDecisionReason.GAME_NOT_RUNNING_WITHOUT_WAKE_UP,
+            details = listOf(detail),
+        )
+
+        assertEquals(
+            uiTextLines(uiTextOf(R.string.task_start_error_scheduled_no_wakeup), detail),
+            decision.message,
+        )
+    }
+
+    @Test
+    fun readyDecision_carriesGameAliveStatusOntoPlan() = runBlocking {
+        // 含「开始唤醒(拉起游戏)」⇒ launchesGame=true ⇒ 闸门跳过存活检查但记录存活状态
+        val result = useCase(AppAliveStatus.DEAD)(
+            chain = listOf(
+                TaskChainNode(
+                    name = "开始唤醒",
+                    enabled = true,
+                    config = WakeUpConfig(clientType = "Official", startGameEnabled = true),
+                )
+            ),
+            context = TaskStartContext(mode = TaskStartMode.MANUAL),
+        )
+
+        assertTrue(result is TaskStartDecision.Ready)
+        assertEquals(false, (result as TaskStartDecision.Ready).plan.gameAliveBeforeStart)
+    }
+
+    @Test
+    fun requiresConfirmation_isForwardedFromReadinessGate() = runBlocking {
+        val result = useCase(AppAliveStatus.DEAD)(
+            chain = listOf(TaskChainNode(name = "领取奖励", enabled = true, config = AwardConfig())),
+            context = TaskStartContext(mode = TaskStartMode.MANUAL),
+        )
+
+        assertEquals(
+            TaskStartDecision.RequiresConfirmation(
+                acknowledgement = TaskStartAcknowledgement.GAME_NOT_RUNNING_WITHOUT_WAKE_UP,
+            ),
+            result
+        )
+    }
+
+    @Test
+    fun pureSideTaskPlan_skipsReadinessGate() = runBlocking {
+        // 不起 Core 也不碰游戏，游戏没开也该放行
+        operBoxViaYituliu.value = true
+        val result = useCase(AppAliveStatus.DEAD)(
+            chain = listOf(
+                TaskChainNode(
+                    name = "更新数据",
+                    enabled = true,
+                    config = UserDataUpdateConfig(updateDepot = false),
+                ),
+            ),
+            context = TaskStartContext(mode = TaskStartMode.SCHEDULED),
+        )
+
+        val plan = (result as TaskStartDecision.Ready).plan
+        assertTrue(plan.params.isEmpty())
+        assertEquals(listOf(PlanSideTask.OPER_BOX_YITULIU), plan.sideTasks)
+    }
+
+    private class FakeAppAliveChecker(private val status: Int) : AppAliveChecker {
+        override suspend fun isAppAlive(packageName: String): Int = status
+        override suspend fun isAppOnBackgroundDisplay(packageName: String): Boolean? = null
+    }
+
+}

@@ -1,0 +1,1175 @@
+package com.march7th.hkrpg.core.callback
+
+import android.content.Context
+import com.alibaba.fastjson2.JSONArray
+import com.alibaba.fastjson2.JSONObject
+import com.march7th.hkrpg.R
+import com.march7th.hkrpg.data.model.FightConfig
+import com.march7th.hkrpg.data.model.LogItem
+import com.march7th.hkrpg.data.model.LogLevel
+import com.march7th.hkrpg.data.model.RecruitCombination
+import com.march7th.hkrpg.data.model.RecruitOper
+import com.march7th.hkrpg.data.model.RoguelikeConfig
+import com.march7th.hkrpg.data.preferences.TaskChainState
+import com.march7th.hkrpg.data.repository.DepotRepository
+import com.march7th.hkrpg.data.resource.ActivityManager
+import com.march7th.hkrpg.data.resource.ResourceDataManager
+import com.march7th.hkrpg.data.resource.ServerTimezone
+import com.march7th.hkrpg.domain.service.TaskNotificationCenter
+import com.march7th.hkrpg.domain.service.CoreSessionLogger
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import org.koin.java.KoinJavaComponent.inject
+import timber.log.Timber
+import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
+
+/**
+ * SubTask 级别回调处理器
+ * 处理 SubTaskError(20000)、SubTaskStart(20001)、SubTaskCompleted(20002)、SubTaskExtraInfo(20003)
+ */
+class SubTaskHandler(
+    applicationContext: Context,
+    private val sessionLogger: CoreSessionLogger,
+    private val copilotRuntimeStateStore: CopilotRuntimeStateStore,
+    private val resourceDataManager: ResourceDataManager,
+    private val toolboxResultCollector: ToolboxResultCollector,
+    private val notificationCenter: TaskNotificationCenter,
+    private val chainState: TaskChainState,
+    private val activityManager: ActivityManager,
+    private val depotRepository: DepotRepository,
+    private val statusTracker: TaskChainStatusTracker,
+) {
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val resources = applicationContext.resources
+    private val packageName = applicationContext.packageName
+
+    // 懒取：实现方 TaskCompositionService 反过来依赖本类，构造注入会成环
+    private val executionStateHolder: CoreStateHolder
+            by inject(CoreStateHolder::class.java)
+
+    // 战斗进度临时暂存（FightTimes/SanityBeforeStage 先于 StartButton2/AnnihilationConfirm 到达）
+    private data class PendingFightState(
+        val timesFinished: Int? = null,
+        val series: Int? = null,
+        val sanityCost: Int? = null,
+        val sanity: Int? = null,
+        val sanityMax: Int? = null,
+    )
+
+    private var pendingFight = PendingFightState()
+    private val themeTargets = ConcurrentHashMap<Int, String>()
+
+    // 本次会话累计用药数（跨战斗累计，session 开始时重置）
+    private var medicineUsedTotal = 0
+    private var expiringMedicineUsedTotal = 0
+
+    // 会话级理智快照（最近一次 SanityBeforeStage），供 AllTasksCompleted 消费
+    data class SanitySnapshot(
+        val current: Int,
+        val max: Int,
+        val reportTimeMillis: Long = System.currentTimeMillis(),
+    )
+
+    /** 最近一次 SanityBeforeStage 的快照，跨战斗保留，session 结束时清空 */
+    var lastSanitySnapshot: SanitySnapshot? = null
+        private set
+
+    /** 每次新 session 开始时调用，重置跨任务状态 */
+    fun resetSessionState() {
+        pendingFight = PendingFightState()
+        themeTargets.clear()
+        medicineUsedTotal = 0
+        expiringMedicineUsedTotal = 0
+        lastSanitySnapshot = null
+    }
+
+    fun clearThemeTarget(taskId: Int) {
+        themeTargets.remove(taskId)
+    }
+
+    // ==================== SubTaskError (20000) ====================
+
+    fun onSubTaskError(details: JSONObject) {
+        val subtask = details.getString("subtask") ?: return
+
+        when (subtask) {
+            "StartGameTask" -> {
+                append(str("FailedToOpenClient"), LogLevel.ERROR)
+            }
+
+            "StopGameTask" -> {
+                append(str("CloseArknightsFailed"), LogLevel.ERROR)
+            }
+
+            "AutoRecruitTask" -> {
+                val why = details.getString("why") ?: str("ErrorOccurred")
+                append("${localizedWhy(why)}, ${str("HasReturned")}", LogLevel.ERROR)
+            }
+
+            "RecognizeDrops" -> {
+                append(str("DropRecognitionError"), LogLevel.ERROR)
+            }
+
+            "ReportToPenguinStats" -> {
+                val why = details.getString("why") ?: ""
+                append("${localizedWhy(why)}, ${str("GiveUpUploadingPenguins")}", LogLevel.WARNING)
+            }
+
+            "CheckStageValid" -> {
+                append(str("TheEx"), LogLevel.ERROR)
+            }
+
+            "BattleFormationTask" -> {
+                val innerDetails = details.getJSONObject("details")
+                val opers = innerDetails?.getJSONObject("opers")
+                if (opers.isNullOrEmpty()) {
+                    append(str("MissingOperators"), LogLevel.ERROR)
+                } else {
+                    val sb = StringBuilder(str("MissingOperators")).append("\n")
+                    opers.forEach { (groupName, value) ->
+                        val arr = value as? JSONArray
+                        if (arr == null || arr.size <= 1) {
+                            sb.append("$groupName\n")
+                        } else {
+                            val names = arr.mapNotNull { (it as? JSONObject)?.getString("name") }
+                            sb.append("$groupName=> ${names.joinToString(" / ")}\n")
+                        }
+                    }
+                    append(sb.trimEnd().toString(), LogLevel.ERROR)
+                }
+                ioScope.launch {
+                }
+            }
+
+            "CopilotTask" -> {
+                ioScope.launch {
+                }
+                val innerDetails = details.getJSONObject("details")
+                val what = innerDetails?.getString("what")
+                if (what == "UserAdditionalOperInvalid") {
+                    val name = innerDetails.getString("name") ?: ""
+                    append(str("CopilotUserAdditionalNameInvalid", name), LogLevel.ERROR)
+                }
+            }
+
+            "InfrastInfoTask" -> {
+                // 常规模式下布局识别失败会中止整个基建任务
+                val what = details.getJSONObject("details")?.getString("what")
+                if (what == "FacilityLayoutRecognitionFailed") {
+                    append(str("InfrastFacilityLayoutRecognitionFailed"), LogLevel.ERROR)
+                }
+                ioScope.launch {
+                }
+            }
+
+            else -> {
+                ioScope.launch {
+                }
+                Timber.d("SubTaskError unhandled subtask=$subtask")
+            }
+        }
+    }
+
+    // ==================== SubTaskStart (20001) ====================
+
+    fun onSubTaskStart(details: JSONObject) {
+        val subtask = details.getString("subtask") ?: return
+
+        when (subtask) {
+            "ProcessTask" -> {
+                val innerDetails = details.getJSONObject("details")
+                val task = innerDetails?.getString("task") ?: return
+                handleProcessTaskStart(task, innerDetails, details)
+            }
+
+            "CombatRecordRecognitionTask" -> {
+                val what = details.getString("what") ?: return
+                sessionLogger.append(what, LogLevel.MESSAGE)
+            }
+
+            else -> {
+                // 其他 subtask 不处理
+            }
+        }
+    }
+
+    private fun handleProcessTaskStart(
+        task: String,
+        innerDetails: JSONObject?,
+        details: JSONObject
+    ) {
+        when (task) {
+            "StartButton2", "AnnihilationConfirm" -> {
+                val sb = StringBuilder(str("MissionStart"))
+                val pf = pendingFight
+                if (pf.timesFinished != null) {
+                    val series = pf.series ?: 1
+                    val times = if (series > 1)
+                        "${pf.timesFinished + 1}~${pf.timesFinished + series}"
+                    else
+                        "${pf.timesFinished + 1}"
+                    val cost = pf.sanityCost?.toString() ?: "???"
+                    sb.append(" $times ($cost)")
+                }
+                if (pf.sanity != null && pf.sanityMax != null)
+                    sb.append("  ${str("Sanity")}: ${pf.sanity}/${pf.sanityMax}")
+                append(sb.toString(), LogLevel.INFO)
+                pendingFight = PendingFightState()
+            }
+
+            "StoneConfirm" -> {
+                val times = innerDetails?.getIntValue("exec_times") ?: 0
+                append("${str("StoneUsed")} $times ${str("UnitTime")}", LogLevel.INFO)
+            }
+
+            "AbandonAction" -> {
+                append(str("ActingCommandError"), LogLevel.ERROR)
+            }
+
+            "FightMissionFailedAndStop" -> {
+                val message = str("FightMissionFailedAndStop")
+                append(message, LogLevel.ERROR)
+                notificationCenter.notifySubTaskFailure(message)
+            }
+
+            // 奇象巡展遇到暂未收录的奇象，core 已停任务，交给玩家手动战斗
+            "CheckEncounter-Uncollected" -> {
+                val title = resources.getString(R.string.runlog_exhibition_uncollected_title)
+                val content = resources.getString(R.string.runlog_exhibition_uncollected_content)
+                append("$title：$content", LogLevel.WARNING)
+                notificationCenter.notifyHandoverRequired(title, content)
+            }
+
+            "RecruitRefreshConfirm" -> {
+                append(str("LabelsRefreshed"), LogLevel.INFO)
+                ioScope.launch {
+                }
+            }
+
+            "RecruitConfirm" -> {
+                append(str("RecruitConfirm"), LogLevel.INFO)
+                ioScope.launch {
+                }
+            }
+
+            "InfrastDormDoubleConfirmButton" -> {
+                // 待进驻干员已进驻其他设施，Core 会自动点确认，仅提示
+                append(str("InfrastDormDoubleConfirmed"), LogLevel.INFO)
+            }
+
+            "ExitThenAbandon" -> {
+                append(str("ExplorationAbandoned"), LogLevel.ROGUELIKE_ABANDON)
+                ioScope.launch {
+                }
+            }
+
+            "MissionCompletedFlag" -> {
+                append(str("FightCompleted"), LogLevel.ROGUELIKE_SUCCESS)
+            }
+
+            "MissionFailedFlag" -> {
+                append(str("FightFailed"), LogLevel.ERROR)
+            }
+
+            "StageTrader" -> {
+                append(str("Trader"), LogLevel.INFO)
+            }
+
+            "StageSafeHouse" -> {
+                append(str("SafeHouse"), LogLevel.INFO)
+            }
+
+            "StageFilterTruth" -> {
+                append(str("FilterTruth"), LogLevel.INFO)
+            }
+
+            "StageCombatOps" -> {
+                append(str("CombatOps"), LogLevel.ROGUELIKE_COMBAT)
+            }
+
+            "StageEmergencyOps" -> {
+                append(str("EmergencyOps"), LogLevel.ROGUELIKE_EMERGENCY)
+            }
+
+            "StageDreadfulFoe", "StageDreadfulFoe-5" -> {
+                append(str("DreadfulFoe"), LogLevel.ROGUELIKE_BOSS)
+            }
+
+            "StageTraderInvestSystemFull" -> {
+                append(str("UpperLimit"), LogLevel.INFO)
+                ioScope.launch {
+                }
+            }
+
+            // 上游移除掉线重连后 core 检测到掉线弹窗即 Stop 当前任务链，
+            // 队列剩余任务要在这里一起中止
+            "OfflineConfirm", "OfflineConfirmAfterBattle" -> {
+                // 开始唤醒自己会点确认重连，属正常启动流程，不按掉线停机
+                // core 回调已剥掉 @ 前缀，StartUp@OfflineConfirm 同样报 OfflineConfirm，只能按任务链区分
+                if (details.getString("taskchain") == "StartUp") return
+
+                val message = str("GameDrop")
+                append(message, LogLevel.ERROR)
+                notificationCenter.notifySubTaskFailure(message, sendExternal = true)
+                executionStateHolder.requestStopFromCallback()
+            }
+
+            "GamePass" -> {
+                append(str("RoguelikeGamePass"), LogLevel.RARE)
+                ioScope.launch {
+                }
+            }
+
+            "StageTraderSpecialShoppingAfterRefresh" -> {
+                append(str("RoguelikeSpecialItemBought"), LogLevel.RARE)
+            }
+
+            "DeepExplorationNotUnlockedComplain" -> {
+                append(str("DeepExplorationNotUnlockedComplain"), LogLevel.WARNING)
+            }
+
+            "PNS-Resume" -> {
+                append(str("ReclamationPnsModeError"), LogLevel.ERROR)
+            }
+
+            "PIS-Commence" -> {
+                append(str("ReclamationPisModeError"), LogLevel.ERROR)
+            }
+
+            "BattleStartAll" -> {
+                append(str("MissionStart"), LogLevel.INFO)
+            }
+
+            "StageDrops-Stars-3", "StageDrops-Stars-Adverse" -> {
+                append(str("CompleteCombat"), LogLevel.INFO)
+                ioScope.launch {
+                }
+                copilotRuntimeStateStore.markTaskSuccess()
+            }
+
+            else -> {
+                // 大量 ProcessTask task 不需要日志
+            }
+        }
+    }
+
+    // ==================== SubTaskCompleted (20002) ====================
+
+    fun onSubTaskCompleted(details: JSONObject) {
+        val subtask = details.getString("subtask") ?: return
+
+        if (subtask == "ProcessTask") {
+            val taskchain = details.getString("taskchain")
+            val innerDetails = details.getJSONObject("details")
+            val task = innerDetails?.getString("task")
+
+            when (taskchain) {
+                "SwitchTheme" -> {
+                    val taskId = details.getIntValue("taskid", 0)
+                    when (task) {
+                        "SwitchThemeByNameSelectTheme" -> {
+                            themeTargets[taskId] = innerDetails.getJSONObject("result")
+                                ?.getString("text").orEmpty()
+                        }
+
+                        "SwitchThemeByNameConfirmTheme" -> {
+                            append(
+                                str("SwitchThemeSucceeded", themeTargets.remove(taskId).orEmpty()),
+                                LogLevel.SUCCESS,
+                            )
+                        }
+
+                        "SwitchThemeByNameAlreadySet" -> {
+                            append(
+                                str("SwitchThemeAlreadySet", themeTargets.remove(taskId).orEmpty()),
+                                LogLevel.SUCCESS,
+                            )
+                        }
+
+                        "SwitchThemeByNameLockedTheme" -> {
+                            append(
+                                str("SwitchThemeLocked", themeTargets.remove(taskId).orEmpty()),
+                                LogLevel.ERROR,
+                            )
+                        }
+                    }
+                }
+
+                "Infrast" if task == "UnlockClues" -> {
+                    append(str("ClueExchangeUnlocked"), LogLevel.TRACE)
+                    ioScope.launch {
+                    }
+                }
+
+                "Infrast" if task == "SendClues" -> {
+                    append(str("CluesSent"), LogLevel.TRACE)
+                    ioScope.launch {
+                    }
+                }
+
+                "Roguelike" if task == "StartExplore" -> {
+                    val times = innerDetails.getIntValue("exec_times", 0)
+                    append("${str("BegunToExplore")} $times ${str("UnitTime")}", LogLevel.INFO)
+                    ioScope.launch {
+                        val coreChars = normalizedRoguelikeCoreChars()
+                    }
+                }
+
+                // 上游 dev-v2 22f3175b4: Core 移除 EndOfActionThenStop 任务,
+                // OF-1 信用战完成现在会触发 Copilot@StageDrops-Stars-3
+                "Mall" if task == "StageDrops-Stars-3" -> {
+                    append("${str("CompleteTask")}${str("CreditFight")}", LogLevel.TRACE)
+                    val nodeId = statusTracker.getNodeId(details.getIntValue("taskid", 0))
+                    val date = runningYjDate()
+                    ioScope.launch {
+                        if (nodeId != null) {
+                            chainState.recordCreditFightCompleted(nodeId, date)
+                        }
+                    }
+                }
+
+                "Mall" if (task == "VisitLimited" || task == "VisitNextBlack") -> {
+                    append("${str("CompleteTask")}${str("Visiting")}", LogLevel.TRACE)
+                    val nodeId = statusTracker.getNodeId(details.getIntValue("taskid", 0))
+                    val date = runningYjDate()
+                    if (nodeId != null) {
+                        ioScope.launch {
+                            chainState.recordVisitFriendsCompleted(nodeId, date)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /** 按本次会话的服务器换日，运行中切到别的服务器的 Profile 也不受影响 */
+    private fun runningYjDate(): String =
+        ServerTimezone.getYjDate(chainState.lastUsedClientType ?: chainState.clientType).toString()
+
+    // ==================== SubTaskExtraInfo (20003) ====================
+
+    fun onSubTaskExtraInfo(details: JSONObject) {
+        // Depot / OperBox 通过 taskchain 路由（与 WPF 一致）
+        val taskchain = details.getString("taskchain")
+        val subDetails = details.getJSONObject("details")
+        when (taskchain) {
+            "Depot" -> {
+                toolboxResultCollector.onDepotResult(subDetails)
+                return
+            }
+
+            "OperBox" -> {
+                toolboxResultCollector.onOperBoxResult(subDetails)
+                return
+            }
+        }
+
+        val what = details.getString("what") ?: return
+
+        // 材料合成整组消息（与 WPF ProcMaterialSynthesisMsg 一致，按前缀路由）
+        if (what.startsWith("MaterialSynthesis")) {
+            logMaterialSynthesis(what, subDetails)
+            return
+        }
+
+        when (what) {
+            "SwitchThemeSkipped" -> {
+                clearThemeTarget(details.getIntValue("taskid", 0))
+                append(str("SwitchThemeSkipped"), LogLevel.INFO)
+            }
+
+            "SwitchThemeNotFound" -> {
+                clearThemeTarget(details.getIntValue("taskid", 0))
+                append(str("SwitchThemeNotFound", subDetails?.getString("theme").orEmpty()), LogLevel.ERROR)
+            }
+
+            "PixelPaintProgress" -> logPixelPaintProgress(
+                toolboxResultCollector.onPixelPaintProgress(subDetails)
+            )
+
+            "AutoRaisePotentialTotal" ->
+                append(str("AutoRaisePotentialTotalLog", subDetails?.getIntValue("total") ?: 0), LogLevel.INFO)
+
+            "AutoRaisePotentialProgress" -> {
+                val current = subDetails?.getIntValue("current") ?: 0
+                val total = subDetails?.getIntValue("total") ?: 0
+                val hasPotential = subDetails?.getBooleanValue("has_potential") ?: false
+                append(
+                    str(
+                        if (hasPotential) "AutoRaisePotentialPotentialFoundLog"
+                        else "AutoRaisePotentialNoPotentialLog",
+                        current,
+                        total,
+                    ),
+                    if (hasPotential) LogLevel.SUCCESS else LogLevel.TRACE,
+                )
+            }
+
+            "FightTimes" -> {
+                pendingFight = pendingFight.copy(
+                    timesFinished = subDetails?.getIntValue("times_finished"),
+                    series = subDetails?.getIntValue("series"),
+                    sanityCost = subDetails?.getIntValue("sanity_cost"),
+                )
+            }
+
+            "SanityBeforeStage" -> {
+                val cur = subDetails?.getIntValue("current_sanity")
+                val max = subDetails?.getIntValue("max_sanity")
+                pendingFight = pendingFight.copy(sanity = cur, sanityMax = max)
+                if (cur != null && max != null) {
+                    lastSanitySnapshot = SanitySnapshot(cur, max)
+                }
+            }
+
+            "BlackFlowStrategyStarted" -> {
+                val profile = resources.getString(
+                    BlackFlowLogText.profile(subDetails?.getString("profile"))
+                )
+                append(
+                    resources.getString(R.string.blackflow_strategy_started, profile),
+                    LogLevel.INFO,
+                )
+            }
+
+            "BlackFlowStrategyResult" -> handleBlackFlowStrategyResult(subDetails)
+            "BlackFlowRoutingDecision" -> handleBlackFlowRoutingDecision(subDetails)
+            "BlackFlowRoutingWarning" -> {
+                append(
+                    resources.getString(
+                        BlackFlowLogText.warning(subDetails?.getString("code"))
+                    ),
+                    LogLevel.WARNING,
+                )
+            }
+
+            "BlackFlowMilestoneChanged" -> handleBlackFlowMilestoneChanged(subDetails)
+            "BlackFlowInventoryCleanup" -> handleBlackFlowInventoryCleanup(subDetails)
+
+            "StageDrops" -> handleStageDrops(subDetails)
+            "AccountSwitch" -> {
+                val accountName = subDetails?.getString("account_name") ?: ""
+                append("${str("AccountSwitch")} -->> $accountName", LogLevel.INFO)
+            }
+
+            "StageInfoError" -> append(str("StageInfoError"), LogLevel.ERROR)
+            "StageQueueUnableToAgent" -> {
+                val code = subDetails?.getString("stage_code") ?: ""
+                append("${str("StageQueue")} $code ${str("UnableToAgent")}", LogLevel.INFO)
+            }
+
+            "StageQueueMissionCompleted" -> {
+                val code = subDetails?.getString("stage_code") ?: ""
+                val stars = subDetails?.getIntValue("stars") ?: 0
+                append("${str("StageQueue")} $code - $stars ★", LogLevel.INFO)
+            }
+
+            "EnterFacility" -> {
+                val facility = subDetails?.getString("facility") ?: ""
+                val index = (subDetails?.getIntValue("index") ?: 0) + 1
+                append(
+                    "${str("ThisFacility")}${str(facility)} ${
+                        String.format(
+                            Locale.US,
+                            "%02d",
+                            index
+                        )
+                    }",
+                    LogLevel.TRACE
+                )
+            }
+
+            "ProductIncorrect" -> append(str("ProductIncorrect"), LogLevel.ERROR)
+            "ProductUnknown" -> append(str("ProductUnknown"), LogLevel.ERROR)
+            "ProductChanged" -> append(str("ProductChanged"), LogLevel.INFO)
+            "ProductChangeFail" -> append(str("ProductChangeFail"), LogLevel.ERROR)
+            "CustomInfrastRoomGroupsMatch" -> {
+                val group = subDetails?.getString("group") ?: ""
+                append("${str("RoomGroupsMatch")}$group", LogLevel.TRACE)
+            }
+
+            "CustomInfrastRoomGroupsMatchFailed" -> {
+                val groups = subDetails?.getJSONArray("groups")?.joinToString(", ") ?: ""
+                append("${str("RoomGroupsMatchFailed")}$groups", LogLevel.TRACE)
+            }
+
+            "CustomInfrastRoomOperators" -> {
+                val names = subDetails?.getJSONArray("names")?.joinToString(", ") ?: ""
+                append("${str("RoomOperators")}$names", LogLevel.TRACE)
+            }
+
+            "InfrastTrainingIdle" -> append(str("TrainingIdle"), LogLevel.TRACE)
+            "InfrastTrainingCompleted" -> handleInfrastTrainingCompleted(subDetails)
+            "InfrastTrainingTimeLeft" -> handleInfrastTrainingTimeLeft(subDetails)
+            "RecruitTagsDetected" -> {
+                val tags = subDetails?.getJSONArray("tags")?.joinToString("\n") ?: ""
+                append("${str("RecruitingResults")}\n$tags", LogLevel.TRACE)
+                toolboxResultCollector.onRecruitTagsDetected(subDetails)
+            }
+
+            "RecruitSpecialTag" -> {
+                val tag = subDetails?.getString("tag") ?: ""
+                append("${str("RecruitingTips")}\n$tag", LogLevel.RARE)
+                notificationCenter.notifyRecruitSpecialTag(tag)
+            }
+
+            "RecruitRobotTag" -> {
+                val tag = subDetails?.getString("tag") ?: ""
+                append("${str("RecruitingTips")}\n$tag", LogLevel.RECRUIT_ROBOT)
+                notificationCenter.notifyRecruitRobotTag(tag)
+            }
+
+            "RecruitResult" -> {
+                val level = subDetails?.getIntValue("level") ?: 0
+                val recruitTooltip = buildRecruitResultTooltip(subDetails)
+                sessionLogger.append(
+                    LogItem(
+                        content = "$level ★ Tags",
+                        level = if (level >= 5) LogLevel.RARE else LogLevel.INFO,
+                        recruitTooltip = recruitTooltip
+                    )
+                )
+                toolboxResultCollector.onRecruitResult(subDetails)
+                if (level >= 5) {
+                    notificationCenter.notifyRecruitHighRarity(level)
+                }
+                ioScope.launch {
+                }
+            }
+
+            "RecruitSupportOperator" -> {
+                val name = subDetails?.getString("name") ?: ""
+                append(str("RecruitSupportOperator", name), LogLevel.INFO)
+            }
+
+            "RecruitTagsSelected" -> {
+                val tags = subDetails?.getJSONArray("tags")?.joinToString("\n") ?: str("NoDrop")
+                append(str("RecruitTagsSelectedLog", tags), LogLevel.TRACE)
+            }
+
+            "RecruitTagsRefreshed" -> {
+                val count = subDetails?.getIntValue("count") ?: 0
+                append("${str("Refreshed")}$count${str("UnitTime")}", LogLevel.TRACE)
+            }
+
+            "RecruitNoPermit" -> {
+                val cont = subDetails?.getBooleanValue("continue") ?: false
+                append(str(if (cont) "ContinueRefresh" else "NoRecruitmentPermit"), LogLevel.TRACE)
+            }
+
+            "RecruitPermitReserved" -> {
+                val current = subDetails?.getIntValue("current") ?: 0
+                append(str("RecruitPermitReserved", current), LogLevel.INFO)
+            }
+
+            "RecruitPermitCountRecognitionFailed" ->
+                append(str("RecruitPermitCountRecognitionFailed"), LogLevel.WARNING)
+
+            "NotEnoughStaff" -> append(str("NotEnoughStaff"), LogLevel.ERROR)
+            "CreditFullOnlyBuyDiscount" -> {
+                val credit = subDetails?.getString("credit") ?: ""
+                append("${str("CreditFullOnlyBuyDiscount")}$credit", LogLevel.MESSAGE)
+            }
+
+            "StageInfo" -> {
+                val name = subDetails?.getString("name") ?: ""
+                append("${str("StartCombat")}$name", LogLevel.TRACE)
+            }
+
+            "UseMedicine" -> handleUseMedicine(subDetails)
+            "ReclamationReport" -> handleReclamationReport(subDetails)
+            "ReclamationProcedureStart" -> {
+                val times = subDetails?.getIntValue("times") ?: 0
+                append("${str("MissionStart")} $times ${str("UnitTime")}", LogLevel.INFO)
+            }
+
+            "ReclamationSmeltGold" -> {
+                val times = subDetails?.getIntValue("times") ?: 0
+                append("${str("AlgorithmDoneSmeltGold")} $times ${str("UnitTime")}", LogLevel.TRACE)
+            }
+
+            "BattleFormation" -> {
+                val formation = subDetails?.getJSONArray("formation")?.joinToString(", ") ?: ""
+                append("${str("BattleFormation")}\n[$formation]", LogLevel.TRACE)
+            }
+
+            "BattleFormationParseFailed" -> append(
+                str("BattleFormationParseFailed"),
+                LogLevel.TRACE
+            )
+
+            "BattleFormationSelected" -> {
+                val selected = subDetails?.getString("selected") ?: ""
+                append("${str("BattleFormationSelected")}$selected", LogLevel.TRACE)
+            }
+
+            "BattleFormationOperUnavailable" -> {
+                val name = subDetails?.getString("oper_name") ?: ""
+                val reqType = subDetails?.getString("requirement_type") ?: ""
+                val reason = when (reqType) {
+                    "elite" -> "精英化不足"
+                    "level" -> "等级不足"
+                    "skill_level" -> "技能等级不足"
+                    "module" -> "所需模组未解锁"
+                    else -> reqType
+                }
+                append(str("BattleFormationOperUnavailable", name, reason), LogLevel.ERROR)
+                copilotRuntimeStateStore.markRequirementIgnored()
+            }
+
+            "CopilotAction" -> handleCopilotAction(subDetails)
+            "CopilotListLoadTaskFileSuccess" -> {
+                val fileName = subDetails?.getString("file_name") ?: ""
+                val stageName = subDetails?.getString("stage_name") ?: ""
+                // 上游 #16985: core 回传当前作业在列表中的下标(普通/悖论均发), 用于跳过失败后正确归属
+                val id = subDetails?.getInteger("id") ?: -1
+                append("Parse $fileName[$stageName] Success", LogLevel.INFO)
+                copilotRuntimeStateStore.resetRequirementIgnored()
+                copilotRuntimeStateStore.setCurrentCopilotIndex(id)
+            }
+
+            "SSSStage" -> {
+                val stage = subDetails?.getString("stage") ?: ""
+                append(str("CurrentStage", stage), LogLevel.INFO)
+            }
+
+            "SSSSettlement" -> {
+                val why = details.getString("why") ?: ""
+                append(why, LogLevel.INFO)
+            }
+
+            "SSSGamePass" -> append(str("SSSGamePass"), LogLevel.RARE)
+            "UnsupportedLevel" -> {
+                val level = subDetails?.getString("level") ?: ""
+                append("${str("UnsupportedLevel")}$level", LogLevel.ERROR)
+                ioScope.launch {
+                }
+            }
+
+            else -> {
+                Timber.d("SubTaskExtraInfo unhandled what=$what")
+            }
+        }
+    }
+
+    // ==================== 辅助格式化方法 ====================
+
+    private fun handleStageDrops(subDetails: JSONObject?) {
+        val stageCode = subDetails?.getJSONObject("stage")?.getString("stageCode") ?: ""
+        val stats = subDetails?.getJSONArray("stats")
+        val curTimes = subDetails?.getIntValue("cur_times") ?: -1
+        val sb = StringBuilder("$stageCode ${str("TotalDrop")}\n")
+        val drops = mutableListOf<Pair<String, Int>>()
+
+        if (stats.isNullOrEmpty()) {
+            sb.append(str("NoDrop"))
+        } else {
+            for (i in 0 until stats.size) {
+                val item = stats.getJSONObject(i)
+                val itemId = item.getString("itemId") ?: ""
+                val itemName = item.getString("itemName") ?: ""
+                val displayName = if (itemName == "furni") str("FurnitureDrop") else itemName
+                val quantity = item.getIntValue("quantity")
+                val addQuantity = item.getIntValue("addQuantity")
+                if (itemId.isNotEmpty() && addQuantity > 0) {
+                    drops += itemId to addQuantity
+                }
+                sb.append("$displayName : $quantity")
+                if (addQuantity > 0) sb.append(" (+$addQuantity)")
+                if (i < stats.size - 1) sb.append("\n")
+            }
+        }
+
+        if (curTimes > 0) sb.append("\n${str("CurTimes")} : $curTimes")
+
+        // 剿灭周进度 (v6.9.0+): annihilation_weekly_process = [当前, 上限]
+        val annihilationProcess = subDetails?.getJSONArray("annihilation_weekly_process")
+        if (annihilationProcess != null && annihilationProcess.size == 2) {
+            val cur = annihilationProcess.getIntValue(0)
+            val total = annihilationProcess.getIntValue(1)
+            if (cur >= 0 && total > 0) {
+                sb.append("\n${str("AnnihilationMode")} : $cur / $total")
+            }
+        }
+
+        sessionLogger.append(sb.toString(), LogLevel.TRACE)
+
+        if (drops.isNotEmpty()) {
+            // 同步写穿内存，下一关 TaskChainStart 立刻能 countOf 到本场掉落
+            depotRepository.merge(drops)
+        }
+    }
+
+    private fun handleInfrastTrainingCompleted(subDetails: JSONObject?) {
+        val operator = subDetails?.getString("operator") ?: ""
+        val skill = subDetails?.getString("skill") ?: ""
+        val level = subDetails?.getIntValue("level") ?: 0
+        append(
+            "[$operator] $skill\n${str("TrainingLevel")}: $level ${str("TrainingCompleted")}",
+            LogLevel.INFO
+        )
+    }
+
+    private fun handleInfrastTrainingTimeLeft(subDetails: JSONObject?) {
+        val operator = subDetails?.getString("operator") ?: ""
+        val skill = subDetails?.getString("skill") ?: ""
+        val level = subDetails?.getIntValue("level") ?: 0
+        val time = subDetails?.getString("time") ?: ""
+        append(
+            "[$operator] $skill\n${str("TrainingLevel")}: $level\n${str("TrainingTimeLeft")}: $time",
+            LogLevel.INFO
+        )
+    }
+
+    private fun handleUseMedicine(subDetails: JSONObject?) {
+        val count = subDetails?.getIntValue("count") ?: 0
+        val isExpiring = subDetails?.getBooleanValue("is_expiring") ?: false
+        if (count > 0) medicineUsedTotal += count
+
+        if (count == -1) {
+            append("${str("MedicineUsed")} Unknown times", LogLevel.ERROR)
+            return
+        }
+
+        val baseLog = if (isExpiring) {
+            if (count > 0) expiringMedicineUsedTotal += count
+            // 上游 dev-v2 925ff331a: 回调不带 expire_days, 反查当前 active fight config 计算天数
+            val days = computeExpireDaysFromActiveConfig()
+            val prefix = if (days > 0) {
+                str("ExpiringMedicineUsedDays", days)
+            } else {
+                str("ExpiringMedicineUsed")
+            }
+            "$prefix (+$count, ${str("Total")}: $medicineUsedTotal)"
+        } else {
+            "${str("MedicineUsed")} (+$count, ${str("Total")}: $medicineUsedTotal)"
+        }
+
+        // 上游 #17034: medicines 数组逐种打印 使用量/库存 (expire_days 上游亦未使用)
+        val medicines = subDetails?.getJSONArray("medicines")
+        val suffix = buildString {
+            if (medicines != null) {
+                for (i in 0 until medicines.size) {
+                    val m = medicines.getJSONObject(i) ?: continue
+                    append("\n").append(
+                        str(
+                            "UseMedicine.MedicineInfo",
+                            m.getIntValue("use"),
+                            m.getIntValue("inventory")
+                        )
+                    )
+                }
+            }
+        }
+
+        append(baseLog + suffix, LogLevel.INFO)
+        if (count > 0) {
+            ioScope.launch {
+            }
+        }
+    }
+
+    /**
+     * 反查当前任务链中第一个启用过期药的 FightConfig, 计算最终过期天数
+     * 算法对齐上游 WPF: max(用户配置天数, 活动结束前两天时距本周末天数)
+     * 同一时刻通常只有一个 fight 在执行, 此简化是安全的
+     */
+    private fun computeExpireDaysFromActiveConfig(): Int {
+        val fight = chainState.chain.value
+            .mapNotNull { it.config as? FightConfig }
+            .firstOrNull { it.useExpiringMedicine }
+            ?: return 0
+
+        return fight.effectiveExpireDays(activityManager.getActivityAwareExpireDays())
+    }
+
+    private fun currentRoguelikeConfig(): RoguelikeConfig? =
+        chainState.chain.value.firstNotNullOfOrNull { it.config as? RoguelikeConfig }
+
+    /**
+     * 生效顺位的开局干员名，逗号分隔
+     * 任一顺位命中都该算数（对齐 WPF isPallasStarter 的 Any），成就侧用 HAS_ITEM 取元素
+     */
+    private fun normalizedRoguelikeCoreChars(): String =
+        currentRoguelikeConfig()?.normalizedStartingOperNames(resourceDataManager)
+            .orEmpty().joinToString(",")
+
+    private fun handleReclamationReport(subDetails: JSONObject?) {
+        val totalBadges = subDetails?.getIntValue("total_badges") ?: 0
+        val badges = subDetails?.getIntValue("badges") ?: 0
+        val totalCp = subDetails?.getIntValue("total_construction_points") ?: 0
+        val cp = subDetails?.getIntValue("construction_points") ?: 0
+        append(
+            "${str("AlgorithmFinish")}\n${str("AlgorithmBadge")}: $totalBadges(+$badges)\n${str("AlgorithmConstructionPoint")}: $totalCp(+$cp)",
+            LogLevel.TRACE
+        )
+    }
+
+    private fun handleCopilotAction(subDetails: JSONObject?) {
+        val doc = subDetails?.getString("doc")
+        if (!doc.isNullOrEmpty()) {
+            append(doc, LogLevel.MESSAGE)
+        } else {
+            val action = subDetails?.getString("action") ?: ""
+            val target = subDetails?.getString("target") ?: ""
+            append(str("CurrentSteps", str(action), target), LogLevel.TRACE)
+        }
+
+        val elapsedTime = subDetails?.getIntValue("elapsed_time") ?: -1
+        if (elapsedTime >= 0) {
+            append(str("ElapsedTime", elapsedTime), LogLevel.MESSAGE)
+        }
+    }
+
+    // ==================== 公招干员信息解析 ====================
+
+    /**
+     * 参考 WPF ToolboxViewModel.UpdateRecruitResult。颜色由 UI 层按主题渲染。
+     * JSON：details.result = [{ level, tags[], opers[{ id, name, level }] }, ...]
+     */
+    private fun buildRecruitResultTooltip(details: JSONObject?): List<RecruitCombination>? {
+        val resultArray = details?.getJSONArray("result") ?: return null
+        if (resultArray.isEmpty()) return null
+
+        val combos = (0 until resultArray.size).mapNotNull { i ->
+            val comb = resultArray.getJSONObject(i) ?: return@mapNotNull null
+            val tagLevel = comb.getIntValue("level")
+            val tagsArray = comb.getJSONArray("tags")
+            val tags = if (tagsArray != null) {
+                (0 until tagsArray.size).mapNotNull { tagsArray.getString(it) }
+            } else emptyList()
+
+            val opersArray = comb.getJSONArray("opers")
+            val opers = if (opersArray != null && opersArray.isNotEmpty()) {
+                (0 until opersArray.size).mapNotNull { j ->
+                    val oper = opersArray.getJSONObject(j) ?: return@mapNotNull null
+                    val operName = oper.getString("name") ?: return@mapNotNull null
+                    val operLevel = oper.getIntValue("level")
+                    val localizedName =
+                        resourceDataManager.getLocalizedCharacterName(operName) ?: operName
+                    RecruitOper(starLevel = operLevel, name = localizedName)
+                }.sortedByDescending { it.starLevel }
+            } else {
+                emptyList()
+            }
+
+            RecruitCombination(starLevel = tagLevel, tags = tags, opers = opers)
+        }
+
+        return combos.takeIf { it.isNotEmpty() }
+    }
+
+    /**
+     * 像素画进度写运行日志
+     * Core 每满 10 格报一次、每色收尾再报一次，最后一色画满即为完成
+     */
+    private fun logPixelPaintProgress(progress: PixelPaintProgress?) {
+        progress ?: return
+        if (progress.total > 0 && progress.done >= progress.total) {
+            append(resources.getString(R.string.pixel_art_log_done), LogLevel.SUCCESS)
+        } else {
+            append(
+                resources.getString(R.string.pixel_art_progress, progress.done, progress.total),
+                LogLevel.TRACE,
+            )
+        }
+    }
+
+    /**
+     * 材料合成日志
+     * Core 递归补齐下级材料，depth 从 0 起，展示时 +1；Failed 的 result 映射为原因文案
+     */
+    private fun logMaterialSynthesis(what: String, subDetails: JSONObject?) {
+        val material = subDetails?.getString("material").orEmpty()
+        when (what) {
+            "MaterialSynthesisStart" -> append(
+                resources.getString(R.string.material_synthesis_log_start), LogLevel.INFO
+            )
+
+            "MaterialSynthesisMaterial" -> append(
+                resources.getString(
+                    R.string.material_synthesis_log_material,
+                    material,
+                    subDetails?.getIntValue("count") ?: 0,
+                    (subDetails?.getIntValue("depth") ?: 0) + 1,
+                ),
+                LogLevel.INFO,
+            )
+
+            "MaterialSynthesisIngredient" -> append(
+                resources.getString(
+                    R.string.material_synthesis_log_ingredient,
+                    material,
+                    subDetails?.getIntValue("ingredient") ?: 0,
+                ),
+                LogLevel.INFO,
+            )
+
+            "MaterialSynthesisIngredientUnavailable" -> append(
+                resources.getString(
+                    R.string.material_synthesis_log_ingredient_unavailable,
+                    material,
+                    subDetails?.getIntValue("ingredient") ?: 0,
+                ),
+                LogLevel.WARNING,
+            )
+
+            "MaterialSynthesisOperator" -> append(
+                resources.getString(R.string.material_synthesis_log_operator, material),
+                LogLevel.INFO,
+            )
+
+            "MaterialSynthesisCraft" -> append(
+                resources.getString(
+                    R.string.material_synthesis_log_craft,
+                    material,
+                    subDetails?.getIntValue("count") ?: 0,
+                ),
+                LogLevel.INFO,
+            )
+
+            "MaterialSynthesisReturn" -> append(
+                resources.getString(R.string.material_synthesis_log_return, material),
+                LogLevel.INFO,
+            )
+
+            "MaterialSynthesisCompleted" -> append(
+                resources.getString(R.string.material_synthesis_log_done), LogLevel.SUCCESS
+            )
+
+            "MaterialSynthesisFailed" -> {
+                val reasonRes = when (subDetails?.getString("result")) {
+                    "insufficient_resources" -> R.string.material_synthesis_reason_insufficient_resources
+                    "operator_unavailable" -> R.string.material_synthesis_reason_operator_unavailable
+                    "unsupported" -> R.string.material_synthesis_reason_unsupported
+                    "navigation_failed" -> R.string.material_synthesis_reason_navigation_failed
+                    else -> R.string.material_synthesis_reason_unknown
+                }
+                append(
+                    resources.getString(
+                        R.string.material_synthesis_log_failed,
+                        resources.getString(reasonRes),
+                    ),
+                    LogLevel.ERROR,
+                )
+            }
+        }
+    }
+
+    // ==================== 黑流树海回调 ====================
+
+    private fun handleBlackFlowStrategyResult(subDetails: JSONObject?) {
+        val outcome = resources.getString(
+            BlackFlowLogText.outcome(subDetails?.getString("outcome"))
+        )
+        val reason = resources.getString(
+            BlackFlowLogText.terminationReason(subDetails?.getString("termination_reason"))
+        )
+        append(
+            resources.getString(R.string.blackflow_strategy_result, outcome, reason),
+            if (subDetails?.getBooleanValue("succeeded") == true) LogLevel.INFO else LogLevel.WARNING,
+        )
+    }
+
+    // 零件箱超载清理，name 仅 discarded 时有值
+    private fun handleBlackFlowInventoryCleanup(subDetails: JSONObject?) {
+        when (subDetails?.getString("status")) {
+            "started" -> append(
+                resources.getString(R.string.blackflow_inventory_cleanup_started), LogLevel.WARNING
+            )
+
+            "discarded" -> append(
+                resources.getString(
+                    R.string.blackflow_inventory_cleanup_discarded,
+                    subDetails.getString("name").orEmpty(),
+                ),
+                LogLevel.INFO,
+            )
+
+            "completed" -> append(
+                resources.getString(R.string.blackflow_inventory_cleanup_completed), LogLevel.SUCCESS
+            )
+
+            "failed" -> append(
+                resources.getString(R.string.blackflow_inventory_cleanup_failed), LogLevel.ERROR
+            )
+        }
+    }
+
+    private fun handleBlackFlowRoutingDecision(subDetails: JSONObject?) {
+        val movement = resources.getString(
+            BlackFlowLogText.movement(subDetails?.getString("movement"))
+        )
+        // 节点有具名就用具名，没有才退回类型
+        val nodeName = subDetails?.getString("node_name")?.takeIf { it.isNotBlank() }
+            ?: resources.getString(BlackFlowLogText.nodeType(subDetails?.getString("node_type")))
+        val route = resources.getString(
+            R.string.blackflow_routing_decision,
+            subDetails?.getIntValue("floor") ?: 0,
+            subDetails?.getIntValue("action_points_before") ?: 0,
+            subDetails?.getIntValue("action_points_after") ?: 0,
+            movement,
+            nodeName,
+            subDetails?.getIntValue("safety_margin") ?: 0,
+        )
+        val category = resources.getString(
+            BlackFlowLogText.reasonCategory(subDetails?.getString("reason_category"))
+        )
+        val detail = blackFlowDecisionDetail(subDetails)
+        val reason = resources.getString(R.string.blackflow_routing_reason, category, detail)
+        append("$route\n$reason", LogLevel.INFO)
+    }
+
+    private fun blackFlowDecisionDetail(subDetails: JSONObject?): String {
+        subDetails?.getString("decisive_rule_id")?.takeIf { it.isNotBlank() }?.let { id ->
+            return BlackFlowLogText.rule(id)?.let { resources.getString(it) } ?: id
+        }
+        subDetails?.getString("decisive_milestone_id")?.takeIf { it.isNotBlank() }?.let { id ->
+            return BlackFlowLogText.milestone(id)?.let { resources.getString(it) } ?: id
+        }
+        return resources.getString(
+            BlackFlowLogText.reasonDetail(subDetails?.getString("reason_detail"))
+        )
+    }
+
+    private fun handleBlackFlowMilestoneChanged(subDetails: JSONObject?) {
+        val statusCode = subDetails?.getString("status")
+        // inactive 是纯状态位翻转，上游也不打日志
+        if (statusCode == "inactive") return
+        val id = subDetails?.getString("milestone_id").orEmpty()
+        val milestone = BlackFlowLogText.milestone(id)?.let { resources.getString(it) }
+            ?: id.takeIf { it.isNotBlank() }
+            ?: resources.getString(R.string.blackflow_milestone_unknown)
+        val status = resources.getString(BlackFlowLogText.milestoneStatus(statusCode))
+        append(
+            resources.getString(R.string.blackflow_milestone_changed, milestone, status),
+            LogLevel.INFO,
+        )
+    }
+
+    // ==================== 字符串资源辅助方法 ====================
+
+    /** core 回调 why -> 本地化文案，未收录的原样返回 */
+    private fun localizedWhy(why: String): String = when (why) {
+        "recognition error" -> str("IdentifyTheMistakes")
+        "refresh count reached the limit" -> str("RecruitRefreshLimitReached")
+        "UnknownStage" -> str("PenguinUploadUnknownStage")
+        "NotThreeStars" -> str("PenguinUploadNotThreeStars")
+        "UnknownTimes" -> str("PenguinUploadUnknownTimes")
+        "UnknownDropType" -> str("PenguinUploadUnknownDropType")
+        "UnknownDrops" -> str("PenguinUploadUnknownDrops")
+        else -> why
+    }
+
+    private fun str(key: String): String = CoreStringRes.getString(resources, packageName, key)
+
+    private fun str(key: String, vararg args: Any): String =
+        CoreStringRes.getString(resources, packageName, key, *args)
+
+    private fun append(content: String, level: LogLevel) {
+        sessionLogger.append(content, level)
+    }
+}

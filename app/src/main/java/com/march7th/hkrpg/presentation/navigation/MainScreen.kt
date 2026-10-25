@@ -1,0 +1,164 @@
+package com.march7th.hkrpg.presentation.navigation
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableFloatState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavController
+import com.march7th.hkrpg.constant.Routes
+import com.march7th.hkrpg.presentation.components.consumeAllPointerEvents
+import com.march7th.hkrpg.presentation.pip.LocalIsInPip
+import com.march7th.hkrpg.presentation.view.background.BackgroundTaskView
+import com.march7th.hkrpg.presentation.view.home.HomeView
+import com.march7th.hkrpg.presentation.view.settings.SettingsView
+import com.march7th.hkrpg.presentation.viewmodel.BackgroundTaskViewModel
+import com.march7th.hkrpg.schedule.ui.ScheduleListView
+import com.march7th.hkrpg.theme.LocalReduceMotion
+import com.march7th.hkrpg.theme.M7aMotion
+import kotlinx.coroutines.launch
+import org.koin.compose.koinInject
+import kotlin.math.abs
+
+
+@Composable
+fun MainScreen(
+    modifier: Modifier = Modifier,
+    navController: NavController,
+    backgroundTaskViewModel: BackgroundTaskViewModel,
+    visible: Boolean = true,
+    fullscreen: Boolean = false,
+    parallax: MutableFloatState,
+) {
+    val pagerState = rememberPagerState(pageCount = { BottomNavTab.all.size })
+    val scope = rememberCoroutineScope()
+    val reduceMotion = LocalReduceMotion.current
+    val chromeHidden = fullscreen || LocalIsInPip.current
+
+    // 把分页位置实时上报给背景层做视差，归一化到 -1~1。
+    // 不能只用 currentPageOffsetFraction：它在滑过中点时随 currentPage 进位翻符号，背景会瞬移。
+    // 减弱动效由背景层统一忽略，这里照常上报。
+    LaunchedEffect(pagerState) {
+        val lastIndex = (BottomNavTab.all.size - 1).coerceAtLeast(1)
+        snapshotFlow { pagerState.currentPage + pagerState.currentPageOffsetFraction }
+            .collect { position ->
+                parallax.floatValue = (position / lastIndex * 2f - 1f).coerceIn(-1f, 1f)
+            }
+    }
+
+    // targetPage：点击/滑动一旦确定目标即生效，停稳后等于 currentPage。
+    // animateScrollToPage 内部走 MutatorMutex，连续调用时后者自动接管，无需手动取消。
+    fun goToPage(index: Int, animate: Boolean = true) {
+        if (index !in BottomNavTab.all.indices || index == pagerState.targetPage) return
+        scope.launch {
+            if (!animate) {
+                pagerState.scrollToPage(index)
+                return@launch
+            }
+            val distance = abs(index - pagerState.currentPage).coerceAtLeast(1)
+            pagerState.animateScrollToPage(
+                page = index,
+                animationSpec = tween(
+                    durationMillis = M7aMotion.pagerDuration(distance, reduceMotion),
+                    easing = M7aMotion.Emphasized,
+                ),
+            )
+        }
+    }
+
+    // 非首页 Tab 按返回键先回到首页；全屏由 BackgroundTaskView 自行处理。
+    BackHandler(enabled = visible && !chromeHidden && pagerState.targetPage != 0) {
+        goToPage(0)
+    }
+
+    // 主 Tab 路由是空占位不能 navigate，只能先 pop 回主界面再滑 pager
+    fun surfaceToTab(tab: BottomNavTab, animate: Boolean = true) {
+        navController.popBackStack(Routes.HOME, false)
+        goToPage(BottomNavTab.all.indexOf(tab), animate)
+    }
+
+    // 定时任务触发时自动浮出后台任务页
+    // （恢复旧导航 navigate(BACKGROUND){popUpTo(HOME)} 的“自动浮出后台页”语义）。
+    val pendingNavigateRequestId by backgroundTaskViewModel.pendingNavigateRequestId.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingNavigateRequestId) {
+        if (pendingNavigateRequestId != null) {
+            surfaceToTab(BottomNavTab.BACKGROUND)
+            backgroundTaskViewModel.onNavigateForScheduledLaunch()
+        }
+    }
+
+    // 子页面的「回到主界面并切 Tab」请求
+    val mainTabNavigator: MainTabNavigator = koinInject()
+    val mainTabRequest by mainTabNavigator.request.collectAsStateWithLifecycle()
+    LaunchedEffect(mainTabRequest) {
+        mainTabRequest?.let { request ->
+            surfaceToTab(request.tab, request.animate)
+            mainTabNavigator.consume()
+        }
+    }
+
+    val scaffoldContent: @Composable () -> Unit = {
+        Scaffold(
+            modifier = modifier,
+            bottomBar = {
+                if (visible && !chromeHidden) {
+                    AppBottomNavigation(
+                        currentRoute = BottomNavTab.all[pagerState.targetPage].route,
+                        onTabSelected = { tab -> goToPage(BottomNavTab.all.indexOf(tab)) },
+                    )
+                }
+            },
+        ) { paddingValues ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = paddingValues.calculateBottomPadding())
+                    .graphicsLayer {
+                        // 隐藏时跳过绘制但保留组合树，避免 HorizontalPager 状态丢失
+                        alpha = if (visible) 1f else 0f
+                    },
+            ) {
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                    key = { BottomNavTab.all[it].route },
+                    userScrollEnabled = visible && !chromeHidden,
+                ) { page ->
+                    when (BottomNavTab.all[page]) {
+                        BottomNavTab.HOME -> HomeView(navController = navController)
+                        BottomNavTab.BACKGROUND -> BackgroundTaskView(
+                            viewModel = backgroundTaskViewModel,
+                            isActivePage = visible && pagerState.targetPage == page,
+                        )
+
+                        BottomNavTab.SCHEDULE -> ScheduleListView(navController = navController)
+                        BottomNavTab.SETTINGS -> SettingsView(
+                            navController = navController,
+                        )
+                    }
+                }
+
+                // 隐藏（子页面叠加其上）时吞掉所有指针，防止横滑切走主 Tab / 点击穿透到底层页。
+                if (!visible) {
+                    Box(Modifier
+                        .matchParentSize()
+                        .consumeAllPointerEvents())
+                }
+            }
+        }
+    }
+
+    scaffoldContent()
+}

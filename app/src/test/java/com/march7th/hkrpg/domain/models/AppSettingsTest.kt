@@ -1,0 +1,29 @@
+package com.march7th.hkrpg.domain.models
+
+import com.march7th.hkrpg.constant.OFFICIAL_SHIZUKU_PACKAGE
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class AppSettingsTest {
+
+    @Test
+    fun defaultShizukuLaunchPackage_usesOfficialShizukuPackage() {
+        val settings = AppSettings()
+
+        assertEquals(OFFICIAL_SHIZUKU_PACKAGE, settings.shizukuLaunchPackage)
+    }
+
+    @Test
+    fun reportFlagsDefaultOnAndPenguinIdEmpty() {
+        val settings = AppSettings()
+        assertEquals("true", settings.reportToPenguin)
+        assertEquals("true", settings.reportToYituliu)
+        assertEquals("", settings.penguinId)
+    }
+
+    @Test
+    fun deployWithPauseDefaultsOff() {
+        // 与 WPF RuntimeSettings.DeployWithPause 一致；旧键 deployment_with_pause 不迁移
+        assertEquals("false", AppSettings().deployWithPause)
+    }
+}

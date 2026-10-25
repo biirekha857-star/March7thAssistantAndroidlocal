@@ -1,0 +1,196 @@
+package com.march7th.hkrpg.core.callback
+
+import com.alibaba.fastjson2.JSONObject
+import com.march7th.hkrpg.data.model.toolbox.DepotItem
+import com.march7th.hkrpg.data.model.toolbox.OperBoxOperator
+import com.march7th.hkrpg.data.model.toolbox.RecruitCalcResult
+import com.march7th.hkrpg.data.model.toolbox.RecruitOperator
+import com.march7th.hkrpg.data.repository.DepotRepository
+import com.march7th.hkrpg.data.repository.OperBoxRepository
+import com.march7th.hkrpg.data.resource.CanonicalOperId
+import com.march7th.hkrpg.data.resource.ResourceDataManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+
+/** 像素画填色进度 */
+data class PixelPaintProgress(val done: Int, val total: Int, val color: Int)
+
+/** 工具类任务结果：SubTaskHandler 回调转发，干员识别还被一图流拉取复用。 */
+class ToolboxResultCollector(
+    private val resourceDataManager: ResourceDataManager,
+    private val depotRepository: DepotRepository,
+    private val operBoxRepository: OperBoxRepository,
+) {
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val achievement = DoubleSyncAchievement()
+
+    fun onSessionStart() {
+        achievement.clear()
+        _pixelPaintProgress.value = null
+    }
+
+    /** 像素画填色进度，来自 Core 的 PixelPaintProgress 回调 */
+    private val _pixelPaintProgress = MutableStateFlow<PixelPaintProgress?>(null)
+    val pixelPaintProgress: StateFlow<PixelPaintProgress?> = _pixelPaintProgress.asStateFlow()
+
+    /** 返回解析结果，免得调用方再解一遍 */
+    fun onPixelPaintProgress(details: JSONObject?): PixelPaintProgress? {
+        val done = details?.getIntValue("done") ?: return null
+        val progress =
+            PixelPaintProgress(done, details.getIntValue("total"), details.getIntValue("color"))
+        _pixelPaintProgress.value = progress
+        return progress
+    }
+
+    private val _recruitTags = MutableStateFlow<List<String>>(emptyList())
+    val recruitTags: StateFlow<List<String>> = _recruitTags.asStateFlow()
+
+    private val _recruitResults = MutableStateFlow<List<RecruitCalcResult>>(emptyList())
+    val recruitResults: StateFlow<List<RecruitCalcResult>> = _recruitResults.asStateFlow()
+
+    fun onRecruitTagsDetected(details: JSONObject?) {
+        val tags = details?.getJSONArray("tags")
+            ?.mapNotNull { it?.toString() }
+            ?: return
+        _recruitTags.value = tags
+    }
+
+    fun onRecruitResult(details: JSONObject?) {
+        details ?: return
+        val result = details.getJSONArray("result") ?: return
+        val parsed = result.mapNotNull { entry ->
+            val obj = entry as? JSONObject ?: return@mapNotNull null
+            val level = obj.getIntValue("level", 0)
+            val tags = obj.getJSONArray("tags")?.mapNotNull { it?.toString() } ?: emptyList()
+            val opers = obj.getJSONArray("opers")?.mapNotNull { operEntry ->
+                val oper = operEntry as? JSONObject ?: return@mapNotNull null
+                RecruitOperator(
+                    name = oper.getString("name") ?: "",
+                    level = oper.getIntValue("level", 0),
+                )
+            } ?: emptyList()
+            RecruitCalcResult(tags = tags, level = level, operators = opers)
+        }
+        _recruitResults.value = parsed
+    }
+
+    fun clearRecruit() {
+        _recruitTags.value = emptyList()
+        _recruitResults.value = emptyList()
+    }
+
+    fun onDepotResult(details: JSONObject?) {
+        details ?: return
+        if (!details.getBooleanValue("done")) return
+
+        val dataStr = details.getString("data") ?: return
+        val dataObj = com.alibaba.fastjson2.JSON.parseObject(dataStr) ?: return
+        val items = dataObj.entries.mapNotNull { (id, value) ->
+            val count = (value as? Number)?.toInt() ?: return@mapNotNull null
+            if (count > 0) DepotItem(id, count) else null
+        }
+        depotRepository.set(items)
+        achievement.onDepotSuccess()
+        ioScope.launch {
+        }
+    }
+
+    fun onOperBoxResult(details: JSONObject?) {
+        details ?: return
+        if (!details.getBooleanValue("done")) return
+
+        val ownOpers = details.getJSONArray("own_opers")?.mapNotNull { entry ->
+            val obj = entry as? JSONObject ?: return@mapNotNull null
+            OperBoxOperator(
+                id = obj.getString("id") ?: return@mapNotNull null,
+                name = obj.getString("name") ?: "",
+                rarity = obj.getIntValue("rarity", 0),
+                elite = obj.getIntValue("elite", 0),
+                level = obj.getIntValue("level", 0),
+                potential = obj.getIntValue("potential", 0),
+                own = true,
+            )
+        } ?: return
+
+        applyOperBoxResult(ownOpers)
+    }
+
+    /** 落库 + 成就，Core 识别与一图流拉取共用 */
+    fun applyOperBoxResult(rawOwnOpers: List<OperBoxOperator>) {
+        val roster = resourceDataManager.operators.value
+        // 升变形态先归一到基础形态，拥有去重、未拥有差集与落盘统一用同一 ID
+        // 归一后同名重复只留首条（对齐 WPF _tempOperHaveSet），并换成基础形态的花名册名字
+        val ownOpers = rawOwnOpers
+            .map { oper ->
+                val canonicalId = CanonicalOperId.of(oper.id)
+                if (canonicalId == oper.id) oper
+                else oper.copy(id = canonicalId, name = roster[canonicalId]?.name ?: oper.name)
+            }
+            .distinctBy { it.id }
+        val ownedIds = ownOpers.map { it.id }.toSet()
+
+        val notOwned = roster
+            .filter { (id, _) -> id !in ownedIds }
+            .map { (id, info) ->
+                OperBoxOperator(
+                    id = id,
+                    name = info.name,
+                    rarity = info.rarity,
+                    elite = 0,
+                    level = 0,
+                    potential = 0,
+                    own = false,
+                )
+            }
+
+        val ownedSorted = ownOpers.sortedWith(
+            compareByDescending<OperBoxOperator> { it.rarity }
+                .thenByDescending { it.elite }
+                .thenByDescending { it.level }
+                .thenByDescending { it.potential },
+        )
+        val notOwnedSorted = notOwned.sortedByDescending { it.rarity }
+
+        operBoxRepository.set(ownedSorted, notOwnedSorted)
+        achievement.onOperSuccess()
+        ioScope.launch {
+        }
+    }
+
+    /** 本会话 Oper+Depot 成功回调后上报 DepotOperBox。 */
+    private inner class DoubleSyncAchievement {
+        @Volatile
+        private var operDone = false
+
+        @Volatile
+        private var depotDone = false
+
+        fun clear() {
+            operDone = false
+            depotDone = false
+        }
+
+        fun onOperSuccess() {
+            operDone = true
+            tryReport()
+        }
+
+        fun onDepotSuccess() {
+            depotDone = true
+            tryReport()
+        }
+
+        private fun tryReport() {
+            if (!operDone || !depotDone) return
+            operDone = false
+            depotDone = false
+            ioScope.launch {
+            }
+        }
+    }
+}

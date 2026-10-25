@@ -1,0 +1,92 @@
+## 黑流树海-疯狂的鹿刷钱
+
+~~地图太复杂了，先整个快速刷钱的脚本~~ 虽然自动肉鸽中的刷钱策略已经出了，但这玩意还挺好用的，先留着
+
+位置：小工具 → 牛杂 → 黑流树海刷钱
+
+---
+
+## 运行说明
+
+请不要在 MaaMeow 运行过程中使用 **护眼模式** 或者 **智能分辨率**，避免影响正常运行识别
+
+自动战斗应该在游戏内开启高帧率模式，优先开启高画质模式避免出现识别错误
+
+部分 Android 11 机型会提示「存储目录不可访问」，按提示到 `设置 → 其他设置 → MaaCore 数据目录` 切到独立目录并重启即可；该模式下查看核心日志需要提权服务在线，卸载 App 不会清掉独立目录，可用旁边的清除按钮处理
+
+---
+
+## 使用指引 (NEW!!!)
+
+**📖 文档与常见问题**  
+遇到问题先看「设置 → 关于 → 常见问题」，多数问题都有现成解答
+
+**🛟 遇到问题时**  
+前往「设置 → 日志」查看历史日志与错误日志，了解错误原因  
+请使用「设置 → 日志 → 导出日志压缩包」生成日志包，并通过「设置 → 关于 → 问题反馈」提交
+
+**⚠️ 反馈规范**  
+请在确认问题不属于「常见问题」后，再依 [Issue 模板](https://github.com/Aliothmoon/MAA-Meow/issues/new/choose) 在 [GitHub](https://github.com/Aliothmoon/MAA-Meow/issues) 提交反馈，并附上日志压缩包
+
+**💡 参与开源**  
+欢迎在 [GitHub](https://github.com/Aliothmoon/MAA-Meow) 参与开发，鼓励通过代码贡献代替问题反馈
+
+---
+
+## 更新说明
+
+**App 本体**：应用的界面和功能更新  
+**MAA 资源**：素材数据更新，包含新关卡地图、掉落物图标、公招干员标签等  
+**导航热更**：自动触发，更新活动提示和关卡入口
+
+新版本 App 发布时已包含当时最新资源，若不使用新资源相关功能可暂不更新；需要时请在「设置 → 更新管理」及时更新资源
+
+**下载源**：可选 GitHub 或 [Mirror酱](https://mirrorchyan.com/?source=maameow-anno)。Mirror酱 填写 CDK 后支持 App 与资源自动更新，优先通过高速 CDN 下载
+
+**更新渠道**：可在「设置 → 更新管理 → 更新渠道」切换 **稳定版** 和 **公测版**（版本号含 `-beta.x` 的为公测版）。公测版可能存在更多问题，如无特殊需求建议使用稳定版
+
+---
+
+## [MAA × Mirror酱] 社区资助计划
+
+MAA 已接入 [Mirror酱](https://mirrorchyan.com/?source=maa-anno)，来自 Mirror酱 的分成用于 [MAA 官网](https://maa.plus/)、[作业站](https://prts.plus/) 及服务器维护。MAA 项目组将自身所获分成在扣除必要运营成本后，连同 Mirror酱 额外提供的专项赞助资金，**全部**用于支持优质方舟社区项目，不参与受助项目内部运营
+
+目前已为以下方舟社区项目承担服务器成本：
+
+- [企鹅物流数据统计](https://penguin-stats.cn/)
+- [明日方舟一图流](https://ark.yituliu.cn/)
+- [明日方舟少人 WIKI](https://wiki.arkrec.com/)
+- [影语集](https://arkrog.com/)
+- [PRTS.Map](https://map.ark-nights.com/)
+- [AmiyaBot](https://www.amiyabot.com/)
+- [明日方舟工具箱](https://arkntools.app/)
+- [Lungmen Dragons](https://lungmendragons.com/)
+- [ak-roster](https://www.krooster.com/)
+
+📜 [公告原文](https://github.com/MaaAssistantArknights/MaaAssistantArknights/issues/12328)
+
+---
+
+## 重要说明
+
+请不要在明日方舟及鹰角在各平台（包括不限于：森空岛、B 站、微博）的 **官方动态** 下讨论任何关于 MAA 内容
+
+请勿参加内鬼消息的传播，禁止将内鬼消息发送至任何 MAA 群
+
+---
+
+## 安全下载提示
+
+近期发现有第三方冒充 MAA 创建假仓库、篡改源码并夹带恶意程序（窃取信息、植入木马等），请大家注意辨别
+
+MaaMeow 完全免费开源，**不会**要求「关注、三连、私信」才能获取安装包。请优先通过以下 **官方渠道** 获取：
+
+- **GitHub Release**：[github.com/Aliothmoon/MAA-Meow](https://github.com/Aliothmoon/MAA-Meow/releases)
+- **QQ 官方群**：群内公告/文件（可通过「设置 → 关于 → QQ 群」加群，请勿通过其他渠道加群）
+- **Mirror酱**：官方支持的镜像加速渠道
+
+**请避免从网盘、论坛帖子、不明链接等非官方途径下载。**
+
+请谨慎使用各类整合包、修改版、二次打包版本，除非你完全信任其来源并已自行完成安全检测
+
+请大家注意辨别来源，保护自己的账号与设备安全，也欢迎帮忙转告身边朋友，避免踩坑

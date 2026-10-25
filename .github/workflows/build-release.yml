@@ -1,0 +1,237 @@
+name: Build Release APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      maa_repo:
+        description: 'MAA Core GitHub repo (owner/repo)'
+        required: false
+        default: 'MaaAssistantArknights/MaaAssistantArknights'
+      maa_tag:
+        description: 'MAA Core release tag'
+        required: false
+        default: 'latest'
+      maafw_tag:
+        description: 'MaaFramework tag to override libMaaAndroidNativeControlUnit.so (empty = keep the one bundled by MAA)'
+        required: false
+        default: ''
+
+jobs:
+  build:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: all
+            label: universal
+          - abi: arm64-v8a
+            label: arm64-v8a
+          - abi: x86_64
+            label: x64
+          # 给谎报 HWCAP2_SVE2 的 arm64 模拟器出包，见 issue #202
+          # Release 的 Assets 按文件名 ASCII 升序排，z 前缀是为了把兼容包压到最后
+          # 不加的话 arm64-v8a-emu-compat 会排在 arm64-v8a 之前（'-' 小于 '.'）
+          - abi: arm64-v8a
+            label: z-arm64-v8a-emu-compat
+            nosve: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
+
+      - name: Install NDK and CMake
+        run: |
+          sdkmanager --install "ndk;29.0.13113456" "cmake;3.22.1"
+
+      - name: Cache Gradle
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', '**/gradle-wrapper.properties', '**/libs.versions.toml') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+
+      - name: Install OCR conversion deps
+        run: python -m pip install -r scripts/requirements.txt
+
+      - name: Download and deploy MAA Core
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_ARG=""
+          MAA_TAG="${{ github.event.inputs.maa_tag }}"
+          if [ -n "$MAA_TAG" ] && [ "$MAA_TAG" != "latest" ]; then
+            TAG_ARG="--tag $MAA_TAG"
+          fi
+          REPO_ARG=""
+          if [ -n "${{ github.event.inputs.maa_repo }}" ]; then
+            REPO_ARG="--repo ${{ github.event.inputs.maa_repo }}"
+          fi
+          MAAFW_ARG=""
+          MAAFW_TAG="${{ github.event.inputs.maafw_tag }}"
+          if [ -n "$MAAFW_TAG" ]; then
+            MAAFW_ARG="--maafw-tag $MAAFW_TAG"
+          fi
+          if [ "${{ matrix.abi }}" = "all" ]; then
+            python scripts/setup_maa_core.py --clean $TAG_ARG $REPO_ARG $MAAFW_ARG
+          else
+            python scripts/setup_maa_core.py --clean --abi ${{ matrix.abi }} $TAG_ARG $REPO_ARG $MAAFW_ARG
+          fi
+
+      - name: Print MAA Resource version
+        run: cat app/src/main/assets/MaaSync/MaaResource/version.json
+
+      - name: Print MaaFramework control unit version
+        run: python scripts/print_maafw_version.py
+
+      - name: Disable KleidiCV SVE2 dispatch
+        if: matrix.nosve
+        run: |
+          SO=app/src/main/jniLibs/arm64-v8a/libopencv_world4.so
+          echo "before: $(shasum -a 256 "$SO" | cut -d' ' -f1)"
+          # 显式写死 neon：sve 模式会产出必崩的库，不能靠默认值兜底
+          python scripts/patch_kleidicv_sve.py "$SO" --mode neon
+          python scripts/patch_kleidicv_sve.py "$SO" --mode neon --verify
+          echo "after:  $(shasum -a 256 "$SO" | cut -d' ' -f1)"
+
+      - name: Decode keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > ${{ github.workspace }}/release.jks
+
+      - name: Build Release APK
+        env:
+          KEYSTORE_PATH: ${{ github.workspace }}/release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew clean assembleRelease -Pmaa.abi=${{ matrix.abi }}
+
+      - name: Rename APK
+        run: |
+          cd app/build/outputs/apk/release
+          TAG="${GITHUB_REF_NAME:-dev}"
+          for f in *.apk; do
+            mv "$f" "MaaMeow-${TAG}-${{ matrix.label }}.apk"
+          done
+
+      - name: Verify compat APK
+        if: matrix.nosve
+        run: |
+          cd app/build/outputs/apk/release
+          unzip -p *.apk lib/arm64-v8a/libopencv_world4.so > "$RUNNER_TEMP/check.so"
+          python "$GITHUB_WORKSPACE/scripts/patch_kleidicv_sve.py" "$RUNNER_TEMP/check.so" --mode neon --verify
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-apk-${{ matrix.label }}
+          path: app/build/outputs/apk/release/*.apk
+
+      # 四个变体的 Java/Kotlin 输入一致，R8 产物相同，只留 universal 一份
+      - name: Upload R8 mapping
+        if: matrix.label == 'universal'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-mapping-${{ matrix.label }}
+          path: app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install git-cliff
+        # setup-git-cliff 停在 Node 20 且已停止维护，改用 PyPI 官方包
+        run: pipx install git-cliff
+
+      - name: Generate changelog
+        env:
+          # git-cliff 用 GitHub API 解析 commit → @username（见 cliff.toml [remote.github]）
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 生成当前版本的 changelog（用于 Release body）
+          git-cliff --current --strip header --github-repo Aliothmoon/MAA-Meow -o RELEASE_NOTES.md
+          # 追加下载说明与 Mirror酱 下载链接
+          cat >> RELEASE_NOTES.md << 'EOF'
+
+          ---
+
+          ### 下载哪个包
+
+          | 包 | 适用 |
+          |---|---|
+          | `universal` | 通用，不确定选这个 |
+          | `arm64-v8a` | ARM 64 位真机 |
+          | `x64` | x86_64 模拟器（Windows 上的蓝叠 / MuMu / 雷电等） |
+          | `z-arm64-v8a-emu-compat` | 兼容包，arm64 模拟器（Mac 上的蓝叠 Air、MuMu Pro Mac 等）启动任务即闪退时改用 |
+
+          兼容包功能与 `arm64-v8a` 一致，只是关掉了 OpenCV 的 SVE2 指令分派。装了 `universal` 闪退的模拟器用户请直接换这个包，不要再试 `universal`
+
+          ---
+
+          [已有 Mirror酱 CDK？前往 Mirror酱 高速下载](https://mirrorchyan.com/zh/projects?rid=MAA&os=android&source=maagh-release)
+          EOF
+
+      - name: Download all APK artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: release-apk-*
+          merge-multiple: true
+          path: apks
+
+      - name: Download mapping artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: release-mapping-universal
+          path: mappings
+
+      - name: Pack mapping
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          zip -q -9 -j "mapping-${TAG}.zip" mappings/mapping.txt
+          ls -lh mapping-*.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          draft: false
+          prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
+          # 小写 mapping- 前缀，ASCII 升序下排在 MaaMeow-*.apk 之后，不打乱下载列表
+          files: |
+            apks/*.apk
+            mapping-*.zip
+          body_path: RELEASE_NOTES.md

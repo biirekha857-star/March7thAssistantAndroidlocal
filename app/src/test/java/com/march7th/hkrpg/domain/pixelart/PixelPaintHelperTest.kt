@@ -1,0 +1,336 @@
+package com.march7th.hkrpg.domain.pixelart
+
+import com.march7th.hkrpg.domain.models.pixelart.NormalizedRect
+import com.march7th.hkrpg.domain.models.pixelart.PixelConvertOptions
+import com.march7th.hkrpg.domain.models.pixelart.PixelDitherMode
+import com.march7th.hkrpg.domain.models.pixelart.PixelFitMode
+import com.march7th.hkrpg.domain.service.pixelart.PixelPaintHelper
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * 对齐 MaaWpfGui/Helper/PixelPaintHelper.cs
+ * 色板、距离函数、分组格式三项必须和 Core 侧完全一致，否则填出来的画是错的
+ */
+class PixelPaintHelperTest {
+
+    private fun solid(width: Int, height: Int, rgb: Int) =
+        IntArray(width * height) { 0xFF000000.toInt() or rgb }
+
+    private fun options(
+        fit: PixelFitMode = PixelFitMode.STRETCH,
+        dither: PixelDitherMode = PixelDitherMode.NONE,
+        trim: Boolean = false,
+    ) = PixelConvertOptions(fit = fit, dither = dither, trimEmptyBorder = trim)
+
+    @Test
+    fun `色板规格与 Core 一致`() {
+        assertEquals(24, PixelPaintHelper.GRID_SIZE)
+        assertEquals(40, PixelPaintHelper.COLOR_COUNT)
+        assertEquals(40, PixelPaintHelper.PALETTE.size)
+        // 纯白下标，Core 侧 WhiteColorIndex = 3
+        assertEquals(3, PixelPaintHelper.WHITE_COLOR_INDEX)
+        assertEquals(0xFFFFFF, PixelPaintHelper.PALETTE[PixelPaintHelper.WHITE_COLOR_INDEX])
+        // 首尾各抽一个对齐 C# 表
+        assertEquals(0x222222, PixelPaintHelper.PALETTE[0])
+        assertEquals(0x273864, PixelPaintHelper.PALETTE[39])
+    }
+
+    @Test
+    fun `调色盘内的颜色必须精确命中自己`() {
+        for (index in 0 until PixelPaintHelper.COLOR_COUNT) {
+            val rgb = PixelPaintHelper.PALETTE[index]
+            val matched = PixelPaintHelper.nearestPaletteIndex(
+                (rgb shr 16) and 0xFF,
+                (rgb shr 8) and 0xFF,
+                rgb and 0xFF,
+            )
+            assertEquals("palette index $index", index, matched)
+        }
+    }
+
+    @Test
+    fun `OKLab 距离对称且同色为零`() {
+        assertEquals(0.0, PixelPaintHelper.colorDistance(10, 20, 30, 10, 20, 30), 1e-9)
+        assertEquals(
+            PixelPaintHelper.colorDistance(10, 20, 30, 200, 100, 50),
+            PixelPaintHelper.colorDistance(200, 100, 50, 10, 20, 30),
+            1e-9,
+        )
+    }
+
+    /**
+     * OKLab 矩阵一旦抄错，最近色会整体偏，但单看出图不容易发现
+     * 白 L=1、黑 L=0、灰阶 L 单调，这三条足以锁住 Björn 2020 的系数
+     */
+    @Test
+    fun `OKLab 明度对齐参考实现`() {
+        // 白到黑的距离即 L 轴长度，白 L=1 黑 L=0 → 距离平方为 1
+        assertEquals(1.0, PixelPaintHelper.colorDistance(255, 255, 255, 0, 0, 0), 1e-6)
+        // 灰阶 a/b 恒为 0，到黑的距离即 L²，随亮度单调递增
+        val toBlack = intArrayOf(0, 64, 128, 192, 255).map {
+            PixelPaintHelper.colorDistance(it, it, it, 0, 0, 0)
+        }
+        assertEquals(toBlack.sorted(), toBlack)
+    }
+
+    @Test
+    fun `纯色图每格同一色号`() {
+        val plan = PixelPaintHelper.convert(solid(96, 96, 0xD32F36), 96, 96, options())
+        assertEquals(24 * 24, plan.indices.size)
+        assertTrue(plan.indices.all { it == 4 })
+        assertEquals(1, plan.groups.size)
+        assertEquals(4, plan.groups[0].color)
+        assertEquals(576, plan.groups[0].points.size)
+    }
+
+    @Test
+    fun `跳过白色时白格不进分组`() {
+        val white = PixelPaintHelper.convert(solid(48, 48, 0xFFFFFF), 48, 48, options(), skipWhite = true)
+        assertTrue(white.groups.isEmpty())
+        assertEquals(0, white.paintedCellCount)
+
+        val kept = PixelPaintHelper.convert(solid(48, 48, 0xFFFFFF), 48, 48, options(), skipWhite = false)
+        assertEquals(1, kept.groups.size)
+        assertEquals(PixelPaintHelper.WHITE_COLOR_INDEX, kept.groups[0].color)
+    }
+
+    @Test
+    fun `分组点坐标是 x y 且落在 0 到 23`() {
+        val src = IntArray(48 * 48) { i ->
+            val x = i % 48
+            0xFF000000.toInt() or if (x < 24) 0xD32F36 else 0xFFFFFF
+        }
+        val plan = PixelPaintHelper.convert(src, 48, 48, options(), skipWhite = true)
+
+        val points = plan.groups.flatMap { it.points }
+        assertTrue(points.isNotEmpty())
+        assertTrue(points.all { it.size == 2 })
+        assertTrue(points.all { it[0] in 0..23 && it[1] in 0..23 })
+        // 左半红右半白，跳过白后只剩左边 12 列
+        assertTrue(points.all { it[0] < 12 })
+        assertEquals(12 * 24, plan.paintedCellCount)
+    }
+
+    /**
+     * Core 的 PixelPaintTaskPlugin::draw_group 按点序做单趟线段合并，不排序，
+     * 只在「上一个点是同行左邻」时延长线段。点序一旦乱掉，拖动绘制会静默退化成逐格点
+     */
+    @Test
+    fun `分组点必须行优先且行内 x 递增`() {
+        val src = IntArray(96 * 96) { i ->
+            val x = (i % 96) / 4
+            val y = (i / 96) / 4
+            0xFF000000.toInt() or if ((x + y) % 3 == 0) 0xD32F36 else 0x273864
+        }
+        val plan = PixelPaintHelper.convert(src, 96, 96, options(), skipWhite = false)
+
+        for (group in plan.groups) {
+            var previous: IntArray? = null
+            for (point in group.points) {
+                val last = previous
+                if (last != null) {
+                    val ordered = point[1] > last[1] || (point[1] == last[1] && point[0] > last[0])
+                    assertTrue(
+                        "color ${group.color}: ${last.toList()} -> ${point.toList()} 不是行优先递增",
+                        ordered,
+                    )
+                }
+                previous = point
+            }
+        }
+    }
+
+    /** 复刻 Core 的合并逻辑，确认整行同色确实能合成一条线段而不是 24 段 */
+    @Test
+    fun `整行同色会被 Core 合成一条线段`() {
+        val src = IntArray(96 * 96) { i ->
+            val y = (i / 96) / 4
+            0xFF000000.toInt() or if (y < 12) 0xD32F36 else 0x273864
+        }
+        val plan = PixelPaintHelper.convert(src, 96, 96, options(), skipWhite = false)
+        val group = plan.groups.first { it.color == 4 }
+
+        // 与 PixelPaintTaskPlugin.cpp 的合并条件一致
+        var segments = 0
+        var end: IntArray? = null
+        for (point in group.points) {
+            val last = end
+            if (last != null && last[1] == point[1] && last[0] + 1 == point[0]) {
+                end = point
+            } else {
+                segments++
+                end = point
+            }
+        }
+        // 上半 12 行整行同色 → 恰好 12 条线段，每条 24 格
+        assertEquals(12, segments)
+        assertEquals(12 * 24, group.points.size)
+    }
+
+    @Test
+    fun `分组按色号升序且不含空组`() {
+        val src = IntArray(48 * 48) { i ->
+            val x = i % 48
+            0xFF000000.toInt() or when {
+                x < 16 -> 0x273864
+                x < 32 -> 0xD32F36
+                else -> 0x222222
+            }
+        }
+        val plan = PixelPaintHelper.convert(src, 48, 48, options(), skipWhite = true)
+        val colors = plan.groups.map { it.color }
+        assertEquals(colors.sorted(), colors)
+        assertTrue(plan.groups.all { it.points.isNotEmpty() })
+    }
+
+    @Test
+    fun `contain 模式在长条图上下补白`() {
+        val plan = PixelPaintHelper.convert(
+            solid(48, 24, 0xD32F36), 48, 24, options(fit = PixelFitMode.CONTAIN), skipWhite = false,
+        )
+        assertEquals(PixelPaintHelper.WHITE_COLOR_INDEX, plan.indexAt(12, 0))
+        assertEquals(PixelPaintHelper.WHITE_COLOR_INDEX, plan.indexAt(12, 23))
+        assertEquals(4, plan.indexAt(12, 12))
+    }
+
+    /** 补白若按整张图判越界，这里会采到取景框外的红而不是白 */
+    @Test
+    fun `contain 模式缩放取景后仍然补白`() {
+        val plan = PixelPaintHelper.convert(
+            solid(96, 48, 0xD32F36), 96, 48,
+            PixelConvertOptions(
+                fit = PixelFitMode.CONTAIN,
+                dither = PixelDitherMode.NONE,
+                trimEmptyBorder = false,
+                // 取中心一半，取景区 48×24 仍非正方形，上下必须留白
+                contentView = NormalizedRect(0.25, 0.25, 0.5, 0.5),
+            ),
+            skipWhite = false,
+        )
+        assertEquals(PixelPaintHelper.WHITE_COLOR_INDEX, plan.indexAt(12, 0))
+        assertEquals(PixelPaintHelper.WHITE_COLOR_INDEX, plan.indexAt(12, 23))
+        assertEquals(4, plan.indexAt(12, 12))
+    }
+
+    @Test
+    fun `crop 模式取中心正方形`() {
+        val src = IntArray(96 * 48) { i ->
+            val x = i % 96
+            0xFF000000.toInt() or if (x < 48) 0xD32F36 else 0x222222
+        }
+        val plan = PixelPaintHelper.convert(src, 96, 48, options(fit = PixelFitMode.CROP), skipWhite = false)
+        assertEquals(4, plan.indexAt(0, 12))
+        assertEquals(0, plan.indexAt(23, 12))
+    }
+
+    @Test
+    fun `去边裁掉近白边框`() {
+        // 48×48 白底，中间 24×24 红块，去边后应铺满整格
+        val src = IntArray(48 * 48) { 0xFFFFFFFF.toInt() }
+        for (y in 12 until 36) {
+            for (x in 12 until 36) {
+                src[y * 48 + x] = 0xFFD32F36.toInt()
+            }
+        }
+        val trimmed = PixelPaintHelper.convert(src, 48, 48, options(trim = true), skipWhite = false)
+        assertTrue(trimmed.indices.all { it == 4 })
+
+        val untrimmed = PixelPaintHelper.convert(src, 48, 48, options(trim = false), skipWhite = false)
+        assertEquals(PixelPaintHelper.WHITE_COLOR_INDEX, untrimmed.indexAt(0, 0))
+    }
+
+    @Test
+    fun `抖动会把色板外的灰拆成多色`() {
+        val flat = PixelPaintHelper.convert(solid(96, 96, 0x808080), 96, 96, options())
+        val dithered = PixelPaintHelper.convert(
+            solid(96, 96, 0x808080), 96, 96, options(dither = PixelDitherMode.FLOYD_STEINBERG),
+        )
+        assertEquals(1, flat.groups.size)
+        assertTrue("dither should mix colors", dithered.groups.size > 1)
+    }
+
+    @Test
+    fun `透明像素合成到白底`() {
+        val src = IntArray(48 * 48) { 0x00000000 }
+        val plan = PixelPaintHelper.convert(src, 48, 48, options(trim = false), skipWhite = false)
+        assertTrue(plan.indices.all { it == PixelPaintHelper.WHITE_COLOR_INDEX })
+    }
+
+    /**
+     * 源图恰好 24×24 视为用户已经画好的像素画：既不去边也不插值，逐像素直取
+     * 否则整幅图会被白边裁掉一圈再重采样，格子全错位
+     */
+    @Test
+    fun `24 乘 24 源图逐像素直通`() {
+        // 左上角单格红，其余纯白；若走去边流程，红格会被放大铺满整幅
+        val src = IntArray(24 * 24) { 0xFFFFFFFF.toInt() }
+        src[0] = 0xFFD32F36.toInt()
+
+        val plan = PixelPaintHelper.convert(src, 24, 24, options(trim = true), skipWhite = false)
+        assertEquals(4, plan.indexAt(0, 0))
+        assertEquals(PixelPaintHelper.WHITE_COLOR_INDEX, plan.indexAt(1, 0))
+        assertEquals(PixelPaintHelper.WHITE_COLOR_INDEX, plan.indexAt(23, 23))
+        assertEquals(1, plan.indices.count { it == 4 })
+    }
+
+    /**
+     * 插画优先靠 MRF 平滑压交界噪点，大色块必须保持整块干净，
+     * 不能像误差扩散那样在块内撒点
+     */
+    @Test
+    fun `插画优先保持色块干净`() {
+        val src = IntArray(96 * 96) { i ->
+            val x = i % 96
+            0xFF000000.toInt() or if (x < 48) 0xD32F36 else 0x273864
+        }
+        val plan = PixelPaintHelper.convert(
+            src, 96, 96,
+            options(dither = PixelDitherMode.ILLUSTRATION),
+            skipWhite = false,
+        )
+        assertEquals(2, plan.groups.size)
+        // 左半整块一色、右半整块一色，边界落在第 12 列
+        for (y in 0 until 24) {
+            for (x in 0 until 24) {
+                val expected = if (x < 12) 4 else 39
+                assertEquals("($x,$y)", expected, plan.indexAt(x, y))
+            }
+        }
+    }
+
+    /**
+     * 量化链路（OKLab 最近色 / 面积采样 / 蛇形 FS / MRF）任一处漂了，出图就和 WpfGui 对不上，
+     * 而肉眼比对两端截图很难发现小范围偏移。用固定输入的色号指纹钉住
+     */
+    @Test
+    fun `色号矩阵指纹不漂移`() {
+        // 对角渐变 + 色相扫描，覆盖色板大部分区域
+        val src = IntArray(120 * 120) { i ->
+            val x = i % 120
+            val y = i / 120
+            val r = (x * 255 / 119)
+            val g = (y * 255 / 119)
+            val b = ((x + y) * 255 / 238)
+            0xFF000000.toInt() or (r shl 16) or (g shl 8) or b
+        }
+        val fingerprints = PixelDitherMode.entries.associate { mode ->
+            val plan = PixelPaintHelper.convert(
+                src, 120, 120,
+                options(dither = mode),
+                skipWhite = false,
+            )
+            mode to plan.indices.joinToString(",").hashCode()
+        }
+        assertEquals(
+            mapOf(
+                PixelDitherMode.ILLUSTRATION to 1918502467,
+                PixelDitherMode.NONE to 1787657458,
+                PixelDitherMode.FLOYD_STEINBERG to 1787458225,
+                PixelDitherMode.ATKINSON to -1800462158,
+            ),
+            fingerprints,
+        )
+    }
+}

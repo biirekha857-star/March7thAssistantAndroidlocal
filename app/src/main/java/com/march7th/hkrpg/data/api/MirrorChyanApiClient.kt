@@ -1,0 +1,57 @@
+package com.march7th.hkrpg.data.api
+
+import com.march7th.hkrpg.data.api.model.MirrorChyanData
+import com.march7th.hkrpg.data.api.model.MirrorChyanResponse
+import com.march7th.hkrpg.data.model.update.UpdateError
+import com.march7th.hkrpg.utils.JsonUtils
+import timber.log.Timber
+
+/**
+ * MirrorChyan API 通用客户端
+ * 封装 HTTP 请求、响应解析和业务错误映射
+ */
+class MirrorChyanApiClient(private val httpClient: HttpClientHelper) {
+
+    private val json = JsonUtils.common
+
+    /**
+     * 调用 MirrorChyan latest API
+     * @throws MirrorChyanBizException 业务错误（CDK 无效、资源不存在等）
+     */
+    suspend fun getLatest(
+        api: String,
+        query: Map<String, String>,
+        fetchVersion: Boolean = false
+    ): Result<MirrorChyanData> {
+        return runCatching {
+            val response = httpClient.get(api, query = query)
+
+            response.use { resp ->
+                if (resp.code == 500) {
+                    throw MirrorChyanBizException(500, "更新服务不可用")
+                }
+
+                val body = kotlin.runCatching {
+                    json.decodeFromString<MirrorChyanResponse>(resp.body.string())
+                }.getOrDefault(MirrorChyanResponse.UNKNOWN_ERR)
+
+                if (body.code != 0 && !fetchVersion) {
+                    throw MirrorChyanBizException(body.code, body.msg)
+                }
+
+                body.data ?: throw MirrorChyanBizException(-1, "数据为空")
+            }
+        }.onFailure { e ->
+            Timber.e(e, "MirrorChyan API 请求失败: $api")
+        }
+    }
+}
+
+/** MirrorChyan 业务异常，携带业务错误码 */
+class MirrorChyanBizException(val bizCode: Int, override val message: String?) :
+    Exception(message) {
+    fun toUpdateError(): UpdateError = UpdateError.fromCode(bizCode, message)
+}
+
+/** CDK 未配置异常 */
+class CdkRequiredException : Exception("请输入正确的 CDK")

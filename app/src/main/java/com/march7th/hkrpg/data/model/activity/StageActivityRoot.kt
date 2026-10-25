@@ -1,0 +1,33 @@
+package com.march7th.hkrpg.data.model.activity
+
+import com.march7th.hkrpg.utils.JsonUtils
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.decodeFromJsonElement
+import timber.log.Timber
+
+/**
+ * StageActivityV2.json 根结构
+ * JSON 顶层为 { "Official": {...}, "YoStarEN": {...}, ... } 的动态 key 结构
+ */
+object StageActivityRoot {
+
+    private val json = JsonUtils.common
+
+    /**
+     * 从 JSON 字符串解析，按 clientType 获取对应的活动数据
+     * @param jsonContent 完整的 StageActivityV2.json 内容
+     * @param clientType 客户端类型 (Official, YoStarEN, YoStarJP, YoStarKR, txwy)
+     * @return 对应客户端的活动数据，不存在则返回 null
+     */
+    fun parse(jsonContent: String, clientType: String): ClientStageActivity? {
+        return try {
+            val root = json.parseToJsonElement(jsonContent)
+            if (root !is JsonObject) return null
+            val clientData = root[clientType] ?: return null
+            json.decodeFromJsonElement<ClientStageActivity>(clientData)
+        } catch (e: Exception) {
+            Timber.e(e, "StageActivityRoot parse error")
+            null
+        }
+    }
+}

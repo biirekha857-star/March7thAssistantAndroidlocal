@@ -1,0 +1,296 @@
+package com.march7th.hkrpg.presentation.components
+
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.march7th.hkrpg.R
+import com.march7th.hkrpg.data.resource.ResourceDataManager
+import com.march7th.hkrpg.presentation.components.tip.ExpandableTipContent
+import com.march7th.hkrpg.presentation.components.tip.ExpandableTipIcon
+import com.march7th.hkrpg.presentation.view.panel.common.bringIntoViewOnExpand
+import com.march7th.hkrpg.theme.MaaThemeAlphas
+import kotlinx.coroutines.launch
+import timber.log.Timber
+
+@Composable
+fun CoreCharSelector(
+    value: String,
+    onValueChange: (String) -> Unit,
+    theme: String,
+    resourceDataManager: ResourceDataManager,
+    modifier: Modifier = Modifier,
+    /** 该主题的开局配置建议，为 null 时不显示提示入口 */
+    themeTip: String? = null,
+    title: String = stringResource(R.string.core_char_selector_title),
+    enabled: Boolean = true,
+) {
+    val coroutineScope = rememberCoroutineScope()
+
+    var tipExpanded by remember { mutableStateOf(false) }
+
+    // 内部输入状态（与配置值分离，用于显示用户正在输入的内容）
+    var inputText by remember(value) { mutableStateOf(value) }
+
+    // 校验状态
+    var isValid by remember { mutableStateOf(true) }
+    // 默认不展开推荐列表
+    var showSuggestions by remember { mutableStateOf(false) }
+
+    // 是否正在校验（用于显示加载状态）
+    var isValidating by remember { mutableStateOf(false) }
+
+    // 推荐开局干员列表（按主题）
+    var recommendedChars by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    // 过滤后的建议列表
+    var filteredSuggestions by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    // 加载推荐开局干员列表
+    val themeChars = remember(theme) { resourceDataManager.getRoguelikeCoreCharList(theme) }
+    LaunchedEffect(themeChars) {
+        recommendedChars = themeChars
+        if (inputText.isBlank()) {
+            filteredSuggestions = themeChars
+        }
+    }
+
+    // 处理输入变化的函数
+    fun handleInputChange(newValue: String) {
+        inputText = newValue
+        // 输入即是搜索，保持列表展开并实时过滤
+        showSuggestions = true
+        Timber.d("[CoreCharSelector] handleInputChange: newValue='$newValue', currentValue='$value'")
+
+        if (newValue.isBlank()) {
+            // 空字符串始终有效
+            isValid = true
+            isValidating = false
+            filteredSuggestions = recommendedChars
+            Timber.d("[CoreCharSelector] 空字符串，设置 isValid=true")
+            // 立即更新配置
+            if (value != newValue) {
+                Timber.d("[CoreCharSelector] 更新配置为空字符串")
+                onValueChange(newValue)
+            }
+        } else {
+            // 开始校验
+            isValidating = true
+            Timber.d("[CoreCharSelector] 开始校验: '$newValue'")
+            coroutineScope.launch {
+                Timber.d("[CoreCharSelector] 开始校验: isValidCharacterName")
+                val validationResult = resourceDataManager.isValidCharacterName(newValue)
+                Timber.d("[CoreCharSelector] 校验结果: validationResult=$validationResult, newValue='$newValue'")
+
+                // 先在推荐列表里找，没命中再全量搜索
+                // 否则输入「有效但非该主题推荐」的干员时列表会空掉
+                val newSuggestions = recommendedChars
+                    .filter { it.contains(newValue, ignoreCase = true) }
+                    .ifEmpty { resourceDataManager.search(newValue, 15) }
+                Timber.d("[CoreCharSelector] 建议列表计算完成: ${newSuggestions.size} 个结果")
+
+                // 检查输入值是否仍然 match（防止竞态条件）
+                if (inputText != newValue) {
+                    Timber.d("[CoreCharSelector] 输入已变化，跳过此次校验结果: 当前='$inputText', 校验='$newValue'")
+                    return@launch
+                }
+
+                isValid = validationResult
+                isValidating = false
+                filteredSuggestions = newSuggestions
+                Timber.d("[CoreCharSelector] UI更新完成: isValid=$isValid, isValidating=$isValidating")
+
+                // 只有校验通过时才更新配置值
+                if (validationResult && value != newValue) {
+                    Timber.d("[CoreCharSelector] 校验通过，更新配置: '$newValue'")
+                    onValueChange(newValue)
+                } else if (!validationResult) {
+                    Timber.d("[CoreCharSelector] 校验失败，不更新配置。当前配置值保持: '$value'")
+                }
+            }
+        }
+    }
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = modifier
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Medium,
+            color = if (enabled) MaterialTheme.colorScheme.onSurface
+            else MaterialTheme.colorScheme.onSurface.copy(alpha = MaaThemeAlphas.DISABLED)
+        )
+
+        // 只有带专属开局建议的主题才显示入口，单独占一行
+        if (themeTip != null) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ExpandableTipIcon(
+                    expanded = tipExpanded,
+                    onExpandedChange = { tipExpanded = it }
+                )
+                RainbowFlowText(
+                    text = stringResource(R.string.panel_roguelike_theme_tip_recommended),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.clickable { tipExpanded = !tipExpanded }
+                )
+            }
+            ExpandableTipContent(visible = tipExpanded, tipText = themeTip)
+        }
+
+        // 输入框
+        Box {
+            ITextField(
+                value = inputText,
+                onValueChange = { newValue ->
+                    handleInputChange(newValue)
+                },
+                placeholder = stringResource(R.string.core_char_selector_placeholder),
+                outlineColor = if (!isValid && !isValidating) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline,
+                modifier = Modifier.fillMaxWidth(),
+                enabled = enabled,
+                trailingIcon = if (enabled && (inputText.isNotEmpty() || recommendedChars.isNotEmpty())) {
+                    {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (inputText.isNotEmpty()) {
+                                IconButton(
+                                    onClick = { handleInputChange("") },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = stringResource(R.string.common_clear),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                            if (recommendedChars.isNotEmpty()) {
+                                IconButton(
+                                    onClick = {
+                                        showSuggestions = !showSuggestions
+                                        if (showSuggestions) {
+                                            filteredSuggestions = recommendedChars
+                                        }
+                                    },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (showSuggestions) {
+                                            Icons.Default.KeyboardArrowUp
+                                        } else {
+                                            Icons.Default.KeyboardArrowDown
+                                        },
+                                        contentDescription = stringResource(
+                                            if (showSuggestions) R.string.core_char_selector_collapse
+                                            else R.string.core_char_selector_recommended
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    null
+                }
+            )
+        }
+
+        // 错误提示 - 只有校验完成且失败时显示
+        if (!isValid && !isValidating && inputText.isNotBlank()) {
+            Surface(
+                color = MaterialTheme.colorScheme.errorContainer,
+                shape = RoundedCornerShape(4.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = stringResource(R.string.core_char_selector_not_found),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
+
+        // 建议列表
+        if (enabled && showSuggestions && filteredSuggestions.isNotEmpty()) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 150.dp)
+                    .bringIntoViewOnExpand(true)
+                    .clip(RoundedCornerShape(8.dp))
+                    .border(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        shape = RoundedCornerShape(8.dp)
+                    ),
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                LazyColumn {
+                    items(filteredSuggestions) { charName ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    // 从建议列表选择的干员一定是有效的
+                                    inputText = charName
+                                    showSuggestions = false
+                                    isValid = true
+                                    isValidating = false
+                                    // 立即更新配置
+                                    onValueChange(charName)
+                                }
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = charName,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (charName in recommendedChars) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

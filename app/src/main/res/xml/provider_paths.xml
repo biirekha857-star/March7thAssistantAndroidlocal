@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 外部文件目录 - 用于日志导出 -->
+    <external-files-path
+        name="maa_files"
+        path="." />
+    <!-- 缓存目录 - 用于 APK 安装 -->
+    <cache-path
+        name="apk_cache"
+        path="." />
+</paths>

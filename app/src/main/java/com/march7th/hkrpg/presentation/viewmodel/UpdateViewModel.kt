@@ -1,0 +1,361 @@
+package com.march7th.hkrpg.presentation.viewmodel
+
+import android.content.Context
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.alibaba.fastjson2.JSON
+import com.march7th.hkrpg.BuildConfig
+import com.march7th.hkrpg.R
+import com.march7th.hkrpg.constant.M7aFiles.VERSION_FILE
+import com.march7th.hkrpg.data.config.CorePathConfig
+import com.march7th.hkrpg.data.datasource.ResourceDownloader
+import com.march7th.hkrpg.data.model.update.StartupUpdateResult
+import com.march7th.hkrpg.data.model.update.UpdateChannel
+import com.march7th.hkrpg.data.model.update.UpdateCheckResult
+import com.march7th.hkrpg.data.model.update.UpdateInfo
+import com.march7th.hkrpg.data.model.update.UpdateProcessState
+import com.march7th.hkrpg.data.model.update.UpdateSource
+import com.march7th.hkrpg.data.preferences.AppSettingsManager
+import com.march7th.hkrpg.domain.service.CoreResourceLoader
+import com.march7th.hkrpg.domain.service.update.UpdateService
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okio.buffer
+import okio.source
+import timber.log.Timber
+import java.io.File
+
+@OptIn(FlowPreview::class)
+class UpdateViewModel(
+    private val appContext: Context,
+    private val updateService: UpdateService,
+    private val appSettingsManager: AppSettingsManager,
+    private val maaResourceLoader: CoreResourceLoader,
+    private val pathConfig: CorePathConfig,
+) : ViewModel() {
+
+    // ==================== 资源更新 ====================
+
+    val resourceUpdateState = updateService.resourceProcessState
+
+    private val _currentResourceVersion = MutableStateFlow("")
+    val currentResourceVersion: StateFlow<String> = _currentResourceVersion.asStateFlow()
+
+    val updateSource: StateFlow<UpdateSource> = appSettingsManager.updateSource
+
+    val mirrorChyanCdk: StateFlow<String> = appSettingsManager.mirrorChyanCdk
+
+    val updateChannel: StateFlow<UpdateChannel> = appSettingsManager.updateChannel
+
+    private val _toastMessage = MutableSharedFlow<String>(extraBufferCapacity = 1)
+    val toastMessage: SharedFlow<String> = _toastMessage.asSharedFlow()
+
+    // 检查状态
+    private val _appChecking = MutableStateFlow(false)
+    val appChecking: StateFlow<Boolean> = _appChecking.asStateFlow()
+
+    private val _resourceChecking = MutableStateFlow(false)
+    val resourceChecking: StateFlow<Boolean> = _resourceChecking.asStateFlow()
+
+    // 检查结果（仅手动触发时写入）
+    private val _appCheckResult = MutableStateFlow<UpdateCheckResult?>(null)
+    val appCheckResult: StateFlow<UpdateCheckResult?> = _appCheckResult.asStateFlow()
+
+    private val _resourceCheckResult = MutableStateFlow<UpdateCheckResult?>(null)
+    val resourceCheckResult: StateFlow<UpdateCheckResult?> = _resourceCheckResult.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            refreshResourceVersion()
+        }
+        mirrorChyanCdk
+            .drop(1)
+            .filter { it.isNotBlank() }
+            .debounce(1000L)
+            .onEach {
+                updateService.checkAppUpdate(channel = updateChannel.value)
+            }
+            .launchIn(viewModelScope)
+    }
+
+
+    suspend fun refreshResourceVersion() {
+        val raw = loadResourceVersion()
+        _currentResourceVersion.value = ResourceDownloader.formatVersionForDisplay(raw)
+    }
+
+    private suspend fun loadResourceVersion(): String {
+        val dir = pathConfig.resourceDir
+        return runCatching {
+            withContext(Dispatchers.IO) {
+                File(dir, VERSION_FILE).takeIf { it.exists() }?.source()?.buffer()
+                    ?.readUtf8()
+                    ?.let { JSON.parseObject(it).getString("last_updated") }.orEmpty()
+            }
+        }.onFailure {
+            Timber.w(it, "读取资源版本失败")
+        }.getOrDefault("")
+
+    }
+
+    fun setUpdateSource(source: UpdateSource) {
+        viewModelScope.launch {
+            appSettingsManager.setUpdateSource(source)
+        }
+    }
+
+    fun setMirrorChyanCdk(cdk: String) {
+        viewModelScope.launch {
+            appSettingsManager.setMirrorChyanCdk(cdk)
+        }
+    }
+
+    fun checkResourceUpdate() {
+        val currentState = resourceUpdateState.value
+        if (_resourceChecking.value || currentState is UpdateProcessState.Downloading || currentState is UpdateProcessState.Extracting || currentState is UpdateProcessState.Installing) {
+            return
+        }
+        viewModelScope.launch {
+            _resourceChecking.value = true
+            val currentVersion = loadResourceVersion()
+            Timber.d("当前资源版本: $currentVersion, 下载源: ${updateSource.value}")
+            _resourceCheckResult.value = updateService.checkResourceUpdate(currentVersion)
+            _resourceChecking.value = false
+        }
+    }
+
+    fun dismissResourceCheckResult() {
+        _resourceCheckResult.value = null
+    }
+
+    fun confirmResourceDownload(source: UpdateSource = updateSource.value) {
+        viewModelScope.launch {
+            val file = File(pathConfig.resourceDir)
+
+            val currentVersion = loadResourceVersion()
+            val result = updateService.downloadResource(
+                source = source,
+                currentVersion = currentVersion,
+                target = file
+            )
+            if (result.isSuccess) {
+                refreshResourceVersion()
+                maaResourceLoader.load()
+            }
+        }
+    }
+
+
+    // ==================== 启动检查 ====================
+
+    private var hasCheckedOnStartup = false
+
+    private val _startupUpdateDialog = MutableStateFlow<StartupUpdateResult?>(null)
+    val startupUpdateDialog: StateFlow<StartupUpdateResult?> = _startupUpdateDialog.asStateFlow()
+
+    fun checkUpdatesOnStartup() {
+        if (hasCheckedOnStartup) return
+        hasCheckedOnStartup = true
+
+        viewModelScope.launch {
+            if (!appSettingsManager.autoCheckUpdate.value) return@launch
+
+            val currentVersion = loadResourceVersion()
+
+            // 并行检查
+            val appDeferred = async {
+                updateService.checkAppUpdate(channel = updateChannel.value)
+            }
+            val resDeferred = async {
+                updateService.checkResourceUpdate(currentVersion)
+            }
+
+            val appResult = appDeferred.await()
+            val resResult = resDeferred.await()
+
+            // 聚合结果
+            val appAvailable = (appResult as? UpdateCheckResult.Available)?.info
+            val resAvailable = (resResult as? UpdateCheckResult.Available)?.info
+
+            if (appAvailable == null && resAvailable == null) return@launch
+
+            saveAppChangelog(appAvailable)
+
+            if (appSettingsManager.autoDownloadUpdate.value) {
+                // 自动下载模式
+                autoDownload(appAvailable, resAvailable)
+            } else {
+                // 手动确认模式（现有行为）
+                _startupUpdateDialog.value = StartupUpdateResult(
+                    appUpdate = appAvailable,
+                    resourceUpdate = resAvailable
+                )
+            }
+        }
+    }
+
+    private fun autoDownload(appAvailable: UpdateInfo?, resAvailable: UpdateInfo?) {
+        viewModelScope.launch {
+            when {
+                // 两者同时存在 → 仅下载 App,资源等下次启动
+                appAvailable != null -> {
+                    lastAppDownloadVersion = appAvailable.version
+                    val result = updateService.downloadApp(
+                        source = updateSource.value,
+                        version = appAvailable.version,
+                        channel = updateChannel.value
+                    )
+                    if (result.isFailure) {
+                        _toastMessage.tryEmit(appContext.getString(R.string.update_toast_auto_download_app_failed))
+                    }
+                }
+                // 仅资源更新
+                resAvailable != null -> {
+                    val file = File(pathConfig.resourceDir)
+                    val currentVersion = loadResourceVersion()
+                    val result = updateService.downloadResource(
+                        source = updateSource.value,
+                        currentVersion = currentVersion,
+                        target = file
+                    )
+                    if (result.isSuccess) {
+                        refreshResourceVersion()
+                        maaResourceLoader.load()
+                    } else {
+                        _toastMessage.tryEmit(appContext.getString(R.string.update_toast_auto_download_resource_failed))
+                    }
+                }
+            }
+        }
+    }
+
+    fun dismissStartupDialog() {
+        _startupUpdateDialog.value = null
+    }
+
+    fun reset() {
+        updateService.resetResourceProcess()
+    }
+
+    // ==================== App 更新 ====================
+
+    val appUpdateState = updateService.appProcessState
+
+    val currentAppVersion: String = BuildConfig.VERSION_NAME
+
+    fun checkAppUpdate() {
+        val currentState = appUpdateState.value
+        if (_appChecking.value || currentState is UpdateProcessState.Downloading || currentState is UpdateProcessState.Installing) {
+            return
+        }
+        viewModelScope.launch {
+            _appChecking.value = true
+            Timber.i("检查 App 更新 (MirrorChyan)")
+            val result = updateService.checkAppUpdate(channel = updateChannel.value)
+            saveAppChangelog((result as? UpdateCheckResult.Available)?.info)
+            _appCheckResult.value = result
+            _appChecking.value = false
+        }
+    }
+
+    fun dismissAppCheckResult() {
+        _appCheckResult.value = null
+    }
+
+    fun confirmAppDownload(version: String, source: UpdateSource = updateSource.value) {
+        Timber.i("确认下载 App 更新: version=$version")
+        lastAppDownloadVersion = version
+        viewModelScope.launch {
+            updateService.downloadApp(
+                source = source,
+                version = version,
+                channel = updateChannel.value
+            )
+        }
+    }
+
+    fun resetAppUpdate() {
+        updateService.resetAppProcess()
+    }
+
+    // ==================== 取消下载 / 下载中换源 ====================
+
+    private var lastAppDownloadVersion: String? = null
+
+    fun cancelAppDownload() {
+        viewModelScope.launch {
+            updateService.cancelAppDownload()
+            _toastMessage.tryEmit(appContext.getString(R.string.update_toast_download_canceled))
+        }
+    }
+
+    fun cancelResourceDownload() {
+        viewModelScope.launch {
+            updateService.cancelResourceDownload()
+            _toastMessage.tryEmit(appContext.getString(R.string.update_toast_download_canceled))
+        }
+    }
+
+    fun switchSourceAndRestartDownload(source: UpdateSource) {
+        val appDownloading = appUpdateState.value is UpdateProcessState.Downloading
+        val resourceDownloading = resourceUpdateState.value is UpdateProcessState.Downloading
+        viewModelScope.launch {
+            appSettingsManager.setUpdateSource(source)
+            // 重下用传入的 source，不读 updateSource.value：DataStore 回灌是异步的
+            when {
+                appDownloading -> {
+                    updateService.cancelAppDownload()
+                    lastAppDownloadVersion?.let { confirmAppDownload(it, source) }
+                }
+
+                resourceDownloading -> {
+                    updateService.cancelResourceDownload()
+                    confirmResourceDownload(source)
+                }
+            }
+        }
+    }
+
+    // ==================== 更新公告 ====================
+
+    private val _changelogDialog = MutableStateFlow<String?>(null)
+    val changelogDialog: StateFlow<String?> = _changelogDialog.asStateFlow()
+
+    fun checkPendingChangelog() {
+        val version = appSettingsManager.pendingChangelogVersion.value.removePrefix("v")
+        val content = appSettingsManager.pendingChangelogContent.value
+        val isNewVersion = version == BuildConfig.VERSION_NAME
+        if (version.isNotEmpty() && content.isNotEmpty() && isNewVersion) {
+            _changelogDialog.value = content
+            // 确认已装上就立刻留档，用户直接划走弹窗也能在「关于」里回看
+            viewModelScope.launch {
+                appSettingsManager.promotePendingChangelog()
+            }
+        }
+    }
+
+    fun dismissChangelog() {
+        _changelogDialog.value = null
+    }
+
+    private fun saveAppChangelog(appInfo: UpdateInfo?) {
+        if (appInfo == null || appInfo.releaseNote.isNullOrBlank()) return
+        viewModelScope.launch {
+            appSettingsManager.savePendingChangelog(appInfo.version, appInfo.releaseNote)
+        }
+    }
+}

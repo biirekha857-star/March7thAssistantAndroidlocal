@@ -1,0 +1,134 @@
+package com.march7th.hkrpg.presentation.components
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.march7th.hkrpg.R
+import com.march7th.hkrpg.theme.MaaAnimatedVisibility
+import com.march7th.hkrpg.theme.MaaDesignTokens
+
+@Composable
+fun SectionHeader(
+    title: String,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier.padding(bottom = MaaDesignTokens.Spacing.sm),
+    )
+}
+
+@Composable
+fun CollapsibleSection(
+    title: String,
+    modifier: Modifier = Modifier,
+    sectionKey: String = title,
+    initiallyExpanded: Boolean = true,
+    forceExpanded: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    CollapsibleSection(
+        sectionKey = sectionKey,
+        modifier = modifier,
+        initiallyExpanded = initiallyExpanded,
+        forceExpanded = forceExpanded,
+        title = {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f),
+            )
+        },
+        content = content,
+    )
+}
+
+/**
+ * 标题自定义版：折叠交互与无障碍语义共用，样式交给调用方
+ *
+ * @param forceExpanded 为 true 时强制展开（引导高亮分区内条目用），不覆盖用户自己的折叠选择
+ */
+@Composable
+fun CollapsibleSection(
+    sectionKey: String,
+    modifier: Modifier = Modifier,
+    initiallyExpanded: Boolean = true,
+    forceExpanded: Boolean = false,
+    title: @Composable RowScope.() -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    var userExpanded by rememberSaveable(sectionKey) { mutableStateOf(initiallyExpanded) }
+    val expanded = userExpanded || forceExpanded
+    val expandLabel = stringResource(R.string.common_expand)
+    val collapseLabel = stringResource(R.string.common_collapse)
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(
+                    role = Role.Button,
+                    onClickLabel = if (expanded) collapseLabel else expandLabel,
+                ) { userExpanded = !expanded }
+                .padding(vertical = MaaDesignTokens.Spacing.sm),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            title()
+            Icon(
+                imageVector = if (expanded) {
+                    Icons.Rounded.KeyboardArrowUp
+                } else {
+                    Icons.Rounded.KeyboardArrowDown
+                },
+                contentDescription = if (expanded) collapseLabel else expandLabel,
+                modifier = Modifier.size(22.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        MaaAnimatedVisibility(visible = expanded) {
+            Column(content = content)
+        }
+    }
+}
+
+@Composable
+fun ListItemDivider(
+    modifier: Modifier = Modifier,
+    color: Color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+) {
+    HorizontalDivider(
+        modifier = modifier.padding(start = MaaDesignTokens.Separator.inset),
+        thickness = MaaDesignTokens.Separator.thickness,
+        color = color,
+    )
+}

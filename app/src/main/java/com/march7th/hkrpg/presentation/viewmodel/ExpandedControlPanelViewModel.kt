@@ -1,0 +1,346 @@
+package com.march7th.hkrpg.presentation.viewmodel
+
+import android.content.Context
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.march7th.hkrpg.R
+import com.march7th.hkrpg.data.model.LogItem
+import com.march7th.hkrpg.data.model.TaskParamProvider
+import com.march7th.hkrpg.data.model.TaskTypeInfo
+import com.march7th.hkrpg.data.preferences.TaskChainState
+import com.march7th.hkrpg.domain.launch.PlanSideTaskRunner
+import com.march7th.hkrpg.domain.service.TaskCompositionService
+import com.march7th.hkrpg.domain.service.CoreSessionLogger
+import com.march7th.hkrpg.domain.usecase.PrepareTaskStartUseCase
+import com.march7th.hkrpg.domain.usecase.TaskStartContext
+import com.march7th.hkrpg.domain.usecase.TaskStartDecision
+import com.march7th.hkrpg.domain.usecase.TaskStartMode
+import com.march7th.hkrpg.overlay.OverlayController
+import com.march7th.hkrpg.presentation.state.UiEffect
+import com.march7th.hkrpg.presentation.view.panel.FloatingPanelState
+import com.march7th.hkrpg.presentation.view.panel.PanelDialogConfirmAction
+import com.march7th.hkrpg.presentation.view.panel.PanelDialogUiState
+import com.march7th.hkrpg.presentation.view.panel.PanelTab
+import com.march7th.hkrpg.utils.i18n.resolve
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import timber.log.Timber
+import com.march7th.hkrpg.domain.service.AchievementReporter
+
+
+class ExpandedControlPanelViewModel(
+    val chainState: TaskChainState,
+    private val application: Context,
+    private val prepareTaskStart: PrepareTaskStartUseCase,
+    private val compositionService: TaskCompositionService,
+    private val overlayController: OverlayController,
+    private val sessionLogger: CoreSessionLogger,
+    private val achievementReporter: AchievementReporter,
+    private val sideTaskRunner: PlanSideTaskRunner,
+) : ViewModel() {
+
+    private val _state = MutableStateFlow(FloatingPanelState())
+    val state: StateFlow<FloatingPanelState> = _state.asStateFlow()
+    val runtimeLogs: StateFlow<List<LogItem>> = sessionLogger.logs
+
+    private val _effects = Channel<UiEffect>(Channel.BUFFERED)
+    val effects = _effects.receiveAsFlow()
+
+    private var pendingStartContext: TaskStartContext? = null
+
+    init {
+        viewModelScope.launch {
+            overlayController.signal.collect { endState ->
+                Timber.d("Overlay result received: $endState")
+                showDialog(application.createExecutionEndDialog(endState))
+            }
+        }
+        observeDefaultTaskSelection()
+    }
+
+    /**
+     * 首次展开 / 选中失效时默认打开任务链第一项，避免右侧一直停在空占位
+     * 新增任务、配置管理模式下不自动改写选中
+     */
+    private fun observeDefaultTaskSelection() {
+        viewModelScope.launch {
+            combine(chainState.chain, _state) { nodes, ui ->
+                resolveTaskPanelSelectedNodeId(
+                    nodes = nodes,
+                    selectedNodeId = ui.selectedNodeId,
+                    isAddingTask = ui.isAddingTask,
+                    isProfileMode = ui.isProfileMode,
+                )
+            }
+                .distinctUntilChanged()
+                .collect { resolved ->
+                    if (_state.value.selectedNodeId != resolved) {
+                        _state.update { it.copy(selectedNodeId = resolved) }
+                    }
+                }
+        }
+    }
+
+    fun onNodeEnabledChange(nodeId: String, enabled: Boolean) {
+        viewModelScope.launch {
+            runCatching { chainState.setNodeEnabled(nodeId, enabled) }
+                .onSuccess {
+                    Timber.d("Updated node %s enabled: %s", nodeId, enabled)
+                }
+                .onFailure { e ->
+                    Timber.e(e, "Failed to update node enabled: ${e.message}")
+                }
+        }
+    }
+
+    fun onNodeMove(fromIndex: Int, toIndex: Int) {
+        viewModelScope.launch {
+            runCatching { chainState.reorderNodes(fromIndex, toIndex) }
+                .onSuccess {
+                    Timber.d("Moved node from %d to %d", fromIndex, toIndex)
+                }
+                .onFailure { e ->
+                    Timber.e(e, "Failed to reorder nodes: ${e.message}")
+                }
+        }
+    }
+
+    fun onNodeSelected(nodeId: String) {
+        _state.update { it.copy(selectedNodeId = nodeId, isAddingTask = false) }
+        Timber.d("Selected node: %s", nodeId)
+    }
+
+    fun onToggleEditMode() {
+        _state.update {
+            it.copy(
+                isEditMode = !it.isEditMode,
+                isAddingTask = false,
+                isProfileMode = false
+            )
+        }
+        Timber.d("Edit mode toggled: %s", _state.value.isEditMode)
+    }
+
+    fun onToggleProfileMode() {
+        _state.update {
+            it.copy(
+                isProfileMode = !it.isProfileMode,
+                isEditMode = false,
+                isAddingTask = false
+            )
+        }
+        Timber.d("Profile mode toggled: %s", _state.value.isProfileMode)
+    }
+
+    fun onSwitchProfile(profileId: String) {
+        viewModelScope.launch {
+            chainState.switchProfile(profileId)
+            // 切换后清除选中状态
+            _state.update { it.copy(selectedNodeId = null) }
+        }
+    }
+
+    fun onCreateProfile() {
+        viewModelScope.launch {
+            chainState.createProfile()
+            _state.update { it.copy(selectedNodeId = null) }
+        }
+    }
+
+    fun onDeleteProfile(profileId: String) {
+        viewModelScope.launch {
+            chainState.removeProfile(profileId)
+            _state.update { it.copy(selectedNodeId = null) }
+        }
+    }
+
+    fun onRenameProfile(profileId: String, name: String) {
+        viewModelScope.launch {
+            chainState.renameProfile(profileId, name)
+        }
+    }
+
+    fun onDuplicateProfile(profileId: String) {
+        viewModelScope.launch {
+            chainState.duplicateProfile(profileId)
+        }
+    }
+
+    fun onReorderProfile(fromIndex: Int, toIndex: Int) {
+        viewModelScope.launch {
+            runCatching { chainState.reorderProfiles(fromIndex, toIndex) }
+                .onFailure { e -> Timber.e(e, "Failed to reorder profile: ${e.message}") }
+        }
+    }
+
+    fun onToggleAddingTask() {
+        _state.update { it.copy(isAddingTask = !it.isAddingTask, selectedNodeId = null) }
+        Timber.d("Adding task mode toggled: %s", _state.value.isAddingTask)
+    }
+
+    fun onAddNode(typeInfo: TaskTypeInfo) {
+        viewModelScope.launch {
+            val nodeId = chainState.addNode(typeInfo)
+            _state.update { it.copy(isAddingTask = false, selectedNodeId = nodeId) }
+        }
+    }
+
+    fun onRemoveNode(nodeId: String) {
+        viewModelScope.launch {
+            chainState.removeNode(nodeId)
+            if (_state.value.selectedNodeId == nodeId) {
+                _state.update { it.copy(selectedNodeId = null) }
+            }
+        }
+    }
+
+    fun onDuplicateNode(nodeId: String) {
+        viewModelScope.launch {
+            val newId = chainState.duplicateNode(nodeId)
+            if (newId.isNotEmpty()) {
+                _state.update { it.copy(selectedNodeId = newId) }
+            }
+        }
+    }
+
+    fun onRenameNode(nodeId: String, newName: String) {
+        viewModelScope.launch {
+            chainState.renameNode(nodeId, newName)
+        }
+    }
+
+    fun onNodeConfigChange(nodeId: String, config: TaskParamProvider) {
+        viewModelScope.launch {
+            chainState.updateNodeConfig(nodeId, config)
+        }
+    }
+
+    fun onTabChange(tab: PanelTab) {
+        _state.update { it.copy(currentTab = tab) }
+        Timber.d("Selected tab: %s", tab.name)
+    }
+
+    private fun showDialog(dialog: PanelDialogUiState) {
+        _state.update { it.copy(dialog = dialog) }
+    }
+
+    fun onDialogDismiss() {
+        pendingStartContext = null
+        _state.update { it.copy(dialog = null) }
+    }
+
+    fun onDialogConfirm() {
+        when (state.value.dialog?.confirmAction) {
+            PanelDialogConfirmAction.DISMISS_ONLY -> {
+                onDialogDismiss()
+            }
+
+            PanelDialogConfirmAction.CONFIRM_PENDING_START -> {
+                val pending = pendingStartContext
+                _state.update { it.copy(dialog = null) }
+                pendingStartContext = null
+                if (pending != null) {
+                    launchManualStart(pending)
+                }
+            }
+
+            PanelDialogConfirmAction.GO_LOG -> {
+                onTabChange(PanelTab.LOG)
+                onDialogDismiss()
+            }
+
+            PanelDialogConfirmAction.GO_LOG_AND_STOP -> {
+                onTabChange(PanelTab.LOG)
+                onDialogDismiss()
+                viewModelScope.launch {
+                    compositionService.stop()
+                }
+            }
+
+            null -> Unit
+        }
+    }
+
+    fun onClearLogs() {
+        sessionLogger.clearRuntimeLogs()
+    }
+
+    fun onStartTasks() {
+        launchManualStart(TaskStartContext(mode = TaskStartMode.MANUAL))
+    }
+
+    private fun launchManualStart(context: TaskStartContext) {
+        viewModelScope.launch {
+            val plan = when (
+                val decision = prepareTaskStart(
+                    chain = chainState.chain.value,
+                    context = context,
+                )
+            ) {
+                is TaskStartDecision.Ready -> {
+                    pendingStartContext = null
+                    decision.plan
+                }
+
+                is TaskStartDecision.Blocked -> {
+                    pendingStartContext = null
+                    val message = decision.message
+                    Timber.w("Validation failed: %s", message.resolve(application))
+                    showDialog(application.createStartBlockedDialog(message))
+                    return@launch
+                }
+
+                is TaskStartDecision.RequiresConfirmation -> {
+                    pendingStartContext = context.acknowledged(decision.acknowledgement)
+                    showDialog(
+                        application.createStartWarningDialog(decision.message)
+                    )
+                    return@launch
+                }
+            }
+
+            if (plan.params.isEmpty()) {
+                // 只有旁路任务，不起 Core；界面上没运行态，靠 Toast 报开始与结果
+                sideTaskRunner.runWithoutCore(plan.sideTasks) { _effects.send(UiEffect.toast(it)) }
+                return@launch
+            }
+
+            Timber.i("=== Task JSON List (%d tasks) ===", plan.params.size)
+            plan.params.forEachIndexed { index, params ->
+                Timber.i("[%d] Type: %s", index, params.type.value)
+                Timber.i("    Params: %s", params.params)
+            }
+            Timber.i("=== End Task JSON List ===")
+
+            val result = compositionService.start(
+                tasks = plan.params,
+                clientType = plan.clientType,
+                preflightLogs = plan.logs,
+                fallbacks = plan.fallbacks,
+            )
+            val message = application.formatStartResult(result)
+            if (result is TaskCompositionService.StartResult.Success) {
+                // 晚于 startSession 发出，拉取日志才有会话接住
+                sideTaskRunner.launch(plan.sideTasks)
+                achievementReporter.reportTaskStarted(
+                    taskCount = plan.params.size,
+                    launchesGame = plan.launchesGame,
+                    gameAliveBeforeStart = plan.gameAliveBeforeStart,
+                )
+                // 成功时用 Toast 简短提示
+                _effects.send(UiEffect.toast(message))
+            } else {
+                // 失败时通过 StateFlow 通知 UI 展示 OverlayDialog
+                Timber.w("Start failed: %s", message.resolve(application))
+                showDialog(application.createStartFailedDialog(message))
+            }
+        }
+    }
+}

@@ -1,0 +1,289 @@
+package com.march7th.hkrpg.presentation.navigation
+
+import android.widget.Toast
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import com.march7th.hkrpg.constant.Routes
+import com.march7th.hkrpg.data.preferences.AppSettingsManager
+import com.march7th.hkrpg.data.resource.BackgroundImageStore
+import com.march7th.hkrpg.domain.launch.LaunchEffect
+import com.march7th.hkrpg.domain.models.RunMode
+import com.march7th.hkrpg.domain.service.ExternalNotificationService
+import com.march7th.hkrpg.domain.service.ResourceInitService
+import com.march7th.hkrpg.domain.state.ResourceInitState
+import com.march7th.hkrpg.overlay.OverlayController
+import com.march7th.hkrpg.presentation.LocalToaster
+import com.march7th.hkrpg.presentation.components.M7aWindowInsets
+import com.march7th.hkrpg.presentation.components.ResourceLoadingOverlay
+import com.march7th.hkrpg.presentation.components.clearFocusOnBlankTap
+import com.march7th.hkrpg.presentation.pip.LocalIsInPip
+import com.march7th.hkrpg.presentation.state.UiEffect
+import com.march7th.hkrpg.presentation.view.notification.NotificationSettingsView
+import com.march7th.hkrpg.presentation.view.settings.ErrorLogView
+import com.march7th.hkrpg.presentation.view.settings.LogHistoryView
+import com.march7th.hkrpg.presentation.view.settings.TaskOverrideEditorView
+import com.march7th.hkrpg.presentation.view.settings.WallpaperSettingsView
+import com.march7th.hkrpg.presentation.viewmodel.AppEventsViewModel
+import com.march7th.hkrpg.presentation.viewmodel.BackgroundTaskViewModel
+import com.march7th.hkrpg.schedule.model.CountdownState
+import com.march7th.hkrpg.schedule.ui.CountdownDialog
+import com.march7th.hkrpg.schedule.ui.ScheduleEditView
+import com.march7th.hkrpg.schedule.ui.ScheduleTriggerLogView
+import com.march7th.hkrpg.theme.AppBackgroundHost
+import com.march7th.hkrpg.theme.LocalReduceMotion
+import com.march7th.hkrpg.theme.M7aMotion
+import com.march7th.hkrpg.theme.MaxBackgroundBlur
+import com.march7th.hkrpg.utils.i18n.resolve
+import com.dokar.sonner.ToastType
+import com.dokar.sonner.Toaster
+import com.dokar.sonner.rememberToasterState
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
+import com.march7th.hkrpg.domain.service.AchievementReporter
+import com.march7th.hkrpg.manager.PermissionManager
+import com.march7th.hkrpg.presentation.activation.ActivationStep
+import com.march7th.hkrpg.presentation.activation.ActivationWizard
+
+/** 主 Tab 路由集合（与 [BottomNavTab.all] 单一真源），用于判断是否处于主界面。 */
+private val MAIN_TAB_ROUTES: Set<String> = BottomNavTab.all.mapTo(HashSet()) { it.route }
+
+@Composable
+fun AppNavigation(
+    backgroundTaskViewModel: BackgroundTaskViewModel,
+    appSettings: AppSettingsManager = koinInject(),
+    notificationService: ExternalNotificationService = koinInject(),
+    overlayController: OverlayController = koinInject(),
+    achievementReporter: AchievementReporter = koinInject(),
+    resourceInitService: ResourceInitService = koinInject(),
+    appEventsViewModel: AppEventsViewModel = koinViewModel(),
+    permissionManager: PermissionManager = koinInject(),
+) {
+    val navController = rememberNavController()
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentNavRoute = navBackStackEntry?.destination?.route
+    val context = LocalContext.current
+    val toaster = rememberToasterState()
+    val isFullscreen by remember(backgroundTaskViewModel) {
+        backgroundTaskViewModel.state
+            .map { it.isFullscreenMonitor }
+            .distinctUntilChanged()
+    }.collectAsStateWithLifecycle(initialValue = false)
+    val coroutineScope = rememberCoroutineScope()
+
+    val runMode by appSettings.runMode.collectAsStateWithLifecycle()
+    val language by appSettings.language.collectAsStateWithLifecycle()
+
+    // ---- 激活向导 ----
+    // 首次启动（或权限被撤销后）挡在主界面前面，一步一件事走完才放行。
+    // 取代了原来的「远端公告弹窗」——那个内容是 MAA-Meow 服务器的，
+    // 跟崩铁移植无关，已整体删除。
+    val activationDone by appSettings.activationCompleted.collectAsStateWithLifecycle()
+    val permissionState by permissionManager.state.collectAsStateWithLifecycle()
+    val clientType by appSettings.clientType.collectAsStateWithLifecycle()
+    val resourceInitState by resourceInitService.state.collectAsStateWithLifecycle()
+    val resourceReady = resourceInitState is ResourceInitState.Ready
+
+    var activationStep by remember { mutableStateOf(ActivationStep.WELCOME) }
+    // 资源就绪前不弹向导，避免和资源初始化弹窗打架
+    val showActivation = !activationDone && resourceReady
+
+    if (showActivation) {
+        ActivationWizard(
+            step = activationStep,
+            permissionState = permissionState,
+            backend = permissionState.startupBackend,
+            clientType = clientType,
+            onStepChange = { activationStep = it },
+            onRequestRemoteAccess = { coroutineScope.launch { permissionManager.requestRemoteAccess() } },
+            onRequestOverlay = { coroutineScope.launch { permissionManager.requestOverlay(context) } },
+            onRequestBattery = { coroutineScope.launch { permissionManager.requestBatteryWhitelist(context) } },
+            onRequestNotification = { coroutineScope.launch { permissionManager.requestNotification(context) } },
+            onBackendChange = { backend ->
+                coroutineScope.launch { permissionManager.setStartupBackend(backend) }
+            },
+            onClientChange = { type -> coroutineScope.launch { appSettings.setClientType(type) } },
+            onFinish = { coroutineScope.launch { appSettings.markActivationCompleted() } },
+        )
+        return
+    }
+
+    // 首启引导：资源就绪后自动开始
+    val scheduledCountdownState by backgroundTaskViewModel.countdownState.collectAsStateWithLifecycle()
+
+    // 判断是否处于主 Tab 页面
+    val isOnMainTab = currentNavRoute == null || currentNavRoute in MAIN_TAB_ROUTES
+
+    // 自定义背景：上提到导航根层，让主界面与所有子页面共用同一背景与玻璃配色
+    val backgroundStore: BackgroundImageStore = koinInject()
+    val backgroundImage by backgroundStore.imageBitmap.collectAsStateWithLifecycle()
+    val backgroundImageAlpha by appSettings.customBackgroundImageAlpha.collectAsStateWithLifecycle()
+    val backgroundScrim by appSettings.customBackgroundScrim.collectAsStateWithLifecycle()
+    val backgroundBlur by appSettings.customBackgroundBlur.collectAsStateWithLifecycle()
+    val backgroundMonet by appSettings.customBackgroundMonet.collectAsStateWithLifecycle()
+
+    // 主界面分页偏移，供背景层做切 Tab 视差
+    val backgroundParallax = remember { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(backgroundTaskViewModel) {
+        backgroundTaskViewModel.launchEffects.collect { effect ->
+            when (effect) {
+                is LaunchEffect.Feedback -> {
+                    Toast.makeText(
+                        context,
+                        effect.message.resolve(context),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            }
+        }
+    }
+    // 后台倒计时 Overlay 由 CountdownUIImpl 写入；前台无倒计时不触碰
+    LaunchedEffect(backgroundTaskViewModel) {
+        overlayController.onCountdownClick = {
+            backgroundTaskViewModel.onScheduledStartNow()
+        }
+    }
+    LaunchedEffect(notificationService) {
+        notificationService.feedbackMessages.collect { message ->
+            Toast.makeText(context, message.resolve(context), Toast.LENGTH_SHORT).show()
+        }
+    }
+    LaunchedEffect(backgroundTaskViewModel) {
+        backgroundTaskViewModel.effects.collect { effect ->
+            when (effect) {
+                is UiEffect.Toast -> toaster.show(
+                    message = effect.message.resolve(context),
+                    type = ToastType.Info,
+                )
+            }
+        }
+    }
+    LaunchedEffect(appEventsViewModel) {
+        appEventsViewModel.effects.collect { effect ->
+            when (effect) {
+                is UiEffect.Toast -> toaster.show(
+                    message = effect.message.resolve(context),
+                    type = ToastType.Success,
+                )
+            }
+        }
+    }
+
+    // LocalToaster 未提供即抛错，须同时覆盖 pager 与 NavHost 子页
+    val reduceMotion = LocalReduceMotion.current
+    CompositionLocalProvider(
+        LocalToaster provides toaster,
+    ) {
+        Box(modifier = Modifier
+            .fillMaxSize()
+            .clearFocusOnBlankTap()) {
+            AppBackgroundHost(
+                image = backgroundImage,
+                imageAlpha = backgroundImageAlpha / 100f,
+                scrimAlpha = backgroundScrim / 100f,
+                blurRadius = MaxBackgroundBlur * (backgroundBlur / 100f),
+                monetFromWallpaper = backgroundMonet,
+                parallax = backgroundParallax,
+            ) {
+                MainScreen(
+                    navController = navController,
+                    backgroundTaskViewModel = backgroundTaskViewModel,
+                    visible = isOnMainTab,
+                    fullscreen = isFullscreen,
+                    parallax = backgroundParallax,
+                )
+
+                // NavHost 只承载子页面；主 Tab 切换完全由 MainScreen 的 HorizontalPager 处理
+                NavHost(
+                    navController = navController,
+                    startDestination = Routes.HOME,
+                    enterTransition = { M7aMotion.pageEnter(forward = true, reduceMotion) },
+                    exitTransition = { M7aMotion.pageExit(forward = true, reduceMotion) },
+                    popEnterTransition = { M7aMotion.pageEnter(forward = false, reduceMotion) },
+                    popExitTransition = { M7aMotion.pageExit(forward = false, reduceMotion) },
+                ) {
+                    // 主 Tab 路由仅作占位，真实内容由 MainScreen 的 HorizontalPager 渲染
+                    BottomNavTab.all.forEach { tab -> composable(tab.route) {} }
+
+                    composable(Routes.NOTIFICATION) {
+                        NotificationSettingsView(navController = navController)
+                    }
+                    composable(Routes.WALLPAPER) {
+                        WallpaperSettingsView(navController = navController)
+                    }
+                    composable(Routes.LOG_HISTORY) {
+                        LogHistoryView(navController = navController)
+                    }
+                    composable(Routes.ERROR_LOG) {
+                        ErrorLogView(navController = navController)
+                    }
+                    composable(Routes.SCHEDULE_EDIT) { backStackEntry ->
+                        val strategyId = backStackEntry.arguments?.getString("strategyId")
+                            .let { if (it == "new") null else it }
+                        ScheduleEditView(navController = navController, strategyId = strategyId)
+                    }
+                    composable(Routes.SCHEDULE_TRIGGER_LOG) {
+                        ScheduleTriggerLogView(navController = navController)
+                    }
+                    composable(Routes.TASK_OVERRIDE_EDITOR) {
+                        TaskOverrideEditorView(navController = navController)
+                    }
+                }
+            }
+            // 画中画只留预览画面
+            if (!LocalIsInPip.current) {
+                ResourceLoadingOverlay()
+                // 顶部轻提示（sonner）：替代旧的 Material3 Snackbar，按类型上色（成功=绿、错误=红）
+                Toaster(
+                    state = toaster,
+                    alignment = Alignment.TopCenter,
+                    richColors = true,
+                    showCloseButton = true,
+                    darkTheme = MaterialTheme.colorScheme.background.luminance() < 0.5f,
+                    containerPadding = PaddingValues(top = 8.dp),
+                    modifier = Modifier.windowInsetsPadding(M7aWindowInsets.topBar),
+                )
+                // 全局定时任务倒计时弹窗（前台所有控制模式均不弹出对话框，静默处理）
+                val countdown = scheduledCountdownState
+                // 前台模式已删除，倒计时弹窗恒显示
+                val hideCountdownDialog = false
+                if (countdown is CountdownState.Counting && !hideCountdownDialog) {
+                    CountdownDialog(
+                        state = countdown,
+                        onCancel = { backgroundTaskViewModel.onScheduledCountdownCancel() },
+                        onStartNow = { backgroundTaskViewModel.onScheduledStartNow() },
+                    )
+                }
+                // 公告弹窗已删除（见上方激活向导的说明）
+            }
+        }
+    }
+}
