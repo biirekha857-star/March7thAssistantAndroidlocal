@@ -72,14 +72,39 @@ class RemoteServiceImpl : RemoteService.Stub() {
          * 变成孤儿（PPID=1）继续存活 —— 实测留下过一个 1280x720 的
          * `MAA_VD` 一直挂在系统里。
          *
-         * 新进程启动时把这些兄弟进程收掉，虚拟屏随之被系统回收。
-         * 只杀"同名但不是我"的进程，绝不动自己。
+         * ## ⚠️ 只杀 **PPID 确实是 1** 的进程
+         *
+         * 之前只要 cmdline 同名就杀，实测把 launcher 的兄弟进程也杀了 ——
+         * 父进程（`liblauncher.so`）在 `waitpid` 处收到子进程被杀的信号，
+         * 自己跟着 `abort()`，日志表现是：
+         *
+         * ```
+         * [MC] WARN: RemoteService: 收割孤儿提权进程 pid=10795
+         * [E] child exited with status=6          ← SIGABRT
+         * ```
+         *
+         * 于是新起的服务刚 `SETUP_DONE` 就被自己搞死，"任务服务异常终止"。
+         *
+         * 修复：读 `/proc/<pid>/stat` 拿 **PPID**，只有 PPID==1（真正的
+         * 孤儿，父进程已死由 init 收养）才动手。正常的兄弟进程（PPID
+         * 是 launcher 或 zygote）一律放过。
          */
         @JvmStatic
         fun reapOrphanServices() {
             val myPid = Process.myPid()
             val myName = "com.march7th.hkrpg:shizuku_service"
             val killed = mutableListOf<Int>()
+            val skipped = mutableListOf<Int>()
+
+            /** 从 `/proc/<pid>/stat` 取 PPID。 */
+            fun parentPidOf(pid: Int): Int? = runCatching {
+                // stat 格式：`pid (comm) state ppid ...`
+                // comm 里可能有空格和括号，所以从最后一个 ')' 之后切
+                val stat = File("/proc/$pid/stat").readText()
+                val afterComm = stat.substring(stat.lastIndexOf(')') + 1).trim()
+                afterComm.split(' ')[1].toIntOrNull()
+            }.getOrNull()
+
             runCatching {
                 File("/proc").listFiles()?.forEach { dir ->
                     val pid = dir.name.toIntOrNull() ?: return@forEach
@@ -87,15 +112,25 @@ class RemoteServiceImpl : RemoteService.Stub() {
                     val cmdline = runCatching {
                         File(dir, "cmdline").readBytes().toString(Charsets.UTF_8)
                     }.getOrNull() ?: return@forEach
-                    // cmdline 是 \0 分隔的，app_process 起的进程首段就是 nice-name
                     val name = cmdline.split('\u0000').firstOrNull { it.isNotBlank() } ?: return@forEach
                     if (!name.contains(myName)) return@forEach
-                    Ln.w("$TAG: 收割孤儿提权进程 pid=$pid name=$name")
+
+                    // ## 关键：只处理真正的孤儿
+                    val ppid = parentPidOf(pid)
+                    if (ppid != 1) {
+                        skipped += pid
+                        Ln.i("$TAG: 跳过非孤儿提权进程 pid=$pid ppid=$ppid name=$name")
+                        return@forEach
+                    }
+
+                    Ln.w("$TAG: 收割孤儿提权进程 pid=$pid ppid=1 name=$name")
                     runCatching { Process.killProcess(pid) }
                         .onSuccess { killed += pid }
                 }
             }.onFailure { Ln.w("$TAG: 收割孤儿进程失败: ${it.message}") }
+
             if (killed.isNotEmpty()) Ln.i("$TAG: 已收割孤儿提权进程 $killed")
+            if (skipped.isNotEmpty()) Ln.i("$TAG: 保留同名的活跃进程 $skipped（非孤儿，不动）")
         }
     }
 
