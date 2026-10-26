@@ -263,14 +263,36 @@ class LogExportService(
         }.onFailure { Timber.w(it, "Failed to write logcat entry") }
     }
 
-    /** 抓当前 logcat 缓冲区，截取最近若干行。 */
+    /**
+     * 抓当前 logcat 缓冲区，截取最近若干行。
+     *
+     * ## ⚠️ 不能按 pid 过滤
+     *
+     * 之前用 `logcat --pid=<主进程pid>`，结果**一条引擎日志都抓不到** ——
+     * 因为引擎跑在 `:shizuku_service` 这个**独立进程**里，pid 完全不同。
+     *
+     * ```
+     * com.march7th.hkrpg            ← 主进程（UI），pid=2190
+     * com.march7th.hkrpg:shizuku_service  ← 特权服务，pid 是另一个
+     * ```
+     *
+     * 而 `VirtualDisplayManager` / `ShellAutomation` / 各任务的日志
+     * 全部来自后者。按主进程 pid 过滤，恰好把最需要的全滤掉了。
+     *
+     * ## 现在按 tag 过滤
+     *
+     * 引擎统一用 `MaaMeow` 作 tag（见 `Ln` 门面），所以：
+     * 1. `-s MaaMeow:*` 精确抓引擎日志（优先）
+     * 2. 抓不到再退回全量缓冲区
+     */
     private fun dumpLogcat(): String {
-        val myPid = android.os.Process.myPid()
-        // 先试着按 pid 过滤（最精确），失败再退回全量
         val attempts = listOf(
-            arrayOf("logcat", "-d", "-v", "time", "--pid=$myPid"),
+            // 引擎日志：按 tag 精确抓，跨进程都有效
+            arrayOf("logcat", "-d", "-v", "time", "-s", "MaaMeow:V"),
+            // 兜底：全量缓冲区（包含系统崩溃、ANR 等信息）
             arrayOf("logcat", "-d", "-v", "time"),
         )
+        var fullBuffer = ""
         for (cmd in attempts) {
             val out = runCatching {
                 val proc = ProcessBuilder(*cmd)
@@ -280,8 +302,36 @@ class LogExportService(
                 proc.waitFor()
                 text
             }.getOrNull()
-            if (!out.isNullOrBlank()) {
-                return tailLines(out, LOGCAT_MAX_LINES)
+
+            if (cmd.contains("MaaMeow:V")) {
+                // tag 过滤成功且确实有内容 → 直接用
+                if (!out.isNullOrBlank() && out.contains("MaaMeow")) {
+                    return tailLines(out, LOGCAT_MAX_LINES)
+                }
+            } else {
+                fullBuffer = out.orEmpty()
+            }
+        }
+
+        // 退回全量，但要**优先保留 hkrpg 相关行**
+        // 全量几万行里混着系统其它应用，真正有用的其实很少
+        if (fullBuffer.isNotBlank()) {
+            val interesting = fullBuffer.lineSequence()
+                .filter { line ->
+                    line.contains("hkrpg") || line.contains("MaaMeow") ||
+                        line.contains("DEBUG") || line.contains("AndroidRuntime")
+                }
+                .joinToString("\n")
+            return if (interesting.isNotBlank()) {
+                buildString {
+                    append("（全量缓冲区中与本应用相关的行）\n\n")
+                    append(tailLines(interesting, LOGCAT_MAX_LINES))
+                    append("\n\n（全量缓冲区共 ")
+                    append(fullBuffer.lineSequence().count())
+                    append(" 行，引擎 tag 未抓到 —— 可能 logd 缓冲区已滚动）")
+                }
+            } else {
+                tailLines(fullBuffer, LOGCAT_MAX_LINES)
             }
         }
         return ""

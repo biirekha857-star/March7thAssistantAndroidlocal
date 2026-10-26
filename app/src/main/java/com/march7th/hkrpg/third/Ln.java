@@ -50,8 +50,107 @@ public final class Ln {
         sink = s;
     }
 
+    /**
+     * 引擎日志落盘 —— **特权进程里唯一的持久化出口**。
+     *
+     * ## 为什么需要
+     *
+     * 引擎跑在 `:shizuku_service` 进程里，它的 [Sink] 回调只能转发到
+     * 那个进程的内存队列，**不会写到 App 的日志文件**。
+     *
+     * 而 logcat 有两个问题：
+     * 1. 用户导出的日志包里很难稳定抓到（缓冲会滚动、跨进程 pid 不同）；
+     * 2. Android 12+ 普通应用读不到别的进程日志。
+     *
+     * 实测结果就是：用户导出的包里有 UI 日志、有系统日志，
+     * **唯独没有引擎日志** —— 而排查画面拉伸、识别失败恰好全靠它。
+     *
+     * 所以这里直接写文件。App 导出日志时会把这个目录一起打包。
+     *
+     * ## 实现约束
+     *
+     * - 用 `synchronized` + `BufferedWriter`，避免每次 open/close
+     * - **绝不抛异常**：日志写失败不能让业务崩掉
+     * - 超过 [MAX_BYTES] 就滚动一份 `.old`，避免无限增长
+     */
+    private static final long MAX_BYTES = 8L * 1024 * 1024;
+    private static final Object FILE_LOCK = new Object();
+    private static java.io.Writer fileWriter;
+    private static java.io.File logFile;
+
+    /**
+     * 指定引擎日志文件路径并立即开始写入。
+     *
+     * @param file 目标文件（目录不存在会自动创建）
+     */
+    public static void setLogFile(java.io.File file) {
+        synchronized (FILE_LOCK) {
+            closeQuietly();
+            if (file == null) return;
+            try {
+                java.io.File dir = file.getParentFile();
+                if (dir != null && !dir.exists()) dir.mkdirs();
+                // 超限就滚一份
+                if (file.exists() && file.length() > MAX_BYTES) {
+                    java.io.File old = new java.io.File(file.getPath() + ".old");
+                    if (old.exists()) old.delete();
+                    file.renameTo(old);
+                }
+                logFile = file;
+                fileWriter = new java.io.BufferedWriter(
+                        new java.io.OutputStreamWriter(
+                                new java.io.FileOutputStream(file, true), "UTF-8"));
+            } catch (Throwable ignored) {
+                fileWriter = null;
+            }
+        }
+    }
+
+    public static java.io.File getLogFile() {
+        synchronized (FILE_LOCK) {
+            return logFile;
+        }
+    }
+
+    private static void closeQuietly() {
+        if (fileWriter != null) {
+            try {
+                fileWriter.flush();
+                fileWriter.close();
+            } catch (Throwable ignored) {
+            }
+            fileWriter = null;
+        }
+    }
+
+    /** 写一行到文件；任何异常都吞掉。 */
+    private static void writeFile(Level level, String message) {
+        if (fileWriter == null) return;
+        synchronized (FILE_LOCK) {
+            if (fileWriter == null) return;
+            try {
+                fileWriter.write(new java.text.SimpleDateFormat(
+                        "MM-dd HH:mm:ss.SSS", java.util.Locale.US)
+                        .format(new java.util.Date()));
+                fileWriter.write(" ");
+                fileWriter.write(level.name().charAt(0));
+                fileWriter.write("/");
+                fileWriter.write(TAG);
+                fileWriter.write(": ");
+                fileWriter.write(message);
+                fileWriter.write("\n");
+                // 每行都 flush：引擎崩了也不能丢最后几行
+                fileWriter.flush();
+            } catch (Throwable ignored) {
+            }
+        }
+    }
+
     /** 转发给 Sink；任何异常都吞掉，绝不能让日志把业务逻辑带崩。 */
     private static void forward(Level level, String message) {
+        // 先落盘（比 Sink 更可靠：Sink 只在主进程有效）
+        writeFile(level, message);
+
         Sink s = sink;
         if (s == null) return;
         try {

@@ -136,6 +136,25 @@ class RemoteServiceImpl : RemoteService.Stub() {
 
     init {
         RemoteBootTrace.mark("CTOR_START")
+
+        // ## 引擎日志落盘
+        //
+        // 这个进程（`:shizuku_service`）里的 `Ln` 日志**不会进 App 的日志文件**
+        // —— `Ln.Sink` 只在主进程注册过。而 logcat 又很难被用户成功导出
+        // （跨进程 pid 不同、缓冲区会滚动、Android 12+ 还有读取限制）。
+        //
+        // 结果就是用户发来的日志包里**完全没有引擎日志**，
+        // 排查画面拉伸、识别失败、卡死只能靠猜。
+        //
+        // 这里在构造阶段就把日志指向 core 目录下的 `engine.log`，
+        // 导出日志时会一并打包（`LogExportCollector` 遍历整个 debug 目录）。
+        runCatching {
+            val dir = File(CoreDataDir.ROOT, "debug").apply { mkdirs() }
+            val file = File(dir, "engine.log")
+            Ln.setLogFile(file)
+            Ln.i("$TAG: 引擎日志落盘 -> ${file.absolutePath}")
+        }.onFailure { Ln.w("$TAG: 引擎日志落盘初始化失败: ${it.message}") }
+
         Runtime.getRuntime().addShutdownHook(Thread {
             runCatching { performEmergencyCleanup() }
         }.apply { name = "remote-shutdown-hook" })
