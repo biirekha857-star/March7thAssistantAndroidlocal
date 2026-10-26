@@ -53,6 +53,14 @@ class LogExportService(
          */
         private const val EXPORT_PREFIX = "m7a_logs_"
         private val INFO_TIME_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS (Z)")
+
+        /**
+         * logcat 最多保留最后多少行。
+         *
+         * 8000 行大约 1~2 MB，zip 后几百 KB —— 既能覆盖一次完整任务
+         * 的执行过程，又不至于让日志包大到用户传不动。
+         */
+        private const val LOGCAT_MAX_LINES = 8000
     }
 
     /** 导出日志 ZIP；失败返回 null。无日志时仍生成仅含 properties/device_info 的包。不删除 debug 源日志。 */
@@ -155,6 +163,20 @@ class LogExportService(
                 }
             }
 
+            // ## logcat 一起打进去
+            //
+            // 引擎的 `Ln.i()` 只写 logcat，**不进日志文件**。
+            // 排查问题时最关键的几行恰恰只在那里，例如：
+            //
+            // ```
+            // VirtualDisplayManager: VD created: id=11, configured=1920x1080,
+            //                        actual=1920x872, rotation=0
+            // ShellAutomation: ⚠️ 帧尺寸异常！帧 1920x872 vs 虚拟屏 1920x1080
+            // ```
+            //
+            // 之前用户导出的 zip 里没有 logcat，导致这类问题只能反复猜。
+            appendLogcat(zos)
+
             appendRemoteDebugFiles(zos)
 
             // 提权进程写的文件可能对 App 不可读，逐个跳过，不拖垮整包
@@ -178,6 +200,102 @@ class LogExportService(
         putNextEntry(ZipEntry(name).also { if (time > 0) it.time = time })
         input.copyTo(this, bufferSize = 64 * 1024)
         closeEntry()
+    }
+
+    /**
+     * 把 logcat 写进压缩包（`logcat/full.txt`）。
+     *
+     * ## 为什么要抓 logcat
+     *
+     * 引擎日志走 `Ln` 门面，它**只输出到 logcat**，不落盘。
+     * 而排查画面拉伸、服务崩溃这类问题，最有价值的几行恰好在那儿：
+     *
+     * ```
+     * VirtualDisplayManager: VD created: ... configured=1920x1080, actual=1920x872
+     * ShellAutomation: ⚠️ 帧尺寸异常！帧 1920x872 vs 虚拟屏 1920x1080
+     * RemoteService: 收割孤儿提权进程 pid=1234 ppid=1
+     * ```
+     *
+     * ## 过滤策略
+     *
+     * 全量 logcat 动辄几十 MB（系统其它应用的日志也在里面），
+     * 直接打包会让 zip 大到没法传。所以：
+     *
+     * 1. 主抓 **本应用相关** 的 tag（`MaaMeow` 是引擎的统一 tag）
+     * 2. 附带抓本进程 pid 的全部日志
+     * 3. 只取**最近 [LOGCAT_MAX_LINES] 行**，避免超大
+     * 4. 抓取失败不抛异常 —— 宁可少了 logcat，也不能让整个导出失败
+     *
+     * 需要 root/shell 权限才能看别的进程日志；普通 App 身份下
+     * `logcat -d` 只能看到自己的，够用。
+     */
+    private fun appendLogcat(zos: ZipOutputStream) {
+        val text = runCatching { dumpLogcat() }
+            .onFailure { Timber.w(it, "dumpLogcat failed") }
+            .getOrNull()
+            .orEmpty()
+
+        val body = if (text.isBlank()) {
+            """
+            （logcat 抓取为空）
+
+            可能原因：
+            1. Android 12+ 限制普通应用读取其它进程日志 —— 若本机未授予
+               「读取日志」权限，这里只能看到本应用自己的输出
+            2. 日志缓冲区刚被清空
+            3. 设备禁用了 logd
+
+            建议：在本应用内复现问题后**立刻**导出，间隔越短抓到越多。
+            """.trimIndent()
+        } else {
+            text
+        }
+
+        runCatching {
+            zos.addEntry("logcat/full.txt", body.byteInputStream())
+            // 另外单独留一份引擎日志，方便直接看
+            val engineOnly = body.lineSequence()
+                .filter { it.contains("MaaMeow") }
+                .joinToString("\n")
+            if (engineOnly.isNotBlank()) {
+                zos.addEntry("logcat/engine.txt", engineOnly.byteInputStream())
+            }
+        }.onFailure { Timber.w(it, "Failed to write logcat entry") }
+    }
+
+    /** 抓当前 logcat 缓冲区，截取最近若干行。 */
+    private fun dumpLogcat(): String {
+        val myPid = android.os.Process.myPid()
+        // 先试着按 pid 过滤（最精确），失败再退回全量
+        val attempts = listOf(
+            arrayOf("logcat", "-d", "-v", "time", "--pid=$myPid"),
+            arrayOf("logcat", "-d", "-v", "time"),
+        )
+        for (cmd in attempts) {
+            val out = runCatching {
+                val proc = ProcessBuilder(*cmd)
+                    .redirectErrorStream(true)
+                    .start()
+                val text = proc.inputStream.bufferedReader().use { it.readText() }
+                proc.waitFor()
+                text
+            }.getOrNull()
+            if (!out.isNullOrBlank()) {
+                return tailLines(out, LOGCAT_MAX_LINES)
+            }
+        }
+        return ""
+    }
+
+    /** 只保留最后 [maxLines] 行。 */
+    private fun tailLines(text: String, maxLines: Int): String {
+        val lines = text.lineSequence().toList()
+        if (lines.size <= maxLines) return text
+        return buildString {
+            append("（以下为最近 ").append(maxLines).append(" 行，共 ")
+            append(lines.size).append(" 行）\n")
+            append(lines.takeLast(maxLines).joinToString("\n"))
+        }
     }
 
     private fun appendRemoteDebugFiles(zos: ZipOutputStream) {
@@ -234,8 +352,69 @@ class LogExportService(
         append("Storage     : $storageInfo\n")
         append("Battery Opt : $batteryOptimized\n")
         append("SELinux     : $selinuxMode\n")
+        append(virtualDisplayInfo)
         append(line).append("\n")
     }
+
+    /**
+     * 虚拟屏诊断 —— **排查画面拉伸的关键**。
+     *
+     * ## 为什么要写进 device_info
+     *
+     * 「画面被拉伸」的根因是**虚拟屏声明的尺寸**和**系统实际渲染的尺寸**
+     * 不一致。实测两台长屏设备（物理屏 2.2 比例）都是：
+     *
+     * ```
+     * 配置 1920x1080 (1.78)  ->  实际取到 1920x872 (2.20)
+     *                                      ^ 正好等于物理屏比例
+     * ```
+     *
+     * 这个数值以前只出现在 logcat 里，而用户导出的 zip 没有 logcat。
+     * 现在一并写进 device_info.txt，一次导出拿全现场。
+     */
+    private val virtualDisplayInfo: String
+        get() = buildString {
+            append("--- Virtual Display ---\n")
+
+            runCatching {
+                append("Configured  : ").append(appSettingsManager.backgroundResolution.value).append("\n")
+            }.onFailure { append("Configured  : unknown (${it.message})\n") }
+
+            runCatching {
+                val proc = ProcessBuilder("sh", "-c", "dumpsys display | grep -E 'mDisplayId=|uniqueId' | head -40")
+                    .redirectErrorStream(true)
+                    .start()
+                val text = proc.inputStream.bufferedReader().use { it.readText() }
+                proc.waitFor()
+                if (text.isBlank()) {
+                    append("Displays    : (dumpsys 无输出，可能无权限)\n")
+                } else {
+                    append("Displays    :\n")
+                    text.lineSequence().filter { it.isNotBlank() }.take(30).forEach {
+                        append("  ").append(it.trim()).append("\n")
+                    }
+                }
+            }.onFailure { append("Displays    : query failed (${it.message})\n") }
+
+            runCatching {
+                val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                @Suppress("DEPRECATION")
+                val dims = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    wm.maximumWindowMetrics.bounds.let { it.width() to it.height() }
+                } else {
+                    val p = Point().also(wm.defaultDisplay::getRealSize)
+                    p.x to p.y
+                }
+                val ratio = maxOf(dims.first, dims.second).toFloat() /
+                    minOf(dims.first, dims.second).toFloat()
+                append("Screen Ratio: ").append("%.3f".format(Locale.US, ratio))
+                append(" (虚拟屏 ").append("%.3f".format(Locale.US, 16f / 9f)).append(")\n")
+                if (ratio > 16f / 9f + 0.15f) {
+                    append("⚠️ Long-screen device：物理屏比例与虚拟屏差异大，")
+                    append("部分 ROM 会按物理屏比例渲染导致拉伸\n")
+                }
+            }.onFailure { append("Screen Ratio: unknown (${it.message})\n") }
+        }
 
     private val gameVersionInfo: String
         get() = runCatching {
