@@ -178,6 +178,53 @@
     @org.koin.core.annotation.* <methods>;
 }
 
+# ==================== ONNX Runtime（OCR / 模型推理）====================
+#
+# ## ⚠️ 这是 release 版崩溃的头号原因
+#
+# 崩溃现场（取自 Android bugreport 的 tombstone）：
+#
+# ```
+# Abort message: 'JNI DETECTED ERROR IN APPLICATION: java_class == null
+#     in call to GetMethodID
+#     from boolean[] ai.onnxruntime.OrtSession.run(...)'
+#
+# #06 libonnxruntime4j_jni.so (convertToTensorInfo+628)
+# #07 libonnxruntime4j_jni.so (convertOrtValueToONNXValue+436)
+# #08 libonnxruntime4j_jni.so (Java_ai_onnxruntime_OrtSession_run+836)
+# ```
+#
+# 线程名 `starrail-task`，进程直接 SIGABRT，日志表现为
+# "任务服务异常终止" —— 而且**一跑 OCR 必炸**。
+#
+# ## 根因
+#
+# `libonnxruntime4j_jni.so` 里的 C++ 用**类名**去 `FindClass`：
+#
+# ```cpp
+# jclass cls = env->FindClass("ai/onnxruntime/TensorInfo");
+# jmethodID mid = env->GetMethodID(cls, "getType", "...");
+# //                    ↑ 类被删或改名后 cls == null → JNI 直接 abort
+# ```
+#
+# 实测 release 包 dex 里 `ai.onnxruntime` 只剩 8 个类，
+# `OnnxValue` 的某个子类被改名成 `a`，**`TensorInfo` 被整个删掉** ——
+# Java 侧确实没人引用它，但 C++ 侧要用。
+#
+# 编译期毫无提示，只有真机跑到推理那一刻才炸。
+#
+# ## 结论
+#
+# ONNX Runtime 的 Java 包装层**必须整体保留**，一个字段都不能少。
+# 它只有几十个类，体积代价可以忽略。
+-keep class ai.onnxruntime.** { *; }
+-keepclassmembers class ai.onnxruntime.** { *; }
+-dontwarn ai.onnxruntime.**
+
+# 同理：com.microsoft.onnxruntime 扩展包（若以后引入）
+-keep class com.microsoft.onnxruntime.** { *; }
+-dontwarn com.microsoft.onnxruntime.**
+
 # ==================== 反射兜底 ====================
 #
 # 下面这些类在代码里是"按名字"被使用的，R8 静态分析看不到引用。
