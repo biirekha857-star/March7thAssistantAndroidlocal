@@ -258,6 +258,39 @@ bool WriteHardwareBufferToFrame(AHardwareBuffer *buffer) {
 
     AHardwareBuffer_Desc desc;
     AHardwareBuffer_describe(buffer, &desc);
+
+    // ## ⚠️ 尺寸不一致时必须报出来
+    //
+    // `ProcessFrameDataV2` 是按**目标宽高**去读源的：
+    //
+    // ```cpp
+    // for (int y = 0; y < height; ++y)         // height = target->height
+    //     const uint8_t *s = src + y * src_stride;
+    //     for (int x = 0; x < width; ++x)      // width  = target->width
+    // ```
+    //
+    // 也就是说它**假定** `desc.width == target->width` 且
+    // `desc.height == target->height`。
+    //
+    // 一旦两者不等（实测长屏 ROM 上出现过：虚拟屏声明 1920x1080，
+    // 但硬件 buffer 实际是 1920x872 —— 正好是物理屏 2.2 的比例），
+    // 就会按错误的行列数读取：
+    //   · desc 比 target 小 → 读到越界数据，画面撕裂
+    //   · desc 比 target 大 → 只读了上半部分，**下半屏全黑**
+    //   · 宽高比不同       → 画面被横向压扁
+    //
+    // 这一行日志是排查该类问题的唯一线索，务必保留。
+    static std::atomic<bool> mismatch_logged{false};
+    if (static_cast<int>(desc.width) != target->width ||
+        static_cast<int>(desc.height) != target->height) {
+        if (!mismatch_logged.exchange(true, std::memory_order_acq_rel)) {
+            LOGE(
+                "FrameBuffer 尺寸不匹配！buffer=%ux%u stride=%u, target=%dx%d "
+                "—— 画面会拉伸/错位，请在 Kotlin 侧检查虚拟屏分辨率",
+                desc.width, desc.height, desc.stride, target->width, target->height);
+        }
+    }
+
     ProcessFrameDataV2(static_cast<uint8_t *>(srcAddr), target->bgr_data, target->width,
                        target->height, static_cast<int>(desc.stride) * 4);
     AHardwareBuffer_unlock(buffer, nullptr);
