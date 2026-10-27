@@ -1732,11 +1732,50 @@ internal class PowerTask(
         // 等转场到队伍配置页
         sleepInterruptible(CHALLENGE_TRANSITION_MS)
 
-        // ② 点「开始挑战」（队伍配置页右下角）
+        // ② 点「开始挑战」—— **最多点两次**
+        //
+        // ## 为什么要补第二下
+        //
+        // 实测踩过：点了「开始挑战」但战斗没开始，画面停滞 69 秒后判定失败：
+        //
+        // ```
+        // 点「开始挑战」@(1614,978)
+        // 等待战斗流程结束
+        // 仍在战斗中…（已等待 40s）
+        // 画面已停滞 69s —— 战斗似乎没有开始，判定失败
+        // ```
+        //
+        // 原因是**点击被吞了**。崩铁在转场动画末尾有短暂的输入屏蔽期，
+        // 120ms 的 tap 如果正好落在那段时间里就完全没反应。
+        //
+        // 处理办法：点完等一小会儿，**看画面有没有变化**；
+        // 没变化说明没点上，就再点一次。两次之间留 800ms ——
+        // 足够第一次生效（进战斗会有黑屏转场），又不会拖太久。
         val c2x = (auto.width * START_BTN_X_RATIO).toInt()
         val c2y = (auto.height * START_BTN_Y_RATIO).toInt()
-        note("点「开始挑战」@($c2x,$c2y)")
-        auto.tap(c2x, c2y, durationMs = 120L)
+
+        var clicked = false
+        for (attempt in 1..2) {
+            note("点「开始挑战」@($c2x,$c2y)（第 $attempt 次）")
+            auto.tap(c2x, c2y, durationMs = 120L)
+
+            // 等一小会儿让点击生效，同时观察画面
+            sleepInterruptible(800)
+
+            // 画面有明显变化 ⇒ 说明点上了（进战斗/转场/黑屏）
+            if (screenChangedRecently()) {
+                note("画面已变化 ⇒ 「开始挑战」生效")
+                clicked = true
+                break
+            }
+
+            if (attempt == 1) {
+                note("画面无变化 ⇒ 第一下可能被吞，补第二下")
+            }
+        }
+        if (!clicked) {
+            note("两下「开始挑战」都没让画面变化，继续等待观察")
+        }
 
         // 点完等战斗加载（黑屏转场）—— 可中断，随时能停
         sleepInterruptible(2500)
@@ -1766,7 +1805,42 @@ internal class PowerTask(
         return true
     }
 
-    // ==================== 战斗 ====================
+    /**
+     * 判断画面在最近 [windowMs] 内是否发生过变化。
+     *
+     * ## 用途
+     *
+     * 「开始挑战」点完之后用它判断**点击到底生效没有**：
+     * - 生效了 → 会进战斗/转场/黑屏，画面必然变化
+     * - 没生效 → 画面纹丝不动，需要补一下
+     *
+     * ## 实现
+     *
+     * 连续采两帧比对（间隔约 250ms）。崩铁的战斗转场是黑屏渐变，
+     * 几帧之内就有明显差异，所以这个窗口足够短也足够灵敏。
+     *
+     * ⚠️ 取帧失败时返回 `true`（保守）—— 宁可多等，也不要因为
+     * 采集异常而反复点击同一个按钮。
+     *
+     * @param windowMs 采样窗口
+     */
+    private fun screenChangedRecently(windowMs: Long = 600L): Boolean {
+        val first = nav.grabFrameMat() ?: return true
+        try {
+            Thread.sleep(windowMs)
+            val second = nav.grabFrameMat() ?: return true
+            try {
+                return nav.frameChanged(first, second)
+            } finally {
+                second.release()
+            }
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            return true
+        } finally {
+            first.release()
+        }
+    }
 
     /** 等待结算的结果。 */
     private enum class SettleResult {
