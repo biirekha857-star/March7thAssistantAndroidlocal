@@ -179,6 +179,19 @@ class LogExportService(
 
             appendRemoteDebugFiles(zos)
 
+            // ## 提权进程写在 /data/local/tmp 的调试产物
+            //
+            // 引擎（`:shizuku_service`）跑在 shell/root 身份下，它的：
+            //   · `engine.log`        引擎完整日志（Ln 落盘）
+            //   · `screenshots/*.png` 超时自动导出的画面
+            //
+            // 全都落在 `/data/local/tmp/maameow/debug/`，**不在 App 的
+            // debug 目录里**，所以 `collect()` 收不到。
+            //
+            // 而这两样恰恰是排查问题的核心证据 —— 之前用户导出的包里
+            // 从来没有它们，只能靠反复猜测。
+            appendEngineDebugDir(zos)
+
             // 提权进程写的文件可能对 App 不可读，逐个跳过，不拖垮整包
             val skipped = mutableListOf<String>()
             for (file in logFiles) {
@@ -346,6 +359,63 @@ class LogExportService(
             append(lines.size).append(" 行）\n")
             append(lines.takeLast(maxLines).joinToString("\n"))
         }
+    }
+
+    /**
+     * 打包提权进程写在 `/data/local/tmp/maameow/debug/` 下的调试产物。
+     *
+     * ## 为什么要单独处理
+     *
+     * App 的日志目录是 `.../files/Maa/debug`（`pathConfig.debugDir`），
+     * 而引擎进程有自己的落盘位置：
+     *
+     * ```
+     * /data/local/tmp/maameow/debug/
+     *   ├── engine.log           ← Ln 落盘的完整引擎日志
+     *   └── screenshots/         ← 超时自动导出的画面
+     *       └── error_HHmmss.png
+     * ```
+     *
+     * 两者不在同一棵目录树下，`LogExportCollector.collect()` 遍历不到。
+     *
+     * ## 权限
+     *
+     * 这些文件由 shell/root 创建，普通 App 身份**读不了**。
+     * 这里走特权服务的 AIDL 拿（`listCoreDebugFiles` / `readCoreDebugFile`），
+     * 没有服务时静默跳过。
+     */
+    private fun appendEngineDebugDir(zos: ZipOutputStream) {
+        val srv = RemoteServiceManager.getInstanceOrNull()
+        if (srv == null) {
+            Timber.w("Remote service not connected, engine debug dir skipped")
+            return
+        }
+
+        val entries = runCatching { srv.listCoreDebugFiles() }
+            .onFailure { Timber.w(it, "listCoreDebugFiles failed") }
+            .getOrNull()
+        if (entries.isNullOrEmpty()) {
+            Timber.i("Engine debug dir is empty or unavailable")
+            return
+        }
+
+        var ok = 0
+        for (rel in entries) {
+            // 只收引擎产物：engine.log 和 screenshots/ 下的图
+            val wanted = rel == "engine.log" || rel.startsWith("screenshots/")
+            if (!wanted) continue
+
+            val pfd = runCatching { srv.openCoreDebugFile(rel) }
+                .onFailure { Timber.w(it, "openCoreDebugFile($rel) failed") }
+                .getOrNull() ?: continue
+            runCatching {
+                android.os.ParcelFileDescriptor.AutoCloseInputStream(pfd).use { input ->
+                    zos.addEntry("engine/$rel", input)
+                }
+                ok++
+            }.onFailure { Timber.w(it, "Failed to write engine entry: %s", rel) }
+        }
+        Timber.i("Exported %d engine debug files", ok)
     }
 
     private fun appendRemoteDebugFiles(zos: ZipOutputStream) {
