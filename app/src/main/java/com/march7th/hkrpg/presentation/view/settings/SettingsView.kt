@@ -87,6 +87,7 @@ import com.march7th.hkrpg.BuildConfig
 import com.march7th.hkrpg.R
 import com.march7th.hkrpg.constant.DefaultDisplayConfig
 import com.march7th.hkrpg.constant.M7aApi
+import com.march7th.hkrpg.data.api.AnnouncementService
 import com.march7th.hkrpg.constant.OFFICIAL_SHIZUKU_PACKAGE
 import com.march7th.hkrpg.constant.Routes
 import com.march7th.hkrpg.data.model.update.UpdateChannel
@@ -141,6 +142,14 @@ fun SettingsView(
     val showChangelog by viewModel.showChangelog.collectAsStateWithLifecycle()
     val currentChangelog by viewModel.currentChangelog.collectAsStateWithLifecycle()
     val debugMode by viewModel.debugMode.collectAsStateWithLifecycle()
+
+    // ==================== 公告 ====================
+    //
+    // 内容从自有静态站拉取，失败退回 APK 内置 md（断网也有内容）。
+    // 直接用服务而不过 ViewModel —— 公告是一次性读取，没有需要持久化的状态。
+    val announcementService: AnnouncementService = koinInject()
+    var showAnnouncement by remember { mutableStateOf(false) }
+    var announcementContent by remember { mutableStateOf<String?>(null) }
     val autoCheckUpdate by viewModel.autoCheckUpdate.collectAsStateWithLifecycle()
     val autoDownloadUpdate by viewModel.autoDownloadUpdate.collectAsStateWithLifecycle()
     val startupBackend by viewModel.startupBackend.collectAsStateWithLifecycle()
@@ -276,6 +285,21 @@ fun SettingsView(
                 ?: stringResource(R.string.settings_about_changelog_empty),
             title = stringResource(R.string.settings_about_changelog),
             onDismiss = { viewModel.onDismissChangelog() }
+        )
+    }
+
+    // ## 公告弹窗
+    //
+    // 复用 ChangelogDialog —— 它本身就是个 Markdown 渲染弹窗，
+    // 公告同样是 md，没必要再造一个。
+    if (showAnnouncement) {
+        ChangelogDialog(
+            content = announcementContent.orEmpty(),
+            title = stringResource(R.string.settings_about_announcement),
+            onDismiss = {
+                showAnnouncement = false
+                announcementContent = null
+            }
         )
     }
 
@@ -735,6 +759,21 @@ fun SettingsView(
                         ) {
                             achievementReporter.reportFeedbackGroupOpened()
                             Misc.openUriSafely(context, M7aApi.TELEGRAM_GROUP_URL)
+                        }
+                        ListItemDivider()
+                        // ## 查看公告
+                        //
+                        // 内容来自自有静态站（`M7aApi.SITE_BASE`），
+                        // 拉不到就用 APK 内置的 md —— 保证断网也有内容。
+                        // 展示复用 ChangelogDialog（它本身就是 Markdown 渲染器）。
+                        SettingClickItem(
+                            title = stringResource(R.string.settings_about_announcement),
+                            contentColor = contentColor
+                        ) {
+                            coroutineScope.launch {
+                                announcementContent = announcementService.load()
+                                showAnnouncement = true
+                            }
                         }
                         ListItemDivider()
                         SettingClickItem(

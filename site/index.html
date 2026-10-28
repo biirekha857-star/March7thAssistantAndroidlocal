@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>March7thAssistant Android Local</title>
+<meta name="description" content="崩坏：星穹铁道 Android 全自动日常助手">
+<style>
+  :root {
+    --gold: #e2b24a;
+    --dark: #0e1018;
+    --card: #1a1e2c;
+    --text: #f5f5f8;
+    --muted: #969aad;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: radial-gradient(ellipse at 50% 0%, #232a40 0%, var(--dark) 60%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                 "PingFang SC", "Microsoft YaHei", sans-serif;
+    line-height: 1.7;
+    min-height: 100vh;
+    padding: 48px 20px 80px;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; }
+
+  header { text-align: center; margin-bottom: 48px; }
+  .logo {
+    width: 96px; height: 96px; border-radius: 24px;
+    background: linear-gradient(135deg, #fff 0%, #ffe8f0 100%);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 44px; margin-bottom: 20px;
+    box-shadow: 0 8px 40px rgba(226, 178, 74, .25);
+  }
+  h1 {
+    font-size: clamp(24px, 5vw, 34px);
+    letter-spacing: -.5px;
+    margin-bottom: 10px;
+  }
+  h1 span { color: var(--gold); }
+  .tagline { color: var(--muted); font-size: 15px; }
+  .badge {
+    display: inline-block; margin-top: 16px;
+    padding: 6px 16px; border-radius: 99px;
+    border: 1px solid var(--gold);
+    color: var(--gold); font-size: 13px;
+  }
+
+  .card {
+    background: var(--card);
+    border: 1px solid rgba(255,255,255,.07);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 20px;
+  }
+  h2 {
+    font-size: 18px; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  h2::before {
+    content: ''; width: 4px; height: 18px;
+    background: var(--gold); border-radius: 2px;
+  }
+
+  .btn {
+    display: block; text-align: center;
+    background: var(--gold); color: #111;
+    font-weight: 600; font-size: 16px;
+    padding: 15px; border-radius: 12px;
+    text-decoration: none; margin-bottom: 12px;
+    transition: transform .15s, box-shadow .15s;
+  }
+  .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(226,178,74,.3);
+  }
+  .btn.secondary {
+    background: transparent; color: var(--gold);
+    border: 1px solid rgba(226,178,74,.4);
+    font-weight: 500; font-size: 14px;
+  }
+
+  ul { list-style: none; }
+  ul li {
+    padding: 9px 0 9px 24px;
+    position: relative;
+    font-size: 14.5px;
+    color: #d8dae4;
+  }
+  ul li::before {
+    content: '·'; position: absolute; left: 8px;
+    color: var(--gold); font-weight: bold;
+  }
+
+  .warn {
+    background: rgba(226,178,74,.08);
+    border-left: 3px solid var(--gold);
+    padding: 14px 18px; border-radius: 8px;
+    font-size: 14px; color: #e6dcc4;
+    margin-top: 16px;
+  }
+
+  .links { display: flex; gap: 12px; flex-wrap: wrap; }
+  .links a {
+    flex: 1; min-width: 140px;
+    text-align: center; padding: 12px;
+    background: rgba(255,255,255,.04);
+    border-radius: 10px;
+    color: var(--text); text-decoration: none;
+    font-size: 14px;
+    transition: background .15s;
+  }
+  .links a:hover { background: rgba(255,255,255,.09); }
+
+  footer {
+    text-align: center; color: var(--muted);
+    font-size: 13px; margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid rgba(255,255,255,.06);
+  }
+  footer a { color: var(--gold); text-decoration: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">🌸</div>
+    <h1>March7thAssistant <span>Android Local</span></h1>
+    <p class="tagline">崩坏：星穹铁道 · 全自动日常助手</p>
+    <div class="badge">0.5.0beta</div>
+  </header>
+
+  <div class="card">
+    <h2>下载</h2>
+    <a class="btn" href="https://github.com/biirekha857-star/March7thAssistantAndroidlocal/releases/latest">
+      前往 GitHub 下载
+    </a>
+    <a class="btn secondary" href="https://github.com/biirekha857-star/March7thAssistantAndroidlocal">
+      查看源码
+    </a>
+  </div>
+
+  <div class="card">
+    <h2>核心功能</h2>
+    <ul>
+      <li><b>虚拟屏后台运行</b> —— 游戏跑在独立显示器上，手机照常使用</li>
+      <li><b>清体力</b> —— 拟造花萼、凝滞虚影、侵蚀隧洞、饰品提取、历战余响</li>
+      <li><b>每日实训</b> —— 勾选式执行，按需完成</li>
+      <li><b>启动游戏 / 邮件 / 关闭游戏</b> —— 全流程无人工干预</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>使用前</h2>
+    <ul>
+      <li>授予 <b>Shizuku</b> 或 <b>Root</b> 权限</li>
+      <li>关闭本应用的省电优化</li>
+      <li>游戏已登录并停在大厅</li>
+    </ul>
+    <div class="warn">
+      ⚠️ 自动化操作存在账号风险，请自行评估。<br>
+      请勿在米游社等官方社区讨论或宣传本项目。
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>遇到问题</h2>
+    <p style="font-size:14.5px;color:#d8dae4;margin-bottom:14px">
+      请先导出日志：<b>设置 → 日志 → 导出日志压缩包</b>。
+      日志包含引擎日志、超时截图和设备信息，是定位问题的关键。
+    </p>
+    <div class="links">
+      <a href="https://github.com/biirekha857-star/March7thAssistantAndroidlocal/issues">GitHub Issues</a>
+      <a href="https://qm.qq.com/q/xG9yvDYFgc">QQ 群</a>
+      <a href="https://t.me/+1NJAK_tgLU81NmFl">Telegram</a>
+    </div>
+  </div>
+
+  <footer>
+    <p>
+      基于 <a href="https://github.com/Aliothmoon/MAA-Meow">MAA-Meow</a> 二次开发 ·
+      AGPL-3.0 开源
+    </p>
+    <p style="margin-top:8px">仅供学习交流，请勿用于商业用途</p>
+  </footer>
+
+</div>
+</body>
+</html>

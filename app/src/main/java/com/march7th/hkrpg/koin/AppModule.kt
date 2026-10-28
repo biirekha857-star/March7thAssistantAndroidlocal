@@ -6,9 +6,11 @@ import android.os.PowerManager
 import com.march7th.hkrpg.data.api.CopilotApiService
 import com.march7th.hkrpg.data.api.ETagCacheManager
 import com.march7th.hkrpg.data.api.GameDataReportService
+import com.march7th.hkrpg.data.api.AnnouncementService
 import com.march7th.hkrpg.data.api.HttpClientHelper
 import com.march7th.hkrpg.data.api.M7aApiService
 import com.march7th.hkrpg.data.api.MirrorChyanApiClient
+import com.march7th.hkrpg.data.api.UpdateChecker
 import com.march7th.hkrpg.data.api.YituliuApiService
 import com.march7th.hkrpg.data.config.CorePathConfig
 import com.march7th.hkrpg.data.datasource.AppDownloader
@@ -144,6 +146,23 @@ val appModule = module {
     }
 
     singleOf(::HttpClientHelper)
+
+    // ==================== 站点内容：公告 + 更新检查 ====================
+    //
+    // 两块内容都从自己的静态站（`M7aApi.SITE_BASE`，Cloudflare Pages）拉取：
+    //
+    // ```
+    // https://m7a.pages.dev/announcement_zh.md
+    // https://m7a.pages.dev/update.json
+    // ```
+    //
+    // 站点尚未部署时两者都会失败，但**都做了静默降级**：
+    //   · 公告 → 退回 APK 内置的 `assets/announcement/*.md`
+    //   · 更新 → 直接不提示
+    //
+    // 所以部署与否都不影响 App 正常使用。
+    singleOf(::AnnouncementService)
+    singleOf(::UpdateChecker)
     single<GameDataReporter> {
         GameDataReportService(
             appContext = androidContext(),

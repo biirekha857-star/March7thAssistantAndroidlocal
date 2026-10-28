@@ -1,0 +1,9 @@
+{
+  "versionCode": 5,
+  "versionName": "0.5.0beta",
+  "apkUrl": "https://github.com/biirekha857-star/March7thAssistantAndroidlocal/releases/latest",
+  "changelog": "0.5.0beta\n\n· 虚拟屏后台运行\n· 清体力支持 6 种副本\n· 每日实训改为勾选式\n· 日志导出包含引擎日志和超时截图\n· 修复长屏设备画面拉伸",
+  "forceUpdate": false,
+  "minSupportedVersionCode": 1,
+  "publishedAt": "2026-10-28"
+}
