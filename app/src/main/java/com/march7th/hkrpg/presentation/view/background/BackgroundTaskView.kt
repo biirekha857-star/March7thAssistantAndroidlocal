@@ -6,8 +6,10 @@ import android.content.res.Configuration
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.os.SystemClock
+import android.graphics.Matrix
+import android.graphics.SurfaceTexture
 import android.view.Surface
-import android.view.SurfaceHolder
+import android.view.TextureView
 import android.view.SurfaceView
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -293,56 +295,67 @@ fun BackgroundTaskView(
                 Box(modifier = Modifier.aspectRatio(DefaultDisplayConfig.ASPECT_RATIO)) {
                     AndroidView(
                         factory = { ctx ->
-                            SurfaceView(ctx).apply {
-                                holder.setFormat(PixelFormat.RGBA_8888)
-                                holder.addCallback(object : SurfaceHolder.Callback {
-                                    override fun surfaceCreated(holder: SurfaceHolder) {
-                                        isSurfaceAvailable = true
-                                        // ## Surface 固定成**游戏分辨率**
-                                        //
-                                        // 关键：SurfaceView 的 buffer 尺寸必须等于
-                                        // 内容尺寸，否则画面会错位 ——
-                                        // 放大预览时视图变大，若 buffer 跟着变大而
-                                        // 内容仍是 1920×1080，就会缩在左上角
-                                        // （实测截图里正是这样）。
-                                        //
-                                        // 让 buffer 固定 1920×1080，SurfaceView 自己
-                                        // 按宽高比缩放到视图大小，画面就始终填满。
-                                        innerScope.launch {
-                                            delay(50)
-                                            val res = currentResolution
-                                            holder.setFixedSize(res.width, res.height)
-                                            Timber.d("Surface 固定尺寸: ${res.width}x${res.height}")
-                                        }
-                                    }
-
-                                    override fun surfaceChanged(
-                                        holder: SurfaceHolder, format: Int, width: Int, height: Int
+                            // ## 用 TextureView 而不是 SurfaceView
+                            //
+                            // ### 为什么必须换
+                            //
+                            // `SurfaceView` 把 buffer **按 1:1 像素**贴到视图上，
+                            // **不做缩放**。当 buffer 是 1920×1080、而视图区域
+                            // 比它小时，右下角会直接超出被裁掉。
+                            //
+                            // 用户实测就是这个表现：
+                            // > 就像是分辨率超出屏幕那样，下边和右边都超出了，
+                            // > 但是比例是正常的
+                            //
+                            // 这正是 SurfaceView 的典型症状：比例没变（1:1 映射
+                            // 当然不会变形），但内容比可视区大。
+                            //
+                            // ### TextureView 的优势
+                            //
+                            // 它是一张纹理，可以用 [TextureView.setTransform] 任意
+                            // 缩放/平移。我们按**等比缩放 + 居中**计算 Matrix，
+                            // 无论视图多大，画面都完整填在可视区内。
+                            TextureView(ctx).apply {
+                                surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+                                    override fun onSurfaceTextureAvailable(
+                                        st: SurfaceTexture, width: Int, height: Int
                                     ) {
-                                        Timber.d("Surface size changed to $width x $height")
-                                        // ## 只接受**游戏分辨率**的 Surface
-                                        //
-                                        // 因为我们 setFixedSize 到了游戏分辨率，
-                                        // 正常回调就是这个尺寸。
-                                        // 其它尺寸（视图还没定型时的瞬时值）
-                                        // 交给引擎会让画面错位，所以跳过。
-                                        val res = currentResolution
-                                        if (width == res.width && height == res.height) {
-                                            if (lastSentSurface != holder.surface) {
-                                                lastSentSurface = holder.surface
-                                                viewModel.onSurfaceAvailable(holder.surface)
-                                            }
-                                        } else {
-                                            Timber.d("跳过非游戏尺寸的 Surface: ${width}x$height（期望 ${res.width}x${res.height}）")
+                                        isSurfaceAvailable = true
+                                        Timber.d("TextureView 可用 ${width}x$height")
+                                        // 用 TextureView 自己的 Surface
+                                        val surface = Surface(st)
+                                        if (lastSentSurface !== surface) {
+                                            lastSentSurface?.let { runCatching { it.release() } }
+                                            lastSentSurface = surface
+                                            viewModel.onSurfaceAvailable(surface)
                                         }
                                     }
 
-                                    override fun surfaceDestroyed(holder: SurfaceHolder) {
+                                    override fun onSurfaceTextureSizeChanged(
+                                        st: SurfaceTexture, width: Int, height: Int
+                                    ) {
+                                        Timber.d("TextureView 尺寸变化 ${width}x$height")
+                                    }
+
+                                    override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
                                         isSurfaceAvailable = false
+                                        lastSentSurface?.let { runCatching { it.release() } }
                                         lastSentSurface = null
                                         viewModel.onSurfaceDestroyed()
+                                        // 返回 true 表示我们负责释放
+                                        return true
                                     }
-                                })
+
+                                    override fun onSurfaceTextureUpdated(st: SurfaceTexture) {
+                                        // ## 每次内容更新时重算缩放
+                                        //
+                                        // 视频源是 1920×1080，TextureView 的可视区
+                                        // 由布局决定，两者几乎永远不等。
+                                        // 这里做**等比缩放 + 居中**（letterbox）：
+                                        // 内容完整显示，多余部分留黑，不会裁切。
+                                        applyFitCenterTransform()
+                                    }
+                                }
                             }
                         }, modifier = Modifier.fillMaxSize()
                     )
@@ -1355,4 +1368,44 @@ private fun RunDurationRemainingRow(deadline: Long) {
             color = MaterialTheme.colorScheme.primary,
         )
     }
+}
+
+/**
+ * 把 [TextureView] 的内容**等比缩放到完整可见**（letterbox）。
+ *
+ * ## 解决什么问题
+ *
+ * 视频源固定 1920×1080，而 TextureView 的可视区由布局决定，
+ * 两者比例几乎永远不相等。
+ *
+ * `SurfaceView` 的处理是**按 1:1 像素贴 buffer**，比可视区大就直接裁掉 ——
+ * 用户实测就是「下边和右边都超出屏幕」。
+ *
+ * 这里改成 `Matrix` 等比缩放：
+ *
+ * ```
+ * scale = min(viewW / srcW, viewH / srcH)
+ * dx    = (viewW - srcW * scale) / 2
+ * dy    = (viewH - srcH * scale) / 2
+ * ```
+ *
+ * 内容**完整显示**，多出来的空间留黑，永远不会裁切或变形。
+ */
+private fun TextureView.applyFitCenterTransform() {
+    val vw = width.toFloat()
+    val vh = height.toFloat()
+    if (vw <= 0f || vh <= 0f) return
+
+    // 视频源尺寸：和我们设置的虚拟屏分辨率一致
+    val sw = DefaultDisplayConfig.WIDTH.toFloat()
+    val sh = DefaultDisplayConfig.HEIGHT.toFloat()
+
+    val scale = minOf(vw / sw, vh / sh)
+    val dx = (vw - sw * scale) / 2f
+    val dy = (vh - sh * scale) / 2f
+
+    val m = Matrix()
+    m.setScale(scale, scale)
+    m.postTranslate(dx, dy)
+    setTransform(m)
 }
