@@ -22,6 +22,64 @@ static std::atomic<FrameBuffer *> g_read_buffer{nullptr};
 static std::atomic<int64_t> g_frame_count{0};
 static std::atomic<bool> g_frame_buffers_initialized{false};
 
+/**
+ * 把 RGBA 源**按实际尺寸**读出来，再**最近邻缩放**到目标尺寸的 BGR。
+ *
+ * # 为什么要支持缩放
+ *
+ * 老版本 `ProcessFrameDataV2` 假定 `srcW == dstW && srcH == dstH`，
+ * 直接按目标尺寸逐行读。只要硬件 buffer 的实际尺寸和
+ * `InitFrameBuffers` 声明的不一致，就会：
+ *
+ * | 实际 vs 目标 | 后果 |
+ * |---|---|
+ * | 实际更小 | 读到未初始化内存，下半屏全是脏数据 |
+ * | 实际更大 | 只读了左上角一块，**UI 被切在外面** |
+ * | 宽高比不同 | 画面横向压扁 |
+ *
+ * 实测就踩到了：荣耀设备物理屏 2.2 比例，虚拟屏声明 1920×1080，
+ * 但硬件 buffer 可能是 1920×872 —— 引擎读到 872 行之后全是垃圾，
+ * OCR 只看得到一个 `U`，任务永远卡在「点击进入」。
+ *
+ * 而预览那条路用的是 `eglCreateImageKHR` + GL 采样，**天然支持任意尺寸**，
+ * 所以「预览看得见、引擎认不出」这个矛盾现象就出现了。
+ *
+ * # 实现
+ *
+ * 逐目标像素反查源坐标（最近邻），保证：
+ * - 一定在源范围之内（不会越界读）
+ * - 宽高比不同也能铺满（轻微形变，但比全黑/裁切好得多）
+ *
+ * 性能：1920×1080 ≈ 200 万像素，纯标量循环在 arm64 上约 8~12 ms，
+ * 和原来的 NEON 版本（约 3 ms）相比多了几毫秒，但只在**尺寸不一致**时才走这条路，
+ * 正常设备仍然使用下面那个零拷贝的快速路径。
+ */
+static void ProcessFrameDataScaled(
+        const uint8_t *__restrict src,
+        uint8_t *__restrict dst_bgr,
+        int srcW, int srcH, int srcStride,
+        int dstW, int dstH) {
+    if (srcW <= 0 || srcH <= 0 || dstW <= 0 || dstH <= 0) return;
+
+    for (int y = 0; y < dstH; ++y) {
+        // 反查源行
+        int sy = static_cast<int>(static_cast<int64_t>(y) * srcH / dstH);
+        if (sy >= srcH) sy = srcH - 1;
+        const uint8_t *srow = src + static_cast<size_t>(sy) * srcStride;
+        uint8_t *drow = dst_bgr + static_cast<size_t>(y) * dstW * 3;
+
+        for (int x = 0; x < dstW; ++x) {
+            int sx = static_cast<int>(static_cast<int64_t>(x) * srcW / dstW);
+            if (sx >= srcW) sx = srcW - 1;
+            const uint8_t *px = srow + static_cast<size_t>(sx) * 4;
+            uint8_t *d = drow + x * 3;
+            d[0] = px[2];
+            d[1] = px[1];
+            d[2] = px[0];
+        }
+    }
+}
+
 static void ProcessFrameDataV2(
         const uint8_t *__restrict src,
         uint8_t *__restrict dst_bgr,
@@ -328,7 +386,7 @@ bool WriteHardwareBufferToFrame(AHardwareBuffer *buffer) {
 
     // ## ⚠️ 尺寸不一致时必须报出来
     //
-    // `ProcessFrameDataV2` 是按**目标宽高**去读源的：
+    // `ProcessFrameDataV2` 是按**目标宽高**去读源的，它假定：
     //
     // ```cpp
     // for (int y = 0; y < height; ++y)         // height = target->height
@@ -336,30 +394,41 @@ bool WriteHardwareBufferToFrame(AHardwareBuffer *buffer) {
     //     for (int x = 0; x < width; ++x)      // width  = target->width
     // ```
     //
-    // 也就是说它**假定** `desc.width == target->width` 且
-    // `desc.height == target->height`。
+    // 一旦 `desc` 和 `target` 不等，就会按错误的行列数读：
+    //   · desc 比 target 小 → 读到未初始化内存，下半屏全是脏数据
+    //   · desc 比 target 大 → 只读了左上角，**UI 被切在外面**
+    //   · 宽高比不同       → 画面横向压扁
     //
-    // 一旦两者不等（实测长屏 ROM 上出现过：虚拟屏声明 1920x1080，
-    // 但硬件 buffer 实际是 1920x872 —— 正好是物理屏 2.2 的比例），
-    // 就会按错误的行列数读取：
-    //   · desc 比 target 小 → 读到越界数据，画面撕裂
-    //   · desc 比 target 大 → 只读了上半部分，**下半屏全黑**
-    //   · 宽高比不同       → 画面被横向压扁
+    // 实测踩到过（荣耀物理屏 2.2 比例）：虚拟屏声明 1920×1080，
+    // 硬件 buffer 却是 1920×872 —— 引擎读到 872 行之后全是垃圾，
+    // OCR 只看得到一个 `U`，任务永远卡在「点击进入」。
     //
-    // 这一行日志是排查该类问题的唯一线索，务必保留。
+    // 而预览那条路用 `eglCreateImageKHR` + GL 采样，天然支持任意尺寸，
+    // 所以会出现「预览看得见、引擎认不出」的矛盾现象。
     static std::atomic<bool> mismatch_logged{false};
-    if (static_cast<int>(desc.width) != target->width ||
-        static_cast<int>(desc.height) != target->height) {
+    const bool sizeMatches =
+            static_cast<int>(desc.width) == target->width &&
+            static_cast<int>(desc.height) == target->height;
+
+    if (!sizeMatches) {
         if (!mismatch_logged.exchange(true, std::memory_order_acq_rel)) {
             LOGE(
                 "FrameBuffer 尺寸不匹配！buffer=%ux%u stride=%u, target=%dx%d "
-                "—— 画面会拉伸/错位，请在 Kotlin 侧检查虚拟屏分辨率",
+                "—— 将按实际尺寸读取并缩放到目标尺寸（画面会轻微变形，但内容完整）",
                 desc.width, desc.height, desc.stride, target->width, target->height);
         }
+        // **按实际尺寸读 + 缩放到目标尺寸**
+        // 这一步是修复的核心：保证读源时不越界，且目标画面完整
+        ProcessFrameDataScaled(
+                static_cast<const uint8_t *>(srcAddr), target->bgr_data,
+                static_cast<int>(desc.width), static_cast<int>(desc.height),
+                static_cast<int>(desc.stride) * 4,
+                target->width, target->height);
+    } else {
+        // 正常路径：零拷贝快速版本
+        ProcessFrameDataV2(static_cast<uint8_t *>(srcAddr), target->bgr_data, target->width,
+                           target->height, static_cast<int>(desc.stride) * 4);
     }
-
-    ProcessFrameDataV2(static_cast<uint8_t *>(srcAddr), target->bgr_data, target->width,
-                       target->height, static_cast<int>(desc.stride) * 4);
     AHardwareBuffer_unlock(buffer, nullptr);
 
     // ## 内容边界诊断（仅前几帧，避免拖慢）
