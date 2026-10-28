@@ -239,10 +239,77 @@ void ReleaseFrameBuffers() {
     g_frame_count.store(0, std::memory_order_release);
 }
 
-bool WriteHardwareBufferToFrame(AHardwareBuffer *buffer) {
-    if (!buffer || !g_frame_buffers_initialized.load(std::memory_order_acquire)) {
-        return false;
+/**
+ * 分析一帧的内容分布，判断有没有黑边、内容占了多大区域。
+ *
+ * ## 为什么需要
+ *
+ * 排查「画面出去了」这类问题时，只知道帧尺寸（1920×1080）是不够的 ——
+ * **帧尺寸对、但内容只占一部分**才是真正的症状。
+ *
+ * 实测症状：荣耀设备上游戏卡在开屏，预览能看到 UI 但「点击进入」看不到，
+ * 超时截图里全是星空背景。怀疑是游戏按物理屏比例（2.2）渲染了
+ * 1920×872 的内容，剩下 208 行是空的。
+ *
+ * ## 统计方式
+ *
+ * 逐行采样（每 4 行取一行，避免太慢），统计这行的平均亮度：
+ * - 平均亮度 < 阈值 → 认为是"黑行"（空白/黑边）
+ * - 记录第一个和最后一个非黑行的 y 坐标
+ *
+ * 输出形如：
+ * ```
+ * 内容边界: 非黑行 0..871（共 872 行），下方黑行 208 行，内容占比 80.7%
+ * ```
+ */
+static void AnalyzeFrameContent(const uint8_t *bgr, int width, int height) {
+    if (!bgr || width <= 0 || height <= 0) return;
+
+    const int DARK_THRESHOLD = 24;  // 平均亮度低于此值视为黑行
+    int firstNonDark = -1;
+    int lastNonDark = -1;
+    int darkRows = 0;
+
+    for (int y = 0; y < height; y += 4) {
+        const uint8_t *row = bgr + static_cast<size_t>(y) * width * 3;
+        long sum = 0;
+        // 横向也采样，每 8 个像素取一个
+        int samples = 0;
+        for (int x = 0; x < width; x += 8) {
+            const uint8_t *px = row + x * 3;
+            sum += px[0] + px[1] + px[2];
+            samples++;
+        }
+        int avg = samples > 0 ? static_cast<int>(sum / (samples * 3)) : 0;
+        if (avg < DARK_THRESHOLD) {
+            darkRows++;
+        } else {
+            if (firstNonDark < 0) firstNonDark = y;
+            lastNonDark = y;
+        }
     }
+
+    if (firstNonDark < 0) {
+        LOGE("内容分析: 整帧全黑（%dx%d）", width, height);
+        return;
+    }
+
+    int contentRows = lastNonDark - firstNonDark + 1;
+    float ratio = 100.0f * contentRows / height;
+    LOGI(
+        "内容分析: 非黑行 %d..%d（共 %d 行），黑行 %d，内容占比 %.1f%% (帧 %dx%d)",
+        firstNonDark, lastNonDark, contentRows, darkRows, ratio, width, height);
+
+    // 内容明显少于帧高 → 下方或上方有大片空白，这就是"画面出去了"
+    if (ratio < 88.0f) {
+        LOGE(
+            "内容占比仅 %.1f%%！画面没有铺满，游戏可能按物理屏比例渲染了。"
+            "若下方有黑边，说明「点击进入」被切在画面外",
+            ratio);
+    }
+}
+
+bool WriteHardwareBufferToFrame(AHardwareBuffer *buffer) {
 
     FrameBuffer *target = AcquireWriteBuffer();
     if (!target) {
@@ -294,6 +361,22 @@ bool WriteHardwareBufferToFrame(AHardwareBuffer *buffer) {
     ProcessFrameDataV2(static_cast<uint8_t *>(srcAddr), target->bgr_data, target->width,
                        target->height, static_cast<int>(desc.stride) * 4);
     AHardwareBuffer_unlock(buffer, nullptr);
+
+    // ## 内容边界诊断（仅前几帧，避免拖慢）
+    //
+    // 排查「画面出去了」这类问题时，光是知道帧尺寸不够 ——
+    // 还需要知道**内容实际占了画面多少**。
+    //
+    // 这里扫描每行的亮度，统计：
+    //   · 全黑行数（上下黑边）
+    //   · 首个非黑行 / 最后非黑行（内容边界）
+    //
+    // 如果内容只占上半部分（比如 872/1080），就说明游戏按物理屏
+    // 比例（荣耀 2.2）渲染，下半是空白 —— 正是「点击进入被切掉」的原因。
+    static std::atomic<int> analyzed{0};
+    if (analyzed.fetch_add(1, std::memory_order_acq_rel) < 3) {
+        AnalyzeFrameContent(target->bgr_data, target->width, target->height);
+    }
 
     target->frame_count = g_frame_count.fetch_add(1, std::memory_order_acq_rel) + 1;
     CommitWriteBuffer(target);
