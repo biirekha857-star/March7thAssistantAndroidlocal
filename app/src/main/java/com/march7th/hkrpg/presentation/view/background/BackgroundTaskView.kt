@@ -292,24 +292,7 @@ fun BackgroundTaskView(
             Box(
                 modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center
             ) {
-                // ## ⚠️ 内层必须 fillMaxSize + aspectRatio 组合
-                //
-                // 之前只写了 `aspectRatio(1.778f)`，没有 `fillMaxSize()` ——
-                // 于是这个 Box 会**收缩到内容尺寸**，即使用 `fillMaxSize` 撑开
-                // 也可能因为约束传递问题变成很小的一块。
-                //
-                // 而 `SurfaceView` 的 buffer 固定 1920×1080，按 1:1 贴上去
-                // 就会**超出这个小盒子**，右下角被裁掉 —— 正是用户看到的现象：
-                // > 就像是分辨率超出屏幕那样，下边和右边都超出了，但是比例是正常的
-                //
-                // 现在改成 `fillMaxSize().aspectRatio(...)`：
-                // 先在可用空间里撑满，再按 16:9 收窄（居中），
-                // 保证视图尺寸**精确是 16:9**，buffer 贴上去刚好填满。
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(DefaultDisplayConfig.ASPECT_RATIO),
-                ) {
+                Box(modifier = Modifier.aspectRatio(DefaultDisplayConfig.ASPECT_RATIO)) {
                     AndroidView(
                         factory = { ctx ->
                             // ## 用 TextureView 而不是 SurfaceView
