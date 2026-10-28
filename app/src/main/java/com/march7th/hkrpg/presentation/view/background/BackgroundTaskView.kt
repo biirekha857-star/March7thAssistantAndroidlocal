@@ -3,13 +3,12 @@ package com.march7th.hkrpg.presentation.view.background
 import android.app.Activity
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
-import android.graphics.Matrix
 import android.graphics.PixelFormat
 import android.graphics.Rect
-import android.graphics.SurfaceTexture
 import android.os.SystemClock
 import android.view.Surface
-import android.view.TextureView
+import android.view.SurfaceHolder
+import android.view.SurfaceView
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.tween
@@ -294,66 +293,56 @@ fun BackgroundTaskView(
                 Box(modifier = Modifier.aspectRatio(DefaultDisplayConfig.ASPECT_RATIO)) {
                     AndroidView(
                         factory = { ctx ->
-                            // ## TextureView 替代 SurfaceView（只改这一处）
-                            //
-                            // ### 为什么要换
-                            //
-                            // `SurfaceView` 把 buffer **按 1:1 像素**贴到视图上，
-                            // **完全不缩放**。预览框正常大小（约 1000×560），
-                            // 而 buffer 是 1920×1080 ——
-                            // 于是画面**右下角整块超出预览框被裁掉**，用户看不到。
-                            //
-                            // 用户手绘示意：
-                            // > 红色是预览，黑色是游戏画面，游戏比预览大，右下超出
-                            // > 至于超出部分我看不到
-                            //
-                            // 这正是 SurfaceView 的固有行为：比例不变（1:1 当然不变形），
-                            // 但内容比可视区大。
-                            //
-                            // ### 为什么用 TextureView
-                            //
-                            // 它是一张纹理，支持 `setTransform(Matrix)`。
-                            // 按**等比缩放**算出 Matrix，画面完整填进预览框。
-                            //
-                            // ### 对正常手机无影响
-                            //
-                            // 布局层仍是 `aspectRatio(16/9)`，视图本来就是 16:9 时
-                            // scale 刚好填满、平移为 0 —— 和原来完全一致。
-                            TextureView(ctx).apply {
-                                surfaceTextureListener = object : TextureView.SurfaceTextureListener {
-                                    override fun onSurfaceTextureAvailable(
-                                        st: SurfaceTexture, width: Int, height: Int
-                                    ) {
+                            SurfaceView(ctx).apply {
+                                holder.setFormat(PixelFormat.RGBA_8888)
+                                holder.addCallback(object : SurfaceHolder.Callback {
+                                    override fun surfaceCreated(holder: SurfaceHolder) {
                                         isSurfaceAvailable = true
-                                        Timber.d("TextureView 可用 ${width}x$height")
-                                        val surface = Surface(st)
-                                        if (lastSentSurface !== surface) {
-                                            lastSentSurface?.let { runCatching { it.release() } }
-                                            lastSentSurface = surface
-                                            viewModel.onSurfaceAvailable(surface)
+                                        // ## Surface 固定成**游戏分辨率**
+                                        //
+                                        // 关键：SurfaceView 的 buffer 尺寸必须等于
+                                        // 内容尺寸，否则画面会错位 ——
+                                        // 放大预览时视图变大，若 buffer 跟着变大而
+                                        // 内容仍是 1920×1080，就会缩在左上角
+                                        // （实测截图里正是这样）。
+                                        //
+                                        // 让 buffer 固定 1920×1080，SurfaceView 自己
+                                        // 按宽高比缩放到视图大小，画面就始终填满。
+                                        innerScope.launch {
+                                            delay(50)
+                                            val res = currentResolution
+                                            holder.setFixedSize(res.width, res.height)
+                                            Timber.d("Surface 固定尺寸: ${res.width}x${res.height}")
                                         }
-                                        applyFitCenterTransform()
                                     }
 
-                                    override fun onSurfaceTextureSizeChanged(
-                                        st: SurfaceTexture, width: Int, height: Int
+                                    override fun surfaceChanged(
+                                        holder: SurfaceHolder, format: Int, width: Int, height: Int
                                     ) {
-                                        Timber.d("TextureView 尺寸变化 ${width}x$height")
-                                        applyFitCenterTransform()
+                                        Timber.d("Surface size changed to $width x $height")
+                                        // ## 只接受**游戏分辨率**的 Surface
+                                        //
+                                        // 因为我们 setFixedSize 到了游戏分辨率，
+                                        // 正常回调就是这个尺寸。
+                                        // 其它尺寸（视图还没定型时的瞬时值）
+                                        // 交给引擎会让画面错位，所以跳过。
+                                        val res = currentResolution
+                                        if (width == res.width && height == res.height) {
+                                            if (lastSentSurface != holder.surface) {
+                                                lastSentSurface = holder.surface
+                                                viewModel.onSurfaceAvailable(holder.surface)
+                                            }
+                                        } else {
+                                            Timber.d("跳过非游戏尺寸的 Surface: ${width}x$height（期望 ${res.width}x${res.height}）")
+                                        }
                                     }
 
-                                    override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
+                                    override fun surfaceDestroyed(holder: SurfaceHolder) {
                                         isSurfaceAvailable = false
-                                        lastSentSurface?.let { runCatching { it.release() } }
                                         lastSentSurface = null
                                         viewModel.onSurfaceDestroyed()
-                                        return true
                                     }
-
-                                    override fun onSurfaceTextureUpdated(st: SurfaceTexture) {
-                                        applyFitCenterTransform()
-                                    }
-                                }
+                                })
                             }
                         }, modifier = Modifier.fillMaxSize()
                     )
@@ -1366,34 +1355,4 @@ private fun RunDurationRemainingRow(deadline: Long) {
             color = MaterialTheme.colorScheme.primary,
         )
     }
-}
-
-/**
- * 把 [TextureView] 的内容**等比缩放以完整显示**。
- *
- * ```
- * scale = min(viewW / srcW, viewH / srcH)
- * dx    = (viewW - srcW * scale) / 2
- * dy    = (viewH - srcH * scale) / 2
- * ```
- *
- * - 视图比例恰好 16:9 → scale 刚好填满，dx = dy = 0（无黑边）
- * - 视图偏小/偏大     → 等比缩放 + 居中，**内容完整可见，永不裁切**
- */
-private fun TextureView.applyFitCenterTransform() {
-    val vw = width.toFloat()
-    val vh = height.toFloat()
-    if (vw <= 0f || vh <= 0f) return
-
-    val sw = DefaultDisplayConfig.WIDTH.toFloat()
-    val sh = DefaultDisplayConfig.HEIGHT.toFloat()
-
-    val scale = minOf(vw / sw, vh / sh)
-    val dx = (vw - sw * scale) / 2f
-    val dy = (vh - sh * scale) / 2f
-
-    val m = Matrix()
-    m.setScale(scale, scale)
-    m.postTranslate(dx, dy)
-    setTransform(m)
 }
