@@ -59,6 +59,22 @@ object StarRailTaskRegistry {
             verified = true,
             hidden = true,
         ),
+        // ## 云游戏启动
+        //
+        // 和「启动游戏」并列，让用户自己选：
+        //   · 用本地客户端  → 选「启动游戏」
+        //   · 用云游戏客户端 → 选「启动云游戏」
+        //
+        // 云游戏包名 `com.miHoYo.cloudgames.hkrpg`，启动流程完全不同，
+        // 所以单独一个任务而不是在 StartUp 里加开关。
+        TaskDef(
+            type = "CloudGameStartUp",
+            label = "启动云游戏",
+            source = "tasks/game/cloudgame.py",
+            // ⚠️ 尚未实机验证：启动步骤等实测确认后再改成 true
+            verified = false,
+            needOcr = true,
+        ),
         TaskDef("Mail", "邮件", "tasks/reward/mail.py", true),
         TaskDef("Power", "清体力", "tasks/power/power.py", false, needOcr = true),
         TaskDef("Daily", "每日实训", "tasks/daily/daily.py", false, needOcr = true),

@@ -19,6 +19,16 @@ enum class CoreTaskType(val value: String) {
     // ==================== 崩铁任务（当前生效）====================
     // 基础
     START_UP("StartUp"),
+    /**
+     * 云游戏启动。
+     *
+     * 《崩坏：星穹铁道》的**云游戏客户端**（`com.miHoYo.cloudgames.hkrpg`）
+     * 启动流程与本地客户端完全不同 —— 要先拉起云游戏启动器、分配云端实例、
+     * 建立串流，之后才进游戏。
+     *
+     * 拆成独立任务，用户在任务链里自己选。
+     */
+    CLOUD_GAME_START_UP("CloudGameStartUp"),
     CLOSE_DOWN("CloseDown"),
     // 奖励
     MAIL("Mail"),

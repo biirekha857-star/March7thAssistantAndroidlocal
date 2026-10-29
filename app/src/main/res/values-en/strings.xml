@@ -2639,7 +2639,14 @@ Without a build target, it grinds the first domain in the default order.</string
 <string name="panel_task_type_daily">Daily Training</string>
 <string name="panel_task_type_start_up">Start Game</string>
 <string name="task_type_close_down">Close Game</string>
-<string name="task_type_mail">Mail</string>
+<string name="task_type_cloud_game_start_up">Launch Cloud Game</string>
+    <string name="panel_task_type_cloud_game_start_up">Launch Cloud Game</string>
+    <string name="panel_cloud_game_hint">Launch via the cloud gaming client. Package com.miHoYo.cloudgames.hkrpg; the startup flow differs from the local client — a cloud instance is allocated first, then streamed.</string>
+    <string name="panel_cloud_game_package_title">Cloud package name</string>
+    <string name="panel_cloud_game_package_desc">com.miHoYo.cloudgames.hkrpg for the official client; change for other channels</string>
+    <string name="panel_cloud_game_timeout_title">Startup timeout</string>
+    <string name="panel_cloud_game_timeout_desc">Cloud streaming needs instance allocation, so allow 300 seconds or more</string>
+        <string name="task_type_mail">Mail</string>
 <string name="task_type_power">Spend Power</string>
 <string name="task_type_daily">Daily Training</string>
 <string name="panel_daily_checklist_hint">Check the training items to do today. They run in order, returning to the lobby after each, then rewards are claimed at the end.</string>

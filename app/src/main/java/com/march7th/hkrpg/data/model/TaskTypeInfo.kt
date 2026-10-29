@@ -62,6 +62,18 @@ enum class TaskTypeInfo(
         defaultConfig = { StarRailTaskConfig("StartUp") },
         hidden = true,
     ),
+    /**
+     * 云游戏启动。
+     *
+     * 和 [START_UP] 并列出现在任务列表里 —— 用户想让任务链先启动
+     * **云游戏客户端**（`com.miHoYo.cloudgames.hkrpg`）就选这个，
+     * 想用本地客户端就选「启动游戏」。
+     */
+    CLOUD_GAME_START_UP(
+        taskType = "CloudGameStartUp",
+        nameRes = R.string.task_type_cloud_game_start_up,
+        defaultConfig = { CloudGameTaskConfig() },
+    ),
     MAIL(
         taskType = "Mail",
         nameRes = R.string.task_type_mail,
