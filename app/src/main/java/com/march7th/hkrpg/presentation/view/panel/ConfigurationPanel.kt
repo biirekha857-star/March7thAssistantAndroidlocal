@@ -1,7 +1,5 @@
 package com.march7th.hkrpg.presentation.view.panel
 
-import kotlin.math.roundToInt
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -60,7 +58,6 @@ import com.march7th.hkrpg.data.model.MallConfig
 import com.march7th.hkrpg.data.model.ReclamationConfig
 import com.march7th.hkrpg.data.model.RecruitConfig
 import com.march7th.hkrpg.data.model.PowerInstance
-import com.march7th.hkrpg.data.model.CloudGameTaskConfig
 import com.march7th.hkrpg.data.model.DailyTaskConfig
 import com.march7th.hkrpg.data.model.PowerTaskConfig
 import com.march7th.hkrpg.data.model.RoguelikeConfig
@@ -203,11 +200,6 @@ fun TaskConfigPanel(
 
                         // 每日实训：选副本（排除周本）+ 是否自动消耗体力
                         is DailyTaskConfig -> DailyConfigPanel(
-                            config = cfg, onConfigChange = onConfigChange
-                        )
-
-                        // 启动云游戏：包名 + 超时
-                        is CloudGameTaskConfig -> CloudGameConfigPanel(
                             config = cfg, onConfigChange = onConfigChange
                         )
                     }
@@ -909,107 +901,9 @@ private fun taskTypeLabel(typeInfo: TaskTypeInfo): String {
     return when (typeInfo) {
         // 崩铁任务（成就已删除）
         TaskTypeInfo.START_UP -> stringResource(R.string.panel_task_type_start_up)
-        TaskTypeInfo.CLOUD_GAME_START_UP ->
-            stringResource(R.string.panel_task_type_cloud_game_start_up)
         TaskTypeInfo.MAIL -> stringResource(R.string.panel_task_type_mail)
         TaskTypeInfo.POWER -> stringResource(R.string.panel_task_type_power)
         TaskTypeInfo.DAILY -> stringResource(R.string.panel_task_type_daily)
         TaskTypeInfo.CLOSE_DOWN -> stringResource(R.string.panel_task_type_close_down)
-    }
-}
-
-/**
- * 云游戏启动的配置面板。
- *
- * 只暴露两个参数：包名和超时。启动流程本身是固定的，用户不需要调。
- */
-@Composable
-private fun CloudGameConfigPanel(
-    config: CloudGameTaskConfig,
-    onConfigChange: (TaskParamProvider) -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
-    ) {
-        Surface(
-            shape = RoundedCornerShape(8.dp),
-            color = MaterialTheme.colorScheme.tertiaryContainer,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier.padding(12.dp),
-                verticalAlignment = Alignment.Top
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                    tint = MaterialTheme.colorScheme.onTertiaryContainer
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    text = stringResource(R.string.panel_cloud_game_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer,
-                    lineHeight = 18.sp
-                )
-            }
-        }
-
-        Text(
-            text = stringResource(R.string.panel_cloud_game_package_title),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Medium
-        )
-        Text(
-            text = stringResource(R.string.panel_cloud_game_package_desc),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        OutlinedTextField(
-            value = config.packageName,
-            onValueChange = { onConfigChange(config.copy(packageName = it)) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            textStyle = MaterialTheme.typography.bodyMedium
-        )
-
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-
-        Text(
-            text = stringResource(R.string.panel_cloud_game_timeout_title),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary,
-            fontWeight = FontWeight.Medium
-        )
-        Text(
-            text = stringResource(R.string.panel_cloud_game_timeout_desc),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "${config.startupTimeoutSec} 秒",
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.weight(1f)
-            )
-            Slider(
-                value = config.startupTimeoutSec.toFloat(),
-                onValueChange = {
-                    onConfigChange(config.copy(startupTimeoutSec = it.roundToInt()))
-                },
-                valueRange = 60f..600f,
-                steps = 17,
-                modifier = Modifier.weight(2f)
-            )
-        }
     }
 }

@@ -1,6 +1,5 @@
 package com.march7th.hkrpg.starrail
 
-import com.march7th.hkrpg.data.model.CloudGameTaskConfig
 import android.os.SystemClock
 import com.march7th.hkrpg.starrail.engine.GameLauncher
 import com.march7th.hkrpg.starrail.engine.ImageUtils
@@ -130,11 +129,6 @@ class StarRailTasks(
         return when (type) {
             // ---- A: 启动游戏 ----
             "StartUp" -> startUp()
-            // ---- A': 启动云游戏 ----
-            //
-            // 云游戏客户端（com.miHoYo.cloudgames.hkrpg）的启动流程和本地
-            // 客户端完全不同，所以单独一条分支，不复用 startUp()。
-            "CloudGameStartUp" -> cloudGameStartUp(params)
             // ---- B: 领邮件 ----
             "Mail" -> mail()
             // ---- 清体力 ----
@@ -147,160 +141,6 @@ class StarRailTasks(
             "Dump" -> dump()
             else -> TaskResult(type, false, "尚未实现")
         }
-    }
-
-    // ============ A'. 启动云游戏 ============
-    /**
-     * 启动**云游戏客户端**（`com.miHoYo.cloudgames.hkrpg`）并推进到可操作状态。
-     *
-     * # 为什么单独实现，不复用 [startUp]
-     *
-     * 本地客户端和云游戏的启动是**两条完全不同的链路**：
-     *
-     * | 环节 | 本地客户端 | 云游戏 |
-     * |---|---|---|
-     * | 启动 | `am start` 直接拉起游戏 | 拉起**云游戏启动器** |
-     * | 中间态 | 热更 → 标题页 | **分配云端实例 → 建流 → 串流加载** |
-     * | 进入 | 点「点击进入」 | 待定 |
-     * | 超时 | 180 秒够 | 要 300 秒以上（排队 + 建流） |
-     *
-     * 所以这里不复用 `startUp()` 的任何逻辑，独立实现。
-     *
-     * # ⚠️ 当前状态：**框架已就绪，启动步骤待补充**
-     *
-     * 下面的 `TODO` 标记处是实际要填的流程。把每一步的：
-     * - 界面特征（用什么文字/模板判断到了哪一步）
-     * - 该点什么（坐标 or 识别）
-     * - 每步大概等多久
-     *
-     * 告诉我，我按实测顺序填进去。
-     *
-     * @param params JSON：`{"packageName":"...","startupTimeoutSec":300}`
-     */
-    private fun cloudGameStartUp(params: String): TaskResult {
-        val nav = navigator
-            ?: return TaskResult("CloudGameStartUp", false, "导航器未就绪")
-        val auto = this.auto
-            ?: return TaskResult("CloudGameStartUp", false, "自动化通道未就绪")
-
-        fun str(key: String, def: String): String =
-            Regex("\"$key\"\\s*:\\s*\"([^\"]*)\"")
-                .find(params)?.groupValues?.get(1)?.takeIf { it.isNotBlank() } ?: def
-
-        fun int(key: String, def: Int): Int =
-            Regex("\"$key\"\\s*:\\s*\"?(\\d+)\"?")
-                .find(params)?.groupValues?.get(1)?.toIntOrNull() ?: def
-
-        val pkg = str("packageName", CloudGameTaskConfig.DEFAULT_PACKAGE)
-        val timeoutSec = int("startupTimeoutSec", 300)
-
-        Ln.i("$TAG: 启动云游戏 pkg=$pkg timeout=${timeoutSec}s")
-
-        // ① 前置检查：云游戏客户端装了吗
-        if (!GameLauncher.isInstalled(pkg)) {
-            return TaskResult(
-                "CloudGameStartUp", false,
-                "未安装云游戏客户端（$pkg）。请先安装《崩坏：星穹铁道》云游戏版",
-            )
-        }
-
-        // ② 拉起云游戏到虚拟屏
-        //
-        // 和本地客户端一样，要先 forceStop 再 startOnDisplay ——
-        // 否则可能复用主屏上的实例。
-        val onDisplay = GameLauncher.currentDisplayOf(pkg)
-        if (onDisplay != displayId) {
-            if (onDisplay >= 0) {
-                Ln.w("$TAG: 云游戏在 display=$onDisplay（不是虚拟屏），先强杀重启")
-                GameLauncher.forceStop(pkg)
-                Thread.sleep(2500)
-            }
-            if (!GameLauncher.startOnDisplay(pkg, displayId)) {
-                return TaskResult("CloudGameStartUp", false, "云游戏启动指令被拒绝")
-            }
-            if (!GameLauncher.ensureOnDisplay(pkg, displayId)) {
-                return TaskResult(
-                    "CloudGameStartUp", false,
-                    "云游戏未落到虚拟屏（display=${GameLauncher.currentDisplayOf(pkg)}）",
-                )
-            }
-        }
-
-        // ③ 等第一帧
-        if (!waitForFrame(timeoutSec = 60)) {
-            return TaskResult("CloudGameStartUp", false, "启动后未采到画面")
-        }
-
-        // ==================== TODO: 云游戏专属启动步骤 ====================
-        //
-        // 从这里开始是云游戏特有的流程，本地客户端那套「等点击进入」
-        // 不适用。需要实测确认后按顺序填：
-        //
-        //   步骤1. 云游戏启动器界面 —— 特征？点哪？
-        //   步骤2. 实例分配 / 排队 —— 特征？最长等多久？
-        //   步骤3. 串流建立 —— 怎么判断建流完成？
-        //   步骤4. 游戏内加载 —— 是否和本地一样有「点击进入」？
-        //   步骤5. 确认进大厅 —— 用什么做锚点？
-        //
-        // 现阶段先做**兜底判断**：等待一段固定时间，然后看是否已经
-        // 出现可操作画面（大厅锚点）。这能跑通就说明链路没问题，
-        // 跑不通再按上面五步细化。
-        // =================================================================
-        Ln.i("$TAG: 云游戏：等待启动完成（最长 ${timeoutSec}s）")
-
-        val deadline = SystemClock.uptimeMillis() + timeoutSec * 1000L
-        var lastReport = 0L
-        var entered = false
-
-        while (SystemClock.uptimeMillis() < deadline) {
-            if (isCancelled()) {
-                return TaskResult("CloudGameStartUp", false, "任务已被用户停止")
-            }
-
-            // 用大厅锚点判断是否已经进到可操作状态
-            if (nav.isAt(ScreenNavigator.Screen.MAIN)) {
-                entered = true
-                break
-            }
-
-            // 每 10 秒报一次进度，方便看日志定位卡在哪
-            val now = SystemClock.uptimeMillis()
-            if (now - lastReport > 10_000) {
-                lastReport = now
-                val waited = (now - (deadline - timeoutSec * 1000L)) / 1000
-                Ln.i("$TAG: 云游戏启动中…（已等 ${waited}s）")
-                // 顺便打一次全屏 OCR，出问题时能看出卡在哪个界面
-                runCatching {
-                    val all = nav.readAllText()
-                    if (all.isNotEmpty()) {
-                        Ln.i(
-                            "$TAG: [云游戏诊断 ${waited}s] OCR ${all.size} 条: " +
-                                all.take(12).joinToString(" | ") { it.text },
-                        )
-                    }
-                }
-            }
-
-            Thread.sleep(2_000)
-        }
-
-        if (!entered) {
-            // 超时了 —— 导出画面，方便分析卡在哪一步
-            runCatching {
-                val s = nav.exportFrame("cloudgame_timeout")
-                Ln.e("$TAG: 云游戏启动超时，已导出画面 -> $s")
-            }
-            return TaskResult(
-                "CloudGameStartUp", false,
-                "云游戏启动超时（${timeoutSec}s）—— 启动步骤尚未实现，等待补充实测流程",
-            )
-        }
-
-        Ln.i("$TAG: 云游戏：已进入大厅")
-        return TaskResult(
-            "CloudGameStartUp", true,
-            "云游戏启动成功（${auto.width}x${auto.height}）",
-        )
     }
 
     // ============ A. 启动游戏 ============

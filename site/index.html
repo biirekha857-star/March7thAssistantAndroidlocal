@@ -3,566 +3,189 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>March7thAssistant Android Local · 崩铁全自动日常</title>
-<meta name="description" content="崩坏：星穹铁道 Android 全自动日常助手。虚拟屏后台运行，清体力、每日实训、邮件一键完成。">
-<meta property="og:title" content="March7thAssistant Android Local">
-<meta property="og:description" content="崩铁全自动日常助手 · 虚拟屏后台运行">
-<meta property="og:image" content="/img/logo.webp">
-<link rel="icon" href="/img/logo.webp">
+<title>March7thAssistant Android Local</title>
+<meta name="description" content="崩坏：星穹铁道 Android 全自动日常助手">
 <style>
   :root {
     --gold: #e2b24a;
-    --bg: #0a0c12;
-    --bg2: #11141d;
-    --card: #161a26;
-    --line: rgba(255,255,255,.08);
-    --text: #f2f3f7;
-    --muted: #8b90a3;
-    --radius: 20px;
+    --dark: #0e1018;
+    --card: #1a1e2c;
+    --text: #f5f5f8;
+    --muted: #969aad;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
-
   body {
-    background: var(--bg);
+    background: radial-gradient(ellipse at 50% 0%, #232a40 0%, var(--dark) 60%);
     color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
-                 "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-    line-height: 1.75;
-    overflow-x: hidden;
-    -webkit-font-smoothing: antialiased;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                 "PingFang SC", "Microsoft YaHei", sans-serif;
+    line-height: 1.7;
+    min-height: 100vh;
+    padding: 48px 20px 80px;
   }
+  .wrap { max-width: 760px; margin: 0 auto; }
 
-  .glow {
-    position: fixed; border-radius: 50%; filter: blur(120px);
-    pointer-events: none; z-index: 0; opacity: .5;
+  header { text-align: center; margin-bottom: 48px; }
+  .logo {
+    width: 96px; height: 96px; border-radius: 24px;
+    background: linear-gradient(135deg, #fff 0%, #ffe8f0 100%);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 44px; margin-bottom: 20px;
+    box-shadow: 0 8px 40px rgba(226, 178, 74, .25);
   }
-  .glow-1 { width: 600px; height: 600px; top: -200px; left: 50%;
-            transform: translateX(-50%); background: rgba(226,178,74,.22); }
-  .glow-2 { width: 500px; height: 500px; top: 40%; left: -200px;
-            background: rgba(70,120,220,.13); }
-  .glow-3 { width: 500px; height: 500px; bottom: 0; right: -200px;
-            background: rgba(200,80,140,.10); }
-
-  .wrap { position: relative; z-index: 1; max-width: 1120px;
-          margin: 0 auto; padding: 0 24px; }
-
-  nav {
-    position: sticky; top: 0; z-index: 50;
-    backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-    background: rgba(10,12,18,.72);
-    border-bottom: 1px solid var(--line);
-  }
-  .nav-inner {
-    max-width: 1120px; margin: 0 auto; padding: 14px 24px;
-    display: flex; align-items: center; gap: 12px;
-  }
-  .nav-logo { width: 32px; height: 32px; border-radius: 9px; object-fit: cover; }
-  .nav-title { font-weight: 650; font-size: 15px; letter-spacing: -.2px; }
-  .nav-spacer { flex: 1; }
-  .nav-link {
-    color: var(--muted); text-decoration: none; font-size: 14px;
-    padding: 6px 12px; border-radius: 8px; transition: .2s;
-  }
-  .nav-link:hover { color: var(--text); background: rgba(255,255,255,.06); }
-  @media (max-width: 640px) { .nav-link { display: none; } }
-
-  .hero { padding: 90px 0 70px; text-align: center; }
-
-  .hero-logo {
-    width: 108px; height: 108px; border-radius: 26px;
-    object-fit: cover; margin-bottom: 28px;
-    box-shadow: 0 24px 70px rgba(226,178,74,.28), 0 0 0 1px rgba(255,255,255,.07);
-    animation: float 6s ease-in-out infinite;
-  }
-  @keyframes float {
-    0%,100% { transform: translateY(0); }
-    50% { transform: translateY(-10px); }
-  }
-
   h1 {
-    font-size: clamp(30px, 5.5vw, 52px);
-    font-weight: 750; letter-spacing: -1.5px; line-height: 1.15;
-    margin-bottom: 18px;
+    font-size: clamp(24px, 5vw, 34px);
+    letter-spacing: -.5px;
+    margin-bottom: 10px;
   }
-  h1 .accent {
-    background: linear-gradient(120deg, var(--gold) 0%, #f0d492 50%, var(--gold) 100%);
-    -webkit-background-clip: text; background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-
-  .hero-sub {
-    font-size: clamp(15px, 2.2vw, 18px);
-    color: var(--muted); max-width: 540px;
-    margin: 0 auto 36px;
-  }
-
-  .badges {
-    display: flex; gap: 10px; justify-content: center;
-    flex-wrap: wrap; margin-bottom: 40px;
-  }
+  h1 span { color: var(--gold); }
+  .tagline { color: var(--muted); font-size: 15px; }
   .badge {
-    padding: 6px 15px; border-radius: 99px; font-size: 13px;
-    border: 1px solid var(--line); color: var(--muted);
-    background: rgba(255,255,255,.03);
-  }
-  .badge.hl {
-    border-color: rgba(226,178,74,.45); color: var(--gold);
-    background: rgba(226,178,74,.09);
+    display: inline-block; margin-top: 16px;
+    padding: 6px 16px; border-radius: 99px;
+    border: 1px solid var(--gold);
+    color: var(--gold); font-size: 13px;
   }
 
-  .cta-group { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .card {
+    background: var(--card);
+    border: 1px solid rgba(255,255,255,.07);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 20px;
+  }
+  h2 {
+    font-size: 18px; margin-bottom: 16px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  h2::before {
+    content: ''; width: 4px; height: 18px;
+    background: var(--gold); border-radius: 2px;
+  }
 
   .btn {
-    display: inline-flex; align-items: center; gap: 9px;
-    padding: 16px 34px; border-radius: 14px;
-    font-weight: 650; font-size: 16px; text-decoration: none;
-    transition: transform .18s cubic-bezier(.34,1.56,.64,1), box-shadow .18s;
+    display: block; text-align: center;
+    background: var(--gold); color: #111;
+    font-weight: 600; font-size: 16px;
+    padding: 15px; border-radius: 12px;
+    text-decoration: none; margin-bottom: 12px;
+    transition: transform .15s, box-shadow .15s;
   }
-  .btn-primary {
-    background: linear-gradient(135deg, #f0c96a 0%, var(--gold) 100%);
-    color: #1a1405;
-    box-shadow: 0 10px 34px rgba(226,178,74,.3);
+  .btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(226,178,74,.3);
   }
-  .btn-primary:hover {
-    transform: translateY(-3px) scale(1.02);
-    box-shadow: 0 16px 44px rgba(226,178,74,.42);
+  .btn.secondary {
+    background: transparent; color: var(--gold);
+    border: 1px solid rgba(226,178,74,.4);
+    font-weight: 500; font-size: 14px;
   }
-  .btn-ghost {
-    color: var(--text); border: 1px solid var(--line);
-    background: rgba(255,255,255,.04);
-  }
-  .btn-ghost:hover { background: rgba(255,255,255,.09); transform: translateY(-3px); }
 
-  .stats {
-    display: grid; grid-template-columns: repeat(4, 1fr);
-    gap: 1px; background: var(--line);
-    border-radius: var(--radius); overflow: hidden;
-    margin: 70px 0;
-  }
-  .stat { background: var(--bg2); padding: 30px 16px; text-align: center; }
-  .stat-num {
-    font-size: clamp(26px, 4vw, 38px); font-weight: 750;
-    color: var(--gold); letter-spacing: -1px; line-height: 1.2;
-  }
-  .stat-label { font-size: 13px; color: var(--muted); margin-top: 6px; }
-  @media (max-width: 640px) { .stats { grid-template-columns: repeat(2, 1fr); } }
-
-  .shots {
-    display: flex; gap: 22px; overflow-x: auto;
-    padding: 10px 0 30px;
-    scroll-snap-type: x mandatory;
-    scrollbar-width: none;
-    cursor: grab;
-  }
-  .shots:active { cursor: grabbing; }
-  .shots::-webkit-scrollbar { display: none; }
-
-  .shot {
-    flex: 0 0 250px; scroll-snap-align: center;
-    border-radius: 22px; overflow: hidden;
-    border: 1px solid var(--line);
-    background: var(--card);
-    transition: transform .3s, box-shadow .3s;
+  ul { list-style: none; }
+  ul li {
+    padding: 9px 0 9px 24px;
     position: relative;
-    /* 统一高度：横屏图（shot3）按 letterbox 方式放进同样的框里，
-       避免整排高低不齐 */
-    height: 540px;
+    font-size: 14.5px;
+    color: #d8dae4;
   }
-  .shot:hover { transform: translateY(-8px); box-shadow: 0 24px 60px rgba(0,0,0,.55); }
-  .shot img {
-    width: 100%; height: 100%; object-fit: cover; object-position: top center;
-    display: block; user-select: none; -webkit-user-drag: none;
-  }
-  /* 横屏截图不裁切，完整居中显示 */
-  .shot.landscape img {
-    object-fit: contain;
-    object-position: center;
-    background: #000;
-  }
-  .shot-cap {
-    position: absolute; bottom: 0; left: 0; right: 0;
-    padding: 34px 16px 14px;
-    background: linear-gradient(transparent, rgba(0,0,0,.88));
-    font-size: 13.5px; font-weight: 600;
+  ul li::before {
+    content: '·'; position: absolute; left: 8px;
+    color: var(--gold); font-weight: bold;
   }
 
-  .section { padding: 80px 0; }
-  .section-head { text-align: center; margin-bottom: 52px; }
-  .section-title {
-    font-size: clamp(24px, 4vw, 36px); font-weight: 720;
-    letter-spacing: -.8px; margin-bottom: 12px;
-  }
-  .section-desc { color: var(--muted); font-size: 15px; }
-
-  .features {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 18px;
-  }
-  .feat {
-    background: var(--card);
-    border: 1px solid var(--line);
-    border-radius: var(--radius);
-    padding: 28px 26px;
-    transition: border-color .25s, transform .25s, background .25s;
-  }
-  .feat:hover {
-    border-color: rgba(226,178,74,.35);
-    transform: translateY(-5px);
-    background: #1a1f2d;
-  }
-  .feat-icon {
-    width: 46px; height: 46px; border-radius: 13px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 22px; margin-bottom: 18px;
-    background: rgba(226,178,74,.11);
-    border: 1px solid rgba(226,178,74,.2);
-  }
-  .feat h3 { font-size: 17px; font-weight: 650; margin-bottom: 9px; letter-spacing: -.2px; }
-  .feat p { font-size: 14px; color: var(--muted); line-height: 1.7; }
-
-  .steps { display: grid; gap: 14px; max-width: 700px; margin: 0 auto; }
-  .step {
-    display: flex; gap: 18px; align-items: flex-start;
-    background: var(--card); border: 1px solid var(--line);
-    border-radius: 16px; padding: 22px 24px;
-  }
-  .step-num {
-    flex: 0 0 34px; height: 34px; border-radius: 10px;
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 750; font-size: 15px;
-    background: rgba(226,178,74,.13); color: var(--gold);
-  }
-  .step-body h3 { font-size: 15.5px; font-weight: 640; margin-bottom: 4px; }
-  .step-body p { font-size: 13.5px; color: var(--muted); }
-
-  .warn-box {
-    background: linear-gradient(135deg, rgba(226,178,74,.1), rgba(200,80,80,.06));
-    border: 1px solid rgba(226,178,74,.28);
-    border-radius: var(--radius);
-    padding: 26px 28px; margin-top: 40px;
-  }
-  .warn-box h3 {
-    font-size: 16px; font-weight: 650; margin-bottom: 12px;
-    color: var(--gold);
-  }
-  .warn-box ul { list-style: none; }
-  .warn-box li {
-    font-size: 14px; color: #d4d6e0; padding: 6px 0 6px 20px; position: relative;
-  }
-  .warn-box li::before {
-    content: '•'; position: absolute; left: 4px; color: var(--gold);
+  .warn {
+    background: rgba(226,178,74,.08);
+    border-left: 3px solid var(--gold);
+    padding: 14px 18px; border-radius: 8px;
+    font-size: 14px; color: #e6dcc4;
+    margin-top: 16px;
   }
 
-  .links-grid {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 14px;
+  .links { display: flex; gap: 12px; flex-wrap: wrap; }
+  .links a {
+    flex: 1; min-width: 140px;
+    text-align: center; padding: 12px;
+    background: rgba(255,255,255,.04);
+    border-radius: 10px;
+    color: var(--text); text-decoration: none;
+    font-size: 14px;
+    transition: background .15s;
   }
-  .link-card {
-    display: flex; align-items: center; gap: 14px;
-    background: var(--card); border: 1px solid var(--line);
-    border-radius: 16px; padding: 20px 22px;
-    text-decoration: none; color: var(--text);
-    transition: .25s;
-  }
-  .link-card:hover {
-    border-color: rgba(226,178,74,.4);
-    background: #1a1f2d;
-    transform: translateY(-4px);
-  }
-  .link-ico {
-    width: 40px; height: 40px; border-radius: 11px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 19px; background: rgba(255,255,255,.05);
-  }
-  .link-card strong { display: block; font-size: 14.5px; font-weight: 620; }
-  .link-card span { font-size: 12.5px; color: var(--muted); }
+  .links a:hover { background: rgba(255,255,255,.09); }
 
   footer {
-    border-top: 1px solid var(--line);
-    padding: 44px 0 60px; text-align: center;
-    color: var(--muted); font-size: 13.5px;
+    text-align: center; color: var(--muted);
+    font-size: 13px; margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid rgba(255,255,255,.06);
   }
   footer a { color: var(--gold); text-decoration: none; }
-  footer a:hover { text-decoration: underline; }
-  .footer-links {
-    display: flex; gap: 22px; justify-content: center;
-    margin-bottom: 18px; flex-wrap: wrap;
-  }
-
-  .reveal {
-    opacity: 0; transform: translateY(28px);
-    transition: opacity .7s cubic-bezier(.2,.8,.2,1),
-                transform .7s cubic-bezier(.2,.8,.2,1);
-  }
-  .reveal.in { opacity: 1; transform: none; }
-
-  @media (prefers-reduced-motion: reduce) {
-    * { animation: none !important; transition: none !important; }
-    .reveal { opacity: 1; transform: none; }
-  }
 </style>
 </head>
 <body>
-
-<div class="glow glow-1"></div>
-<div class="glow glow-2"></div>
-<div class="glow glow-3"></div>
-
-<nav>
-  <div class="nav-inner">
-    <img class="nav-logo" src="/img/logo.webp" alt="Logo">
-    <span class="nav-title">March7thAssistant</span>
-    <span class="nav-spacer"></span>
-    <a class="nav-link" href="#features">功能</a>
-    <a class="nav-link" href="#shots">截图</a>
-    <a class="nav-link" href="#start">开始使用</a>
-    <a class="nav-link" href="https://github.com/biirekha857-star/March7thAssistantAndroidlocal">GitHub</a>
-  </div>
-</nav>
-
 <div class="wrap">
 
-  <section class="hero">
-    <img class="hero-logo" src="/img/logo.webp" alt="March7thAssistant">
-    <h1>崩铁日常，<span class="accent">交给它就好</span></h1>
-    <p class="hero-sub">
-      虚拟屏后台运行 · 手机照常使用<br>
-      清体力、每日实训、邮件，一键全自动
-    </p>
+  <header>
+    <div class="logo">🌸</div>
+    <h1>March7thAssistant <span>Android Local</span></h1>
+    <p class="tagline">崩坏：星穹铁道 · 全自动日常助手</p>
+    <div class="badge">0.5.0beta</div>
+  </header>
 
-    <div class="badges">
-      <span class="badge hl">v0.5.0beta</span>
-      <span class="badge">Android 8.0+</span>
-      <span class="badge">arm64-v8a</span>
-      <span class="badge">Shizuku / Root</span>
-      <span class="badge">AGPL-3.0 开源</span>
-    </div>
+  <div class="card">
+    <h2>下载</h2>
+    <a class="btn" href="https://github.com/biirekha857-star/March7thAssistantAndroidlocal/releases/latest">
+      前往 GitHub 下载
+    </a>
+    <a class="btn secondary" href="https://github.com/biirekha857-star/March7thAssistantAndroidlocal">
+      查看源码
+    </a>
+  </div>
 
-    <div class="cta-group">
-      <a class="btn btn-primary"
-         href="https://github.com/biirekha857-star/March7thAssistantAndroidlocal/releases/latest">
-        ↓ 下载最新版
-      </a>
-      <a class="btn btn-ghost"
-         href="https://github.com/biirekha857-star/March7thAssistantAndroidlocal">
-        GitHub 源码
-      </a>
-    </div>
-  </section>
+  <div class="card">
+    <h2>核心功能</h2>
+    <ul>
+      <li><b>虚拟屏后台运行</b> —— 游戏跑在独立显示器上，手机照常使用</li>
+      <li><b>清体力</b> —— 拟造花萼、凝滞虚影、侵蚀隧洞、饰品提取、历战余响</li>
+      <li><b>每日实训</b> —— 勾选式执行，按需完成</li>
+      <li><b>启动游戏 / 邮件 / 关闭游戏</b> —— 全流程无人工干预</li>
+    </ul>
+  </div>
 
-  <div class="stats reveal">
-    <div class="stat">
-      <div class="stat-num">6</div>
-      <div class="stat-label">种副本支持</div>
-    </div>
-    <div class="stat">
-      <div class="stat-num">2</div>
-      <div class="stat-label">种启动方式</div>
-    </div>
-    <div class="stat">
-      <div class="stat-num">100%</div>
-      <div class="stat-label">本地离线识别</div>
-    </div>
-    <div class="stat">
-      <div class="stat-num">24h</div>
-      <div class="stat-label">无人值守</div>
+  <div class="card">
+    <h2>使用前</h2>
+    <ul>
+      <li>授予 <b>Shizuku</b> 或 <b>Root</b> 权限</li>
+      <li>关闭本应用的省电优化</li>
+      <li>游戏已登录并停在大厅</li>
+    </ul>
+    <div class="warn">
+      ⚠️ 自动化操作存在账号风险，请自行评估。<br>
+      请勿在米游社等官方社区讨论或宣传本项目。
     </div>
   </div>
 
-  <section class="section" id="shots">
-    <div class="section-head reveal">
-      <h2 class="section-title">界面一览</h2>
-      <p class="section-desc">左右滑动查看更多</p>
+  <div class="card">
+    <h2>遇到问题</h2>
+    <p style="font-size:14.5px;color:#d8dae4;margin-bottom:14px">
+      请先导出日志：<b>设置 → 日志 → 导出日志压缩包</b>。
+      日志包含引擎日志、超时截图和设备信息，是定位问题的关键。
+    </p>
+    <div class="links">
+      <a href="https://github.com/biirekha857-star/March7thAssistantAndroidlocal/issues">GitHub Issues</a>
+      <a href="https://qm.qq.com/q/xG9yvDYFgc">QQ 群</a>
+      <a href="https://t.me/+1NJAK_tgLU81NmFl">Telegram</a>
     </div>
-    <div class="shots">
-      <div class="shot">
-        <img src="/img/shot1.webp" alt="主界面" loading="lazy">
-        <div class="shot-cap">主界面 · 一键开始</div>
-      </div>
-      <div class="shot">
-        <img src="/img/shot2.webp" alt="任务编排" loading="lazy">
-        <div class="shot-cap">任务链自由编排</div>
-      </div>
-      <div class="shot landscape">
-        <img src="/img/shot3.webp" alt="虚拟屏预览" loading="lazy">
-        <div class="shot-cap">虚拟屏实时预览</div>
-      </div>
-      <div class="shot">
-        <img src="/img/shot4.webp" alt="清体力" loading="lazy">
-        <div class="shot-cap">清体力 · 6 种副本</div>
-      </div>
-      <div class="shot">
-        <img src="/img/shot5.webp" alt="每日实训" loading="lazy">
-        <div class="shot-cap">每日实训 · 勾选式</div>
-      </div>
-      <div class="shot">
-        <img src="/img/shot6.webp" alt="执行日志" loading="lazy">
-        <div class="shot-cap">实时执行日志</div>
-      </div>
-    </div>
-  </section>
+  </div>
 
-  <section class="section" id="features">
-    <div class="section-head reveal">
-      <h2 class="section-title">核心功能</h2>
-      <p class="section-desc">基于虚拟屏技术，真正意义上的后台运行</p>
-    </div>
-
-    <div class="features">
-      <div class="feat reveal">
-        <div class="feat-icon">🖥️</div>
-        <h3>虚拟屏后台运行</h3>
-        <p>游戏跑在独立虚拟显示器上，你可以同时刷视频、聊天、看文档，完全不被打断。</p>
-      </div>
-      <div class="feat reveal">
-        <div class="feat-icon">⚡</div>
-        <h3>清体力</h3>
-        <p>拟造花萼（金/赤）、凝滞虚影、侵蚀隧洞、饰品提取、历战余响，全部支持，自动连打。</p>
-      </div>
-      <div class="feat reveal">
-        <div class="feat-icon">📋</div>
-        <h3>每日实训</h3>
-        <p>勾选今天要做的项目，委托、拍照、合成机、秘技、消耗体力，做完自动领奖。</p>
-      </div>
-      <div class="feat reveal">
-        <div class="feat-icon">🎯</div>
-        <h3>离线识别</h3>
-        <p>OpenCV 模板匹配 + PP-OCRv6 本地推理，不需要联网，不需要上传任何数据。</p>
-      </div>
-      <div class="feat reveal">
-        <div class="feat-icon">🔗</div>
-        <h3>任务链编排</h3>
-        <p>拖拽排序、自由组合，支持定时执行。早上自动跑完，起床直接上号。</p>
-      </div>
-      <div class="feat reveal">
-        <div class="feat-icon">🛡️</div>
-        <h3>无需 Root</h3>
-        <p>支持 Shizuku 授权，不用解锁、不用改系统，普通用户也能用。</p>
-      </div>
-    </div>
-  </section>
-
-  <section class="section" id="start">
-    <div class="section-head reveal">
-      <h2 class="section-title">三步开始</h2>
-      <p class="section-desc">下载后 2 分钟就能跑起来</p>
-    </div>
-
-    <div class="steps">
-      <div class="step reveal">
-        <div class="step-num">1</div>
-        <div class="step-body">
-          <h3>安装并授予权限</h3>
-          <p>安装 APK，按引导授予 Shizuku 或 Root 权限</p>
-        </div>
-      </div>
-      <div class="step reveal">
-        <div class="step-num">2</div>
-        <div class="step-body">
-          <h3>勾选要做的任务</h3>
-          <p>在「任务」页选择邮件、清体力、每日实训等，可拖拽排序</p>
-        </div>
-      </div>
-      <div class="step reveal">
-        <div class="step-num">3</div>
-        <div class="step-body">
-          <h3>点击开始</h3>
-          <p>游戏会自动启动到虚拟屏，完成后自动关闭</p>
-        </div>
-      </div>
-    </div>
-
-    <div class="warn-box reveal">
-      <h3>⚠️ 使用前请务必了解</h3>
-      <ul>
-        <li>自动化操作存在<b>账号风险</b>，请自行评估后使用</li>
-        <li><b>请勿在米游社等官方社区讨论或宣传本项目</b></li>
-        <li>本项目<b>完全免费开源</b>，付费获取的都是骗子</li>
-        <li>建议关闭游戏的省电优化，避免后台被杀</li>
-        <li>遇到问题请附上日志压缩包：设置 → 日志 → 导出</li>
-      </ul>
-    </div>
-  </section>
-
-  <section class="section">
-    <div class="section-head reveal">
-      <h2 class="section-title">遇到问题？</h2>
-      <p class="section-desc">先导出日志，再联系我们 —— 没有日志很难定位</p>
-    </div>
-
-    <div class="links-grid">
-      <a class="link-card reveal"
-         href="https://github.com/biirekha857-star/March7thAssistantAndroidlocal/issues">
-        <div class="link-ico">🐛</div>
-        <div>
-          <strong>GitHub Issues</strong>
-          <span>问题反馈 · 功能建议</span>
-        </div>
-      </a>
-      <a class="link-card reveal" href="https://qm.qq.com/q/xG9yvDYFgc">
-        <div class="link-ico">💬</div>
-        <div>
-          <strong>QQ 交流群</strong>
-          <span>扫码加入</span>
-        </div>
-      </a>
-      <a class="link-card reveal" href="https://t.me/+1NJAK_tgLU81NmFl">
-        <div class="link-ico">✈️</div>
-        <div>
-          <strong>Telegram</strong>
-          <span>海外用户</span>
-        </div>
-      </a>
-    </div>
-  </section>
+  <footer>
+    <p>
+      基于 <a href="https://github.com/Aliothmoon/MAA-Meow">MAA-Meow</a> 二次开发 ·
+      AGPL-3.0 开源
+    </p>
+    <p style="margin-top:8px">仅供学习交流，请勿用于商业用途</p>
+  </footer>
 
 </div>
-
-<footer>
-  <div class="wrap">
-    <div class="footer-links">
-      <a href="https://github.com/biirekha857-star/March7thAssistantAndroidlocal">GitHub</a>
-      <a href="/announcement_zh.md">公告</a>
-      <a href="https://github.com/Aliothmoon/MAA-Meow">MAA-Meow</a>
-      <a href="https://github.com/moesnow/March7thAssistant">March7thAssistant</a>
-    </div>
-    <p>基于 <a href="https://github.com/Aliothmoon/MAA-Meow">MAA-Meow</a> 二次开发 · AGPL-3.0 开源</p>
-    <p style="margin-top:10px;opacity:.65">仅供学习交流，请勿用于商业用途</p>
-  </div>
-</footer>
-
-<script>
-  const io = new IntersectionObserver((entries) => {
-    entries.forEach((e) => {
-      if (e.isIntersecting) {
-        e.target.classList.add('in');
-        io.unobserve(e.target);
-      }
-    });
-  }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
-
-  document.querySelectorAll('.reveal').forEach((el, i) => {
-    el.style.transitionDelay = (i % 6) * 60 + 'ms';
-    io.observe(el);
-  });
-
-  const shots = document.querySelector('.shots');
-  if (shots) {
-    let down = false, sx = 0, sl = 0;
-    shots.addEventListener('pointerdown', (e) => {
-      down = true; sx = e.clientX; sl = shots.scrollLeft;
-      shots.setPointerCapture(e.pointerId);
-    });
-    shots.addEventListener('pointermove', (e) => {
-      if (!down) return;
-      shots.scrollLeft = sl - (e.clientX - sx);
-    });
-    shots.addEventListener('pointerup', () => { down = false; });
-    shots.addEventListener('pointercancel', () => { down = false; });
-  }
-</script>
-
 </body>
 </html>
