@@ -1,5 +1,6 @@
 package com.march7th.hkrpg.presentation.view.panel
 
+import kotlin.math.roundToInt
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
@@ -62,6 +64,7 @@ import com.march7th.hkrpg.data.model.DailyTaskConfig
 import com.march7th.hkrpg.data.model.PowerTaskConfig
 import com.march7th.hkrpg.data.model.RoguelikeConfig
 import com.march7th.hkrpg.data.model.SwitchThemeConfig
+import com.march7th.hkrpg.data.model.StartUpTaskConfig
 import com.march7th.hkrpg.data.model.StarRailTaskConfig
 import com.march7th.hkrpg.data.model.TaskChainNode
 import com.march7th.hkrpg.data.model.TaskParamProvider
@@ -192,6 +195,11 @@ fun TaskConfigPanel(
 
                         // 崩铁任务：目前都不需要配置，显示占位说明
                         is StarRailTaskConfig -> NoConfigHint()
+
+                        // 启动游戏：选客户端（本地 / 云游戏）
+                        is StartUpTaskConfig -> StartUpConfigPanel(
+                            config = cfg, onConfigChange = onConfigChange
+                        )
 
                         // 清体力：选副本 + 次数上限 + 是否用燃料
                         is PowerTaskConfig -> PowerConfigPanel(
@@ -906,4 +914,161 @@ private fun taskTypeLabel(typeInfo: TaskTypeInfo): String {
         TaskTypeInfo.DAILY -> stringResource(R.string.panel_task_type_daily)
         TaskTypeInfo.CLOSE_DOWN -> stringResource(R.string.panel_task_type_close_down)
     }
+}
+
+/**
+ * 「启动游戏」的配置面板 —— **选择启动哪个客户端**。
+ *
+ * 交互和清体力选副本一致：一列可点的选项卡片，选中态高亮。
+ *
+ * ```
+ * ○ 本地客户端        com.miHoYo.hkrpg
+ * ● 云游戏            com.miHoYo.cloudgames.hkrpg
+ * ```
+ *
+ * 不做成两个独立任务，是因为手机同一时刻只能跑一个游戏实例，
+ * 两个「启动」任务并存没有意义。
+ */
+@Composable
+private fun StartUpConfigPanel(
+    config: StartUpTaskConfig,
+    onConfigChange: (TaskParamProvider) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.tertiaryContainer,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = stringResource(R.string.panel_startup_client_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    lineHeight = 18.sp
+                )
+            }
+        }
+
+        Text(
+            text = stringResource(R.string.panel_startup_client_title),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Medium
+        )
+
+        StartUpTaskConfig.GameClient.entries.forEach { client ->
+            val selected = client == config.client
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = if (selected) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                },
+                border = BorderStroke(
+                    1.dp,
+                    if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+                    else MaterialTheme.colorScheme.outlineVariant
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onConfigChange(config.copy(client = client)) }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = clientLabel(client),
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+                            color = if (selected) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            }
+                        )
+                        Text(
+                            text = client.packageName,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (selected) {
+                                MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                        )
+                    }
+                    if (selected) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+        }
+
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+        // ---- 启动超时 ----
+        Text(
+            text = stringResource(R.string.panel_startup_timeout_title),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Medium
+        )
+        Text(
+            text = stringResource(R.string.panel_startup_timeout_desc),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "${config.effectiveTimeoutSec} 秒",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f)
+            )
+            Slider(
+                value = config.effectiveTimeoutSec.toFloat(),
+                onValueChange = {
+                    onConfigChange(config.copy(timeoutSec = it.roundToInt()))
+                },
+                valueRange = 60f..600f,
+                steps = 17,
+                modifier = Modifier.weight(2f)
+            )
+        }
+    }
+}
+
+/** 客户端显示名。 */
+@Composable
+private fun clientLabel(client: StartUpTaskConfig.GameClient): String = when (client) {
+    StartUpTaskConfig.GameClient.LOCAL ->
+        stringResource(R.string.panel_startup_client_local)
+    StartUpTaskConfig.GameClient.CLOUD ->
+        stringResource(R.string.panel_startup_client_cloud)
 }

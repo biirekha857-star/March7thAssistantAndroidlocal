@@ -2639,7 +2639,13 @@ Without a build target, it grinds the first domain in the default order.</string
 <string name="panel_task_type_daily">Daily Training</string>
 <string name="panel_task_type_start_up">Start Game</string>
 <string name="task_type_close_down">Close Game</string>
-<string name="task_type_mail">Mail</string>
+<string name="panel_startup_client_hint">Choose which client to launch. Only one game instance can run at a time, so pick just one.</string>
+    <string name="panel_startup_client_title">Launch client</string>
+    <string name="panel_startup_client_local">Local client</string>
+    <string name="panel_startup_client_cloud">Cloud gaming</string>
+    <string name="panel_startup_timeout_title">Startup timeout</string>
+    <string name="panel_startup_timeout_desc">180 seconds is enough for the local client; cloud gaming needs instance allocation and streaming, so allow 300+ seconds</string>
+        <string name="task_type_mail">Mail</string>
 <string name="task_type_power">Spend Power</string>
 <string name="task_type_daily">Daily Training</string>
 <string name="panel_daily_checklist_hint">Check the training items to do today. They run in order, returning to the lobby after each, then rewards are claimed at the end.</string>

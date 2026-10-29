@@ -2696,7 +2696,13 @@ MAA 不会因为取消勾选此选项而提前在局内结束探索</string>
 <string name="panel_task_type_daily">每日实训</string>
 <string name="panel_task_type_start_up">启动游戏</string>
 <string name="task_type_close_down">关闭游戏</string>
-<string name="task_type_mail">邮件</string>
+<string name="panel_startup_client_hint">选择用哪个客户端启动游戏。手机同一时刻只能运行一个游戏实例，所以只需要选一种。</string>
+    <string name="panel_startup_client_title">启动客户端</string>
+    <string name="panel_startup_client_local">本地客户端</string>
+    <string name="panel_startup_client_cloud">云游戏</string>
+    <string name="panel_startup_timeout_title">启动超时</string>
+    <string name="panel_startup_timeout_desc">本地客户端 180 秒足够；云游戏要分配云端实例再建流，建议 300 秒以上</string>
+        <string name="task_type_mail">邮件</string>
 <string name="task_type_power">清体力</string>
 <string name="task_type_daily">每日实训</string>
 <string name="panel_daily_checklist_hint">勾选今天要做的实训项目。程序会按顺序执行，每项做完回大厅确认，最后统一领取奖励。</string>

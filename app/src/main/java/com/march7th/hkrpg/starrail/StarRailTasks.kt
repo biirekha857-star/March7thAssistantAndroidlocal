@@ -1,6 +1,7 @@
 package com.march7th.hkrpg.starrail
 
 import android.os.SystemClock
+import com.march7th.hkrpg.data.model.StartUpTaskConfig
 import com.march7th.hkrpg.starrail.engine.GameLauncher
 import com.march7th.hkrpg.starrail.engine.ImageUtils
 import com.march7th.hkrpg.starrail.engine.OcrEngine
@@ -127,8 +128,8 @@ class StarRailTasks(
     fun run(type: String, params: String = "{}"): TaskResult {
         Ln.i("$TAG: 执行任务 $type (display=$displayId)")
         return when (type) {
-            // ---- A: 启动游戏 ----
-            "StartUp" -> startUp()
+            // ---- A: 启动游戏（客户端在 params 里选）----
+            "StartUp" -> startUp(params)
             // ---- B: 领邮件 ----
             "Mail" -> mail()
             // ---- 清体力 ----
@@ -158,10 +159,36 @@ class StarRailTasks(
      * 手游版同样是这个流程，只是**没有登录器/多账号/B服**这些 PC 分支，
      * 所以这里只保留「点击进入」+ 两个通用兜底（确认 / 重启）。
      */
-    private fun startUp(): TaskResult {
+    private fun startUp(params: String = "{}"): TaskResult {
         if (displayId < 0) {
             return TaskResult("StartUp", false, "虚拟屏未就绪（displayId=$displayId）")
         }
+
+        // ## 解析客户端选择
+        //
+        // 「启动游戏」带一个客户端选择器：
+        //   · local → com.miHoYo.hkrpg           （本地客户端）
+        //   · cloud → com.miHoYo.cloudgames.hkrpg（云游戏）
+        //
+        // 手机同一时刻只能跑一个游戏实例，所以做成**一个任务 + 二选一**，
+        // 而不是两个独立任务。
+        //
+        // 默认 LOCAL —— 老配置（没有这个字段）行为完全不变。
+        val client = StartUpTaskConfig.GameClient.fromWire(
+            Regex("\"client\"\\s*:\\s*\"([^\"]*)\"").find(params)?.groupValues?.get(1),
+        )
+        val effectivePkg = Regex("\"packageName\"\\s*:\\s*\"([^\"]*)\"")
+            .find(params)?.groupValues?.get(1)
+            ?.takeIf { it.isNotBlank() }
+            ?: client.packageName
+        val timeoutOverride = Regex("\"timeoutSec\"\\s*:\\s*(\\d+)")
+            .find(params)?.groupValues?.get(1)?.toIntOrNull()
+
+        Ln.i(
+            "$TAG: 启动游戏 客户端=${client.wireName} 包名=$effectivePkg " +
+                "超时=${timeoutOverride ?: client.defaultTimeoutSec}s",
+        )
+
 
         // ---- ① 先确认游戏装了没 ----
         //
@@ -174,13 +201,13 @@ class StarRailTasks(
         // 用户看到的是「任务出错:启动游戏」，完全猜不到是没装游戏。
         //
         // 所以这里先查包是否存在，不存在就直接给出**明确可行动**的提示。
-        if (!GameLauncher.isInstalled(pkg)) {
-            val hint = when (pkg) {
+        if (!GameLauncher.isInstalled(effectivePkg)) {
+            val hint = when (effectivePkg) {
                 GameLauncher.PKG_CN ->
-                    "未检测到《崩坏：星穹铁道》国服（$pkg）。请先安装游戏，" +
+                    "未检测到《崩坏：星穹铁道》国服（$effectivePkg）。请先安装游戏，" +
                         "或在设置里切换到正确的客户端版本。"
                 else ->
-                    "未检测到《崩坏：星穹铁道》（$pkg）。请先安装游戏，" +
+                    "未检测到《崩坏：星穹铁道》（$effectivePkg）。请先安装游戏，" +
                         "或在设置里切换到正确的客户端版本。"
             }
             Ln.e("$TAG: $hint")
@@ -205,8 +232,8 @@ class StarRailTasks(
         //   把已经在主屏跑着的游戏直接"拉"到虚拟屏会出现各种奇怪问题
         //   （画面不同步、输入注入错位、采集帧异常），实测确认过。
         //   唯一可靠的做法是 force-stop 之后在虚拟屏上重新拉起。
-        val running = GameLauncher.isRunning(pkg)
-        val onDisplay = if (running) GameLauncher.currentDisplayOf(pkg) else -1
+        val running = GameLauncher.isRunning(effectivePkg)
+        val onDisplay = if (running) GameLauncher.currentDisplayOf(effectivePkg) else -1
 
         // ## ⚠️ 必须**同时**满足两个条件才算"已在虚拟屏"
         //
@@ -278,7 +305,7 @@ class StarRailTasks(
             }
 
             Ln.w("$TAG: 自救失败 ⇒ 杀进程后重新启动")
-            GameLauncher.forceStop(pkg)
+            GameLauncher.forceStop(effectivePkg)
             Thread.sleep(2500)
             // 落到下面的正常启动流程
         }
@@ -286,21 +313,21 @@ class StarRailTasks(
         // ---- 不在虚拟屏上：先杀掉再重新启动 ----
         if (running) {
             Ln.w("$TAG: 游戏在 display=$onDisplay（不是虚拟屏），先强杀进程再重启")
-            GameLauncher.forceStop(pkg)
+            GameLauncher.forceStop(effectivePkg)
             // 给系统一点时间真正回收进程
             Thread.sleep(2500)
         } else {
             Ln.i("$TAG: 游戏进程不在，直接冷启动")
         }
 
-        val accepted = GameLauncher.startOnDisplay(pkg, displayId)
+        val accepted = GameLauncher.startOnDisplay(effectivePkg, displayId)
         if (!accepted) {
             return TaskResult("StartUp", false, "启动指令被拒绝")
         }
 
         // 等待落到虚拟屏（含二段跳漂移拉回）
-        if (!GameLauncher.ensureOnDisplay(pkg, displayId)) {
-            return TaskResult("StartUp", false, "游戏未落到虚拟屏（display=${GameLauncher.currentDisplayOf(pkg)}）")
+        if (!GameLauncher.ensureOnDisplay(effectivePkg, displayId)) {
+            return TaskResult("StartUp", false, "游戏未落到虚拟屏（display=${GameLauncher.currentDisplayOf(effectivePkg)}）")
         }
 
         // 等第一帧渲染出来

@@ -59,8 +59,14 @@ enum class TaskTypeInfo(
     START_UP(
         taskType = "StartUp",
         nameRes = R.string.task_type_start_up,
-        defaultConfig = { StarRailTaskConfig("StartUp") },
-        hidden = true,
+        // ## 从隐藏改为显示
+        //
+        // 原本「启动游戏」是任务链隐式加的一步（hidden=true）。
+        // 但现在要让用户**选择启动哪个客户端**（本地 / 云游戏），
+        // 就必须出现在任务列表里，用户才点得到配置面板。
+        //
+        // 默认仍是本地客户端，行为不变。
+        defaultConfig = { StartUpTaskConfig() },
     ),
     MAIL(
         taskType = "Mail",
