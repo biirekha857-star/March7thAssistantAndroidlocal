@@ -7,6 +7,7 @@ import com.march7th.hkrpg.data.api.CopilotApiService
 import com.march7th.hkrpg.data.api.ETagCacheManager
 import com.march7th.hkrpg.data.api.GameDataReportService
 import com.march7th.hkrpg.data.api.AnnouncementService
+import com.march7th.hkrpg.data.preferences.AnnouncementStateStore
 import com.march7th.hkrpg.data.api.HttpClientHelper
 import com.march7th.hkrpg.data.api.M7aApiService
 import com.march7th.hkrpg.data.api.MirrorChyanApiClient
@@ -162,6 +163,7 @@ val appModule = module {
     //
     // 所以部署与否都不影响 App 正常使用。
     singleOf(::AnnouncementService)
+    singleOf(::AnnouncementStateStore)
     singleOf(::UpdateChecker)
     single<GameDataReporter> {
         GameDataReportService(

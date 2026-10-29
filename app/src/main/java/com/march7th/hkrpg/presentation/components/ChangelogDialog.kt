@@ -34,7 +34,16 @@ fun ChangelogDialog(
                 M7aMarkdownText(
                     markdown = content,
                     modifier = Modifier.fillMaxWidth(),
-                    style = MaterialTheme.typography.bodyMedium
+                    // ## 字号比正文小一档
+                    //
+                    // 公告/更新日志是**长文本**，用 `bodyMedium`（14sp）时
+                    // 手机一屏只能显示十来行，翻起来很累。
+                    //
+                    // 用 `bodySmall`（12sp）+ 行高收紧，一屏能多看 30~40%。
+                    // 层级靠 Markdown 的 `#` 标题区分，不依赖字号。
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.15f,
+                    ),
                 )
             }
         }

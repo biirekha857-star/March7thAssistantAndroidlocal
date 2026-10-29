@@ -63,12 +63,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.march7th.hkrpg.R
 import com.march7th.hkrpg.data.permission.PermissionState
+import com.march7th.hkrpg.data.api.AnnouncementService
+import com.march7th.hkrpg.data.preferences.AnnouncementStateStore
 import com.march7th.hkrpg.data.preferences.AppSettingsManager
 import com.march7th.hkrpg.domain.models.OverlayControlMode
 import com.march7th.hkrpg.domain.models.RemoteBackend
 import com.march7th.hkrpg.domain.models.RunMode
 import com.march7th.hkrpg.domain.state.ResourceInitState
 import com.march7th.hkrpg.manager.PermissionManager
+import com.march7th.hkrpg.presentation.components.ChangelogDialog
 import com.march7th.hkrpg.presentation.components.AdaptiveTaskPromptDialog
 import com.march7th.hkrpg.presentation.components.ResourceInitDialog
 import com.march7th.hkrpg.presentation.components.ShizukuReadinessGate
@@ -100,10 +103,49 @@ fun HomeView(
     viewModel: HomeViewModel = koinViewModel(),
     updateViewModel: UpdateViewModel = koinViewModel(),
     permissionManager: PermissionManager = koinInject(),
-    appSettingsManager: AppSettingsManager = koinInject()
+    appSettingsManager: AppSettingsManager = koinInject(),
+    announcementService: AnnouncementService = koinInject(),
+    announcementState: AnnouncementStateStore = koinInject(),
 ) {
 
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    // ==================== 首次启动自动弹公告 ====================
+    //
+    // ## 触发条件
+    //
+    // **公告内容变了就弹一次**，不是只弹一次。
+    //
+    // 判断依据是公告内容的哈希：和上次看过的不一样 → 弹。
+    // 这样改了公告用户能第一时间看到，只是措辞微调又不会打扰人。
+    //
+    // ## 为什么放在首页
+    //
+    // 首页是用户打开 App 的第一屏，放在这里最自然。
+    // 用 `LaunchedEffect(Unit)` 只跑一次，不会因为重组反复触发。
+    var autoAnnouncement by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        runCatching {
+            // 先看本地缓存/内置版（快），拿到后再决定要不要弹
+            val text = announcementService.load()
+            if (text.isBlank()) return@runCatching
+            val hash = text.hashCode().toString()
+            if (announcementState.isUnseen(hash)) {
+                // 立刻记已读，避免用户杀掉 App 又弹一次
+                announcementState.markSeen(hash)
+                autoAnnouncement = text
+            }
+        }.onFailure { Timber.w(it, "自动加载公告失败") }
+    }
+
+    // 自动弹出的公告
+    if (autoAnnouncement != null) {
+        ChangelogDialog(
+            content = autoAnnouncement.orEmpty(),
+            title = stringResource(R.string.settings_about_announcement),
+            onDismiss = { autoAnnouncement = null },
+        )
+    }
     val permissionState by permissionManager.state.collectAsStateWithLifecycle()
     val resourceVersion by updateViewModel.currentResourceVersion.collectAsStateWithLifecycle()
     val appVersion = updateViewModel.currentAppVersion
