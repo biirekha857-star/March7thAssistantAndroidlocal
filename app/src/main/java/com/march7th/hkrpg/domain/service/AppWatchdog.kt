@@ -2,6 +2,7 @@ package com.march7th.hkrpg.domain.service
 
 import android.os.SystemClock
 import androidx.annotation.VisibleForTesting
+import com.march7th.hkrpg.data.model.StartUpTaskConfig
 import com.march7th.hkrpg.constant.Packages
 import com.march7th.hkrpg.data.preferences.TaskChainState
 import com.march7th.hkrpg.domain.service.AppWatchdog.Companion.MAX_REPIN_ATTEMPTS
@@ -80,6 +81,53 @@ class AppWatchdog(
     @VisibleForTesting
     internal var clock: () -> Long = { SystemClock.elapsedRealtime() }
 
+    /**
+     * 解析当前该盯着哪个包。
+     *
+     * ## 为什么要从任务链里读，而不是直接 `Packages[clientType]`
+     *
+     * 「启动游戏」任务现在带**客户端选择器**（本地 / 云游戏）：
+     *
+     * | 选择 | 包名 |
+     * |---|---|
+     * | 本地客户端 | `com.miHoYo.hkrpg` |
+     * | 云游戏 | `com.miHoYo.cloudgames.hkrpg` |
+     *
+     * 而 `Packages[clientType]` 永远返回固定的那几个包名，不认这个选择。
+     * 结果就是：用户选了云游戏、跑起来了，watchdog 却一直盯着
+     * `com.miHoYo.hkrpg` —— 那个进程根本不存在，于是每轮都判「死了」，
+     * 反复触发重启。
+     *
+     * ## 解析顺序
+     *
+     * 1. 任务链里**已启用**的 `StartUp` 节点的 `client` 字段
+     * 2. 回退到 `Packages[clientType]`（老配置 / 没有 StartUp 节点时）
+     */
+    private fun resolvePackageName(): String? {
+        // ① 先找任务链里的启动节点
+        val startUpClient = runCatching {
+            chainState.chain.value
+                .asSequence()
+                .filter { it.enabled }
+                .mapNotNull { node ->
+                    (node.config as? StartUpTaskConfig)?.client
+                }
+                .firstOrNull()
+        }.onFailure { Timber.w(it, "AppWatchdog: 读取启动节点配置失败") }
+            .getOrNull()
+
+        if (startUpClient != null) {
+            Timber.i(
+                "AppWatchdog: 按启动任务配置盯 %s（%s）",
+                startUpClient.packageName, startUpClient.wireName,
+            )
+            return startUpClient.packageName
+        }
+
+        // ② 回退到客户端类型的默认包名
+        return Packages[chainState.clientType]
+    }
+
     fun startWatching() {
         stopWatching()
         driftNotified = false
@@ -87,12 +135,11 @@ class AppWatchdog(
         driftRepinAttempts = 0
         deadStreak = 0
 
-        val clientType = chainState.clientType
-        val packageName = Packages[clientType]
+        val packageName = resolvePackageName()
         if (packageName == null) {
             Timber.w(
                 "AppWatchdog: cannot resolve package name for clientType=%s, skipping",
-                clientType
+                chainState.clientType,
             )
             return
         }

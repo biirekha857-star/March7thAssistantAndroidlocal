@@ -338,6 +338,23 @@ class StarRailTasks(
         val nav = navigator
             ?: return TaskResult("StartUp", false, "导航器未就绪")
 
+        // ## 云游戏走独立流程
+        //
+        // 云游戏客户端不是「标题页 → 点击进入」，而是：
+        //
+        // ```
+        // ① 云游戏启动页（左上「云·星穹铁道」，右下橙色「开始游戏」）
+        //       ↓ 点「开始游戏」
+        // ② 排队中（可能瞬间过，也可能要等几分钟）
+        //       ↓ 不操作，等它自己过
+        // ③ 串流建立 → 进游戏
+        // ```
+        //
+        // 所以这里分流，不走 waitAndClickEnter 那套。
+        if (client == StartUpTaskConfig.GameClient.CLOUD) {
+            return cloudGameStartUpFlow(nav, client)
+        }
+
         // ---- 标题页 -> 大厅 ----
         //
         // 按实测节奏推进：35 秒后找「点击进入」，点了再等 9 秒确认主界面。
@@ -378,6 +395,90 @@ class StarRailTasks(
             false,
             "启动超时：点了「点击进入」但 ${TOTAL_LIMIT_MS / 1000} 秒内没进到主界面。" +
                 "游戏可能卡在加载或公告页，任务链已中止。",
+        )
+    }
+
+    /**
+     * **云游戏**的启动流程。
+     *
+     * 实测界面（两张截图）：
+     *
+     * | 界面 | 特征 | 操作 |
+     * |---|---|---|
+     * | 云游戏启动页 | 左上「云·星穹铁道」，右下橙色**「开始游戏」** | 点「开始游戏」 |
+     * | 排队中 | 标题「排队中……」，副文字「云服务器资源紧张」 | **只等待，不点** |
+     *
+     * 排队界面底部还有个**「退出排队」**按钮 —— 注意绝不能在
+     * 「开始游戏」的位置乱点，那个位置在排队页可能就是「退出排队」。
+     *
+     * 所以这里的关键是：**用 OCR 精确判断当前在哪个界面**，
+     * 只在确认看到「开始游戏」时才点。
+     */
+    private fun cloudGameStartUpFlow(
+        nav: ScreenNavigator,
+        client: StartUpTaskConfig.GameClient,
+    ): TaskResult {
+        val deadline = SystemClock.uptimeMillis() + client.defaultTimeoutSec * 1000L
+        var clickedStart = false
+        var lastReport = 0L
+
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (isCancelled()) {
+                return TaskResult("StartUp", false, "任务已被用户停止")
+            }
+
+            // ---- 已经进游戏了？----
+            if (nav.isAt(ScreenNavigator.Screen.MAIN)) {
+                Ln.i("$TAG: 云游戏已进入大厅")
+                return TaskResult("StartUp", true, "云游戏启动成功 ${auto.width}x${auto.height}")
+            }
+
+            val texts = nav.readAllText()
+            val joined = texts.joinToString("") { it.text }
+
+            // ---- 排队中：只等，不操作 ----
+            //
+            // 排队页有「退出排队」按钮，位置和「开始游戏」可能重合，
+            // 所以这里必须**明确识别出排队**并直接跳过，绝不能盲点。
+            if (joined.contains("排队") || joined.contains("资源紧张")) {
+                Ln.i("$TAG: 云游戏排队中…（已等 ${(SystemClock.uptimeMillis() - (deadline - client.defaultTimeoutSec * 1000L)) / 1000}s）")
+            } else if (!clickedStart) {
+                // ---- 启动页：找「开始游戏」----
+                val startBtn = texts.firstOrNull {
+                    val t = it.text.replace(" ", "")
+                    t.contains("开始游戏") || t.contains("立即进入")
+                }
+                if (startBtn != null) {
+                    Ln.i("$TAG: 云游戏启动页，点「${startBtn.text}」@(${startBtn.cx},${startBtn.cy})")
+                    auto.tap(startBtn.cx, startBtn.cy)
+                    clickedStart = true
+                    Thread.sleep(2_000)
+                    continue
+                } else {
+                    // 没认出关键文字 —— 每 10 秒打一次诊断
+                    val now = SystemClock.uptimeMillis()
+                    if (now - lastReport > 10_000) {
+                        lastReport = now
+                        Ln.i(
+                            "$TAG: [云游戏诊断] 全屏 OCR ${texts.size} 条: " +
+                                texts.take(12).joinToString(" | ") { it.text },
+                        )
+                    }
+                }
+            }
+
+            Thread.sleep(2_000)
+        }
+
+        // 超时 —— 导出画面方便分析
+        runCatching {
+            val s = nav.exportFrame("cloudgame_timeout")
+            Ln.e("$TAG: 云游戏启动超时，已导出画面 -> $s")
+        }
+        return TaskResult(
+            "StartUp", false,
+            "云游戏启动超时（${client.defaultTimeoutSec}s）。" +
+                "可能还在排队，或启动页特征未识别。",
         )
     }
 
