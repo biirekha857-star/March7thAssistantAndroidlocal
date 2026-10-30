@@ -460,7 +460,8 @@ class StarRailTasks(
         client: StartUpTaskConfig.GameClient,
     ): TaskResult {
         val startupBudgetMs = client.defaultTimeoutSec * 1000L
-        var startupElapsedMs = 0L          // 只在非排队时累加
+        var startupElapsedMs = 0L          // 非排队累计，**真实墙钟**而非轮数×步长
+        var lastTickAt = 0L                // 上一轮结算时刻，用于计算真实耗时
         var lastStartTapAt = 0L            // 上次点「开始游戏」的时刻（防连点）
         var lastDiagLog = 0L
         var lastQueueLog = 0L
@@ -480,6 +481,45 @@ class StarRailTasks(
             }
 
             val now = SystemClock.uptimeMillis()
+
+            // ---- 结算上一轮的真实耗时 ----
+            //
+            // ## 修：原来写的是 `startupElapsedMs += pollMs`（固定 2000）
+            //
+            // 但每轮实际要做一次**全屏 OCR**（实测 1.5~3 秒）+ 可能的点击等待
+            // + 末尾 sleep(2000)，真实一轮 4~6 秒。按 2000 累加的话，
+            // 配 300 秒预算实际要跑 10 分钟以上才超时 —— 用户感知就是"卡住了"。
+            //
+            // 现在按墙钟结算：`now - lastTickAt` 就是上一轮的真实长度。
+            // 排队期间不计入（`inQueue` 用上一轮末尾的状态判定，
+            // 偏差最多一轮，远小于原来的 2~3 倍失真）。
+            if (lastTickAt != 0L && !inQueue) {
+                startupElapsedMs += now - lastTickAt
+            }
+            lastTickAt = now
+
+            // ---- 超时判断 ----
+            //
+            // ## 修：原来这段放在循环末尾、且被 `continue` 绕过
+            //
+            // 「点击进入」「开始游戏」两个分支点完就 `continue`，
+            // 那一轮的超时检查根本不执行。启动页只要一直认得出按钮，
+            // 就可以无限点下去而永不超时。
+            //
+            // 现在挪到**所有分支之前**：无论后面走哪条路，每轮都先判一次。
+            // 顺带把它放到 OCR 之前 —— 超时时不必再多跑一次识别。
+            if (!inQueue && startupElapsedMs > startupBudgetMs) {
+                runCatching {
+                    val s = nav.exportFrame("cloudgame_timeout")
+                    Ln.e("$TAG: 云游戏启动超时，已导出画面 -> $s")
+                }
+                return TaskResult(
+                    "StartUp", false,
+                    "云游戏启动超时（非排队累计 ${startupElapsedMs / 1000}s）。" +
+                        "可能启动页特征未识别。",
+                )
+            }
+
             val texts = nav.readAllText()
             val joined = texts.joinToString("") { it.text }
             val queueing = joined.contains("排队") || joined.contains("资源紧张")
@@ -512,12 +552,13 @@ class StarRailTasks(
                 }
             } else {
                 // ==================== 非排队：正常计时 ====================
+                //
+                // 计时已在循环开头按墙钟结算，这里只负责退出排队状态。
                 if (inQueue) {
                     inQueue = false
                     val qMin = (now - queueStartAt) / 60_000
                     Ln.i("$TAG: 云游戏排队结束（等了 ${qMin} 分钟），恢复启动计时")
                 }
-                startupElapsedMs += pollMs
 
                 // ---- ① 标题页「点击进入」----
                 //
@@ -566,18 +607,8 @@ class StarRailTasks(
                     )
                 }
 
-                // 超时判断（排队时间不计入）
-                if (startupElapsedMs > startupBudgetMs) {
-                    runCatching {
-                        val s = nav.exportFrame("cloudgame_timeout")
-                        Ln.e("$TAG: 云游戏启动超时，已导出画面 -> $s")
-                    }
-                    return TaskResult(
-                        "StartUp", false,
-                        "云游戏启动超时（非排队累计 ${startupElapsedMs / 1000}s）。" +
-                            "可能启动页特征未识别。",
-                    )
-                }
+                // 超时判断已上移到循环开头 —— 原来放在这里，会被
+                // 上面两个 `continue` 绕过，导致"一直认得出按钮"时永不超时。
             }
 
             Thread.sleep(pollMs)

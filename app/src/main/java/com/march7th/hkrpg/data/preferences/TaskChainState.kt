@@ -16,7 +16,6 @@ import com.march7th.hkrpg.data.model.TaskChainNode
 import com.march7th.hkrpg.data.model.TaskParamProvider
 import com.march7th.hkrpg.data.model.TaskProfile
 import com.march7th.hkrpg.data.model.TaskTypeInfo
-import com.march7th.hkrpg.data.model.WakeUpConfig
 import com.march7th.hkrpg.utils.JsonUtils
 import com.march7th.hkrpg.utils.i18n.LocaleBootstrap.resolveSelectedLanguage
 import kotlinx.coroutines.CompletableDeferred
@@ -378,8 +377,23 @@ class TaskChainState(
         return next to cfg.customPlanNames.getOrNull(next)
     }
 
+    /**
+     * 当前使用的客户端类型（`Packages` 的 key，如 `Official` / `YoStarEN`）。
+     *
+     * ## 修：数据来源从任务链改为全局设置
+     *
+     * 原来读 `findFirstEnabledConfig<WakeUpConfig>()?.clientType` ——
+     * 「开始唤醒」是方舟时代的任务，类型已从 [TaskTypeInfo] 移除，
+     * 于是这里恒为 null，实际一直在用 [lastUsedClientType] 兜底。
+     * 而 `lastUsedClientType` 只在**启动成功后**才写入，首次安装时是 null，
+     * 更糟的是它会让用户在设置页改掉的客户端类型在下次启动时被"旧值"盖回去。
+     *
+     * 客户端类型现在只有一个入口：设置页「客户端类型」→ [AppSettingsManager.clientType]。
+     * 以它为准，仅当它为空时才回退到上次会话用过的值。
+     */
     fun getClientTypeOrNull(): String? {
-        return findFirstEnabledConfig<WakeUpConfig>()?.clientType ?: _lastUsedClientType.value
+        val fromSettings = appSettings.clientType.value
+        return fromSettings.ifBlank { null } ?: _lastUsedClientType.value
     }
 
     fun saveLastUsedClientType(clientType: String) {

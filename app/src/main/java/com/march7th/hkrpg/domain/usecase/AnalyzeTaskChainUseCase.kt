@@ -4,9 +4,9 @@ import com.march7th.hkrpg.constant.Packages
 import com.march7th.hkrpg.data.model.CollectingPreflightLogSink
 import com.march7th.hkrpg.data.model.FightConfig
 import com.march7th.hkrpg.data.model.LogLevel
+import com.march7th.hkrpg.data.model.StartUpTaskConfig
 import com.march7th.hkrpg.data.model.TaskChainNode
 import com.march7th.hkrpg.data.model.TaskParamContext
-import com.march7th.hkrpg.data.model.WakeUpConfig
 import com.march7th.hkrpg.data.preferences.AppSettingsManager
 import com.march7th.hkrpg.data.preferences.TaskChainState
 import com.march7th.hkrpg.data.repository.DepotRepository
@@ -50,14 +50,16 @@ class AnalyzeTaskChainUseCase(
                 reason = AnalyzeTaskChainFailureReason.NO_TASK_SELECTED,
             )
         }
-        val list = getWakeUpClientTypeList(nodes)
-        if (list.size > 1) {
-            return AnalyzeTaskChainResult.Blocked(
-                reason = AnalyzeTaskChainFailureReason.CONFLICTING_CLIENT_TYPES,
-                clientTypes = list,
-            )
-        }
 
+        // ## 删掉了「客户端类型冲突」检查
+        //
+        // 那个检查靠收集各节点的 `WakeUpConfig.clientType` 来判断 ——
+        // 「开始唤醒」是方舟时代的任务，类型已从 [TaskTypeInfo] 移除，
+        // `as? WakeUpConfig` 恒为 null，于是这里永远返回空列表、永不冲突。
+        //
+        // 而客户端类型现在本来就是**全局单值**
+        // （设置页「客户端类型」→ `AppSettings.clientType`），
+        // 不存在节点之间选得不一样的场景，这个检查失去了存在的前提。
 
         val info = MallCreditFightAvailability.resolve(nodes, activityManager)
 
@@ -120,9 +122,15 @@ class AnalyzeTaskChainUseCase(
                 params = params,
                 clientType = clientType,
                 gamePackageName = Packages[clientType],
-                launchesGame = nodes
-                    .mapNotNull { it.config as? WakeUpConfig }
-                    .any { it.startGameEnabled },
+                // ## 修：原来认的是 `WakeUpConfig.startGameEnabled`
+                //
+                // 「开始唤醒」任务类型早已删除，启动游戏现在用 [StartUpTaskConfig]，
+                // 所以 `as? WakeUpConfig` 恒为 null、`launchesGame` 恒为 false ——
+                // 后果是任务链里明明勾着「启动游戏」，点开始还是弹
+                // 「检测到游戏未运行」。
+                //
+                // 新模型没有"启用但不启动"的开关，节点存在即代表会启动游戏。
+                launchesGame = nodes.any { it.config is StartUpTaskConfig },
                 logs = logs,
                 fallbacks = fallbacks,
                 // 开了两个同类节点会攒出两份，并发进去只有一份能拿到锁
@@ -138,11 +146,6 @@ class AnalyzeTaskChainUseCase(
                     task.type != CoreTaskType.DEPOT ||
                     params[index - 1].type != CoreTaskType.DEPOT
         }
-
-    private fun getWakeUpClientTypeList(nodes: List<TaskChainNode>): List<String> {
-        return nodes.mapNotNull { (it.config as? WakeUpConfig)?.clientType }
-            .distinct()
-    }
 
     private fun isSkippedByWeeklySchedule(
         node: TaskChainNode,

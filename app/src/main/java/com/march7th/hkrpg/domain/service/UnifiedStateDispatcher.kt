@@ -1,7 +1,6 @@
 package com.march7th.hkrpg.domain.service
 
 import com.march7th.hkrpg.RemoteService
-import com.march7th.hkrpg.data.model.WakeUpConfig
 import com.march7th.hkrpg.data.preferences.AppSettingsManager
 import com.march7th.hkrpg.data.preferences.TaskChainState
 import com.march7th.hkrpg.data.resource.ActivityManager
@@ -127,9 +126,14 @@ class UnifiedStateDispatcher(
         }
 
         // 切换客户端时就要重新加载资源
+        //
+        // 原来监听 `firstEnabledConfigFlow<WakeUpConfig>()` —— 那个任务类型
+        // 已删除，flow 恒发 null，`.drop(1)` 之后永远不会触发重新加载，
+        // 于是用户在设置页把客户端从国服切到国际服，资源还是旧服的那份。
+        // 现在监听全局设置本身。
         scope.launch {
-            chainState.firstEnabledConfigFlow<WakeUpConfig>()
-                .map { it?.clientType }
+            appSettingsManager.clientType
+                .map { it.ifBlank { null } }
                 .distinctUntilChanged()
                 .drop(1)
                 .collect { newClientType ->
