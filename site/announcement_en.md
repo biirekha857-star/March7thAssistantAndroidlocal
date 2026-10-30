@@ -6,11 +6,28 @@
 
 ## Current Version
 
-**0.5.0beta**
+**0.5.5beta**
 
 ---
 
 ## What's New
+
+### Added
+
+- **Cloud game client support** — the *Start Game* task now lets you pick
+  either the local client or Cloud Star Rail
+  (`com.miHoYo.cloudgames.hkrpg`). The cloud path is separate:
+  tap *Start Game* → queue (does not count against the timeout, 60-minute
+  cap) → tap *Tap to Enter* → lobby
+
+### Fixed
+
+- **Truncated frames on tall screens** — the capture layer now reads the
+  buffer at its real size and rescales it, fixing the case where the
+  virtual display is 1920×1080 but frames arrive as 1920×872, cutting off
+  *Tap to Enter* and timing out the launch
+- **Cloud stream never tapping *Tap to Enter*** — that step is now
+  implemented instead of waiting out the timeout
 
 ### Core Features
 
@@ -21,6 +38,7 @@
 - **Daily Training** — checkbox-driven: dispatch, photo, synthesizer,
   technique, power consumption, claim rewards
 - **Start Game** — launches, skips announcements, enters the lobby
+  (local or cloud client)
 - **Mail** — one-tap attachment collection
 
 ### Before You Start

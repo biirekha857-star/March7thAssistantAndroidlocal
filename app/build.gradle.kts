@@ -21,7 +21,7 @@ val localProperties = Properties().apply {
 }
 
 val gitVersionCode: Int by lazy {
-    // 0.5.0beta 是每日实训 + 清体力全副本可用的里程碑版本。
+    // 0.5.5beta 是云游戏客户端支持的里程碑版本。
     //
     // 原来的实现是 `git rev-list --count HEAD`，跟着提交数一直涨 ——
     // 但本项目已经脱离上游的版本节奏（上游 0.22.0 是明日方舟的），
@@ -31,11 +31,12 @@ val gitVersionCode: Int by lazy {
     // 版本号对应关系（手工维护）：
     //   3  → 0.0.3alpha  首个对外测试版
     //   5  → 0.5.0beta   每日实训 + 全部副本导航可用
-    5
+    //   6  → 0.5.5beta   云游戏启动 + 长屏采集修复 + 公告弹窗
+    6
 }
 
 val gitVersionName: String by lazy {
-    "0.5.0beta"
+    "0.5.5beta"
 }
 
 // 本机默认只编 arm64、关 LTO；CI=true 保持双 ABI + LTO
@@ -150,20 +151,31 @@ android {
             //
             // | maa.r8 | 代码混淆 | 资源压缩 | 内存占用 | 用途 |
             // |---|---|---|---|---|
-            // | `none`  | ❌ | ❌ | 低 | 调试/低配机编译 |
-            // | `light` | ✅ | ❌ | 中 | **开源发布（默认）** |
+            // | `none`  | ❌ | ❌ | 低 | **默认**（开源发布 / 低配机编译） |
+            // | `light` | ✅ | ❌ | 中 | 需要减小体积时 |
             // | `full`  | ✅ | ✅ | 高 | 上架商店 |
             //
             // 资源压缩（`isShrinkResources`）最吃内存 —— 它要把整个
             // resources.arsc 和所有资源文件过一遍，实测在 8GB 机器上
             // 会把 Gradle + Kotlin 两个进程挤爆、卡死在 GC。
             //
-            // 开源项目本来就不怕反编译（源码都公开），所以默认 `light`：
-            // 保留代码压缩（去掉没用的类，减小体积），不做资源压缩。
+            // 开源项目本来就不怕反编译（源码都公开），所以默认 `none`：
+            // 不混淆、不压缩。
+            //
+            // ## 为什么默认从 `light` 改成 `none`
+            //
+            // R8 会把**只被 JNI 通过反射访问**的类当成无用代码删掉，
+            // 而 ProGuard 规则很难穷举这类引用。实测踩过两次：
+            // `ai.onnxruntime.TensorInfo` 被删 → OCR 时 JNI GetMethodID
+            // 直接崩溃（见 7afe71f）；AIDL 改名后回调类也被删。
+            //
+            // 这类问题**只在 release 包出现**，debug 完全正常，
+            // 定位成本极高。既然源码公开、体积也不是瓶颈，
+            // 默认关掉 R8 最省事；确实要瘦身时用 `-Pmaa.r8=light`。
             val r8Mode = (
                 (findProperty("maa.r8") as String?)?.trim()
                     ?: localProperties.getProperty("maa.r8", "")
-                ).ifEmpty { "light" }.lowercase()
+                ).ifEmpty { "none" }.lowercase()
 
             when (r8Mode) {
                 "none" -> {

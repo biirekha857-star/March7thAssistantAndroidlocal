@@ -8,7 +8,7 @@
 
 [![License](https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-green?style=flat-square)](#-系统要求)
-[![Version](https://img.shields.io/badge/version-0.5.0beta-orange?style=flat-square)](#-开发进度)
+[![Version](https://img.shields.io/badge/version-0.5.5beta-orange?style=flat-square)](#-开发进度)
 
 </div>
 

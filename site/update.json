@@ -1,9 +1,9 @@
 {
-  "versionCode": 5,
-  "versionName": "0.5.0beta",
+  "versionCode": 6,
+  "versionName": "0.5.5beta",
   "apkUrl": "https://github.com/biirekha857-star/March7thAssistantAndroidlocal/releases/latest",
-  "changelog": "0.5.0beta\n\n· 虚拟屏后台运行\n· 清体力支持 6 种副本\n· 每日实训改为勾选式\n· 日志导出包含引擎日志和超时截图\n· 修复长屏设备画面拉伸",
+  "changelog": "0.5.5beta\n\n· 新增云游戏客户端支持（本地 / 云·星穹铁道二选一）\n· 修复长屏设备画面截断导致启动超时\n· 修复云游戏串流后不点「点击进入」\n· 公告弹窗字号调小，首次启动按内容哈希弹一次\n· 关闭 R8 混淆，修复 release 版 OCR 崩溃",
   "forceUpdate": false,
   "minSupportedVersionCode": 1,
-  "publishedAt": "2026-10-28"
+  "publishedAt": "2026-10-30"
 }
