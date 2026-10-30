@@ -107,6 +107,15 @@ class StarRailTasks(
          */
         private const val QUEUE_MAX_WAIT_MS = 60L * 60 * 1000
 
+        /**
+         * 云游戏「开始游戏」的点击冷却。
+         *
+         * 按钮点完不会立刻消失（要等界面切换），所以必须留出冷却，
+         * 否则下一次轮询会对着同一屏再点一遍。8 秒既够界面完成跳转，
+         * 又能在真点偏时快速重试。
+         */
+        private const val START_TAP_COOLDOWN_MS = 8_000L
+
         /** 「点击进入」按钮的搜索区（标题页中下部）。 */
         private val CROP_CLICK_ENTER = ScreenNavigator.NormRect(
             0.15f, 0.60f, 0.70f, 0.40f,
@@ -452,7 +461,7 @@ class StarRailTasks(
     ): TaskResult {
         val startupBudgetMs = client.defaultTimeoutSec * 1000L
         var startupElapsedMs = 0L          // 只在非排队时累加
-        var clickedStart = false
+        var lastStartTapAt = 0L            // 上次点「开始游戏」的时刻（防连点）
         var lastDiagLog = 0L
         var lastQueueLog = 0L
         var queueStartAt = 0L              // 首次进入排队的时刻
@@ -510,27 +519,51 @@ class StarRailTasks(
                 }
                 startupElapsedMs += pollMs
 
-                if (!clickedStart) {
-                    // 启动页：找「开始游戏」
-                    val startBtn = texts.firstOrNull {
-                        val t = it.text.replace(" ", "")
-                        t.contains("开始游戏") || t.contains("立即进入")
-                    }
-                    if (startBtn != null) {
-                        Ln.i("$TAG: 云游戏启动页，点「${startBtn.text}」@(${startBtn.cx},${startBtn.cy})")
-                        auto.tap(startBtn.cx, startBtn.cy)
-                        clickedStart = true
-                        Thread.sleep(2_000)
-                        continue
-                    }
-                    // 没认出关键文字 —— 每 10 秒打一次诊断
-                    if (now - lastDiagLog > 10_000) {
-                        lastDiagLog = now
-                        Ln.i(
-                            "$TAG: [云游戏诊断] 全屏 OCR ${texts.size} 条: " +
-                                texts.take(12).joinToString(" | ") { it.text },
-                        )
-                    }
+                // ---- ① 标题页「点击进入」----
+                //
+                // 云游戏串流建立后和本地客户端一样，会停在崩铁标题页，
+                // 必须点一次「点击进入」才加载存档进大厅。
+                //
+                // 之前漏了这一步 —— 只等「大厅」出现，可「点击进入」
+                // 不点永远到不了大厅，于是白等到超时。
+                val enterBtn = texts.firstOrNull {
+                    val t = it.text.replace(" ", "")
+                    t.contains("点击进入") || t.contains("点击屏幕")
+                }
+                if (enterBtn != null) {
+                    Ln.i("$TAG: 云游戏标题页，点「${enterBtn.text}」@(${enterBtn.cx},${enterBtn.cy})")
+                    auto.tap(enterBtn.cx, enterBtn.cy)
+                    Thread.sleep(3_000)
+                    continue
+                }
+
+                // ---- ② 启动页「开始游戏」----
+                //
+                // **不设「只点一次」**。两种真实情况都需要再点一次：
+                // - 上一次点击偏了（按钮位置随分辨率浮动）；
+                // - 排队结束后又退回启动页，需要重新发起。
+                //
+                // 用冷却时间防连点：按钮点完不会立刻消失，
+                // 不加冷却会在 2 秒后把自己刚点出来的界面再点一遍。
+                val startBtn = texts.firstOrNull {
+                    val t = it.text.replace(" ", "")
+                    t.contains("开始游戏") || t.contains("立即进入")
+                }
+                if (startBtn != null && now - lastStartTapAt > START_TAP_COOLDOWN_MS) {
+                    lastStartTapAt = now
+                    Ln.i("$TAG: 云游戏启动页，点「${startBtn.text}」@(${startBtn.cx},${startBtn.cy})")
+                    auto.tap(startBtn.cx, startBtn.cy)
+                    Thread.sleep(2_000)
+                    continue
+                }
+
+                // ---- ③ 都没认出来：每 10 秒打一次诊断 ----
+                if (now - lastDiagLog > 10_000) {
+                    lastDiagLog = now
+                    Ln.i(
+                        "$TAG: [云游戏诊断] 全屏 OCR ${texts.size} 条: " +
+                            texts.take(12).joinToString(" | ") { it.text },
+                    )
                 }
 
                 // 超时判断（排队时间不计入）
