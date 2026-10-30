@@ -17,7 +17,6 @@ import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.march7th.hkrpg.data.preferences.AppSettingsManager
-import com.march7th.hkrpg.domain.models.OverlayControlMode
 import com.march7th.hkrpg.domain.models.RunMode
 import com.march7th.hkrpg.domain.service.TaskCompositionService
 import com.march7th.hkrpg.domain.state.TaskExecutionState
@@ -26,8 +25,7 @@ import com.march7th.hkrpg.presentation.LocalFloatingWindowContext
 import com.march7th.hkrpg.presentation.ProvideInputFocusManager
 import com.march7th.hkrpg.presentation.view.panel.ExpandedControlPanel
 import com.march7th.hkrpg.schedule.model.CountdownState
-import com.march7th.hkrpg.service.AccessibilityHelperService
-import com.march7th.hkrpg.theme.MaaMeowTheme
+import com.march7th.hkrpg.theme.AppTheme
 import com.march7th.hkrpg.utils.Misc
 import com.march7th.hkrpg.utils.UiScale
 import com.petterp.floatingx.FloatingX
@@ -72,7 +70,6 @@ class OverlayController(
     private val _signal = MutableSharedFlow<TaskExecutionState>(extraBufferCapacity = 1)
     val signal: SharedFlow<TaskExecutionState> = _signal.asSharedFlow()
 
-    private var currentMode: OverlayControlMode = OverlayControlMode.ACCESSIBILITY
     private var maaStateJob: Job? = null
 
     private val _countdownState = MutableStateFlow<CountdownState>(CountdownState.Idle)
@@ -169,34 +166,17 @@ class OverlayController(
             // 进入运行态：隐藏主面板，显示悬浮控件
             current == TaskExecutionState.RUNNING && previous != TaskExecutionState.RUNNING -> {
                 hideMainPanel()
-                when (currentMode) {
-                    OverlayControlMode.FLOAT_BALL -> {
-                        showFloatBall()
-                        Timber.d("OverlayController: 任务运行中，显示悬浮球")
-                    }
-
-                    OverlayControlMode.ACCESSIBILITY -> {
-                        borderOverlayManager.show()
-                        Timber.d("OverlayController: 任务运行中，显示边框")
-                    }
-                }
+                // 边框＝「托管中」的静态提示；悬浮球＝可点开的停止入口。
+                // 无障碍快捷键已删除，运行态必须留一个看得见的停止按钮。
+                borderOverlayManager.show()
+                showFloatBall()
             }
 
             // 离开运行态：恢复主面板
             wasActive && !isActive -> {
-                when (currentMode) {
-                    OverlayControlMode.ACCESSIBILITY -> {
-                        borderOverlayManager.hide()
-                        showMainPanel()
-                        Timber.d("OverlayController: 任务结束，隐藏边框，恢复主面板")
-                    }
-
-                    OverlayControlMode.FLOAT_BALL -> {
-                        hideFloatBall()
-                        showMainPanel()
-                        Timber.d("OverlayController: 任务结束，隐藏悬浮球，恢复主面板")
-                    }
-                }
+                borderOverlayManager.hide()
+                hideFloatBall()
+                showMainPanel()
                 _signal.tryEmit(current)
             }
         }
@@ -220,7 +200,7 @@ class OverlayController(
                 val themeMode by appSettings.themeMode.collectAsStateWithLifecycle()
                 val fontSizeScale by appSettings.fontSizeScale.collectAsStateWithLifecycle()
 
-                MaaMeowTheme(themeMode = themeMode) {
+                AppTheme(themeMode = themeMode) {
                     val baseDensity = LocalDensity.current
                     val configuration = LocalConfiguration.current
                     // 浮窗跟随主界面页面缩放；fontScale 钳制保持历史行为
@@ -390,9 +370,7 @@ class OverlayController(
 
     fun onCloseControlPanel() {
         hideMainPanel()
-        if (currentMode == OverlayControlMode.FLOAT_BALL) {
-            showFloatBall()
-        }
+        showFloatBall()
     }
 
     fun showMainPanel() {
@@ -433,68 +411,16 @@ class OverlayController(
      * 首页手动启动控制层后才 _isActive
      * 定时/LAUNCH_PROFILE 前台静默启动不会走这里，需用户事先 show 过才能在 RUNNING 时出球/边框
      */
-    fun show(mode: OverlayControlMode = OverlayControlMode.ACCESSIBILITY) {
-        currentMode = mode
-
-        when (mode) {
-            OverlayControlMode.ACCESSIBILITY -> {
-                // 快捷键模式：隐藏悬浮球，注册音量键监听，显示主面板
-                hideFloatBall()
-                registerVolumeKeyListener()
-                showMainPanel()
-                Timber.d("OverlayController: 快捷键模式已启动")
-            }
-
-            OverlayControlMode.FLOAT_BALL -> {
-                // 悬浮球模式：注销音量键监听，显示悬浮球
-                unregisterVolumeKeyListener()
-                showFloatBall()
-                Timber.d("OverlayController: 悬浮球模式已启动")
-            }
-        }
+    fun show() {
+        showFloatBall()
+        showMainPanel()
         _isActive.value = true
-    }
-
-    suspend fun applyMode(mode: OverlayControlMode) {
-        if (currentMode == mode) return
-
-        Timber.d("FloatWindowCompose: 切换模式 $currentMode -> $mode")
-
-        // 隐藏当前模式的 UI
-        when (currentMode) {
-            OverlayControlMode.ACCESSIBILITY -> {
-                // 旧模式是快捷键模式，隐藏边框（如果正在显示）
-                borderOverlayManager.hide()
-            }
-
-            OverlayControlMode.FLOAT_BALL -> {
-                // 旧模式是悬浮球模式，隐藏悬浮球
-                hideFloatBall()
-            }
-        }
-
-        // 应用新模式
-        currentMode = mode
-        when (mode) {
-            OverlayControlMode.ACCESSIBILITY -> {
-                registerVolumeKeyListener()
-                if (compositionService.state.value == TaskExecutionState.RUNNING) {
-                    borderOverlayManager.show()
-                }
-            }
-
-            OverlayControlMode.FLOAT_BALL -> {
-                unregisterVolumeKeyListener()
-                showFloatBall()
-            }
-        }
     }
 
     suspend fun hideAll() {
         hideMainPanel()
         hideFloatBall()
         borderOverlayManager.hide()
-        unregisterVolumeKeyListener()
         _isActive.value = false
     }
 
@@ -505,21 +431,6 @@ class OverlayController(
         } else {
             showMainPanel()
         }
-    }
-
-    fun registerVolumeKeyListener() {
-        AccessibilityHelperService.onVolumeUpDownPressed.set {
-            scope.launch {
-                toggleMainPanel()
-                if (compositionService.state.value == TaskExecutionState.RUNNING) {
-                    compositionService.stop()
-                }
-            }
-        }
-    }
-
-    fun unregisterVolumeKeyListener() {
-        AccessibilityHelperService.onVolumeUpDownPressed.set(null)
     }
 
 }

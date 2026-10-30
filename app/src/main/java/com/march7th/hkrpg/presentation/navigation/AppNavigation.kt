@@ -42,8 +42,13 @@ import com.march7th.hkrpg.presentation.components.clearFocusOnBlankTap
 import com.march7th.hkrpg.presentation.pip.LocalIsInPip
 import com.march7th.hkrpg.presentation.state.UiEffect
 import com.march7th.hkrpg.presentation.view.notification.NotificationSettingsView
+import com.march7th.hkrpg.presentation.view.settings.AboutSettingsScreen
+import com.march7th.hkrpg.presentation.view.settings.DataSettingsScreen
 import com.march7th.hkrpg.presentation.view.settings.ErrorLogView
+import com.march7th.hkrpg.presentation.view.settings.GeneralSettingsScreen
+import com.march7th.hkrpg.presentation.view.settings.LaunchSettingsScreen
 import com.march7th.hkrpg.presentation.view.settings.LogHistoryView
+import com.march7th.hkrpg.presentation.view.settings.LogSettingsScreen
 import com.march7th.hkrpg.presentation.view.settings.TaskOverrideEditorView
 import com.march7th.hkrpg.presentation.view.settings.WallpaperSettingsView
 import com.march7th.hkrpg.presentation.viewmodel.AppEventsViewModel
@@ -235,6 +240,22 @@ fun AppNavigation(
 
                     composable(Routes.NOTIFICATION) {
                         NotificationSettingsView(navController = navController)
+                    }
+                    // 设置二级页：一级页只放分类入口
+                    composable(Routes.SETTINGS_GENERAL) {
+                        GeneralSettingsScreen(navController = navController)
+                    }
+                    composable(Routes.SETTINGS_LAUNCH) {
+                        LaunchSettingsScreen(navController = navController)
+                    }
+                    composable(Routes.SETTINGS_LOG) {
+                        LogSettingsScreen(navController = navController)
+                    }
+                    composable(Routes.SETTINGS_DATA) {
+                        DataSettingsScreen(navController = navController)
+                    }
+                    composable(Routes.SETTINGS_ABOUT) {
+                        AboutSettingsScreen(navController = navController)
                     }
                     composable(Routes.WALLPAPER) {
                         WallpaperSettingsView(navController = navController)

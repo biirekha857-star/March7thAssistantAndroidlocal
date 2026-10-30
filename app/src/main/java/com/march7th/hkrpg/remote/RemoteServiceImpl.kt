@@ -355,9 +355,6 @@ class RemoteServiceImpl : RemoteService.Stub() {
                 grantForegroundServiceSpecialUse(packageName)
             }
             return PermissionStateInfo(
-                accessibilityPermission = if (p and PermissionGrantRequest.PERM_ACCESSIBILITY != 0) grantAccessibilityService(
-                    request.accessibilityServiceId
-                ) else false,
                 floatingWindowPermission = if (p and PermissionGrantRequest.PERM_FLOATING_WINDOW != 0) grantFloatingWindowPermission(
                     packageName,
                     uid
@@ -528,7 +525,7 @@ class RemoteServiceImpl : RemoteService.Stub() {
         val targetDisplayId = VirtualDisplayManager.getDisplayId()
         if (targetDisplayId == DefaultDisplayConfig.DISPLAY_NONE) return true
         val onDisplay = ActivityUtils.isAppOnDisplay(packageName, targetDisplayId)
-        // 游戏不是 MaaMeow 拉起的（未启用自动启动）时，这里是首次得知它在虚拟屏上
+        // 游戏不是 M7A 拉起的（未启用自动启动）时，这里是首次得知它在虚拟屏上
         if (onDisplay) GameFpsMonitor.ensureStarted(packageName)
         return onDisplay
     }

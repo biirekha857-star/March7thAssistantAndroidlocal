@@ -9,7 +9,6 @@ import com.march7th.hkrpg.constant.DisplayMode
 import com.march7th.hkrpg.data.config.CorePathConfig
 import com.march7th.hkrpg.data.preferences.AppSettingsManager
 import com.march7th.hkrpg.domain.models.CoreDataLocation
-import com.march7th.hkrpg.domain.models.OverlayControlMode
 import com.march7th.hkrpg.domain.models.RunMode
 import com.march7th.hkrpg.domain.service.TaskCompositionService
 import com.march7th.hkrpg.domain.service.CoreResourceLoader
@@ -93,7 +92,6 @@ class HomeViewModel(
         observeServiceStatus()
         observeResourceInitState()
         observeRunMode()
-        observeFloatWindowMode()
         observeIsGranting()
         observeOverlayActive()
     }
@@ -175,14 +173,6 @@ class HomeViewModel(
                         remoteServiceActive = remoteServiceActive
                     )
                 }
-            }
-        }
-    }
-
-    private fun observeFloatWindowMode() {
-        viewModelScope.launch {
-            appSettingsManager.overlayControlMode.collect { mode ->
-                _uiState.update { it.copy(overlayControlMode = mode) }
             }
         }
     }
@@ -277,25 +267,6 @@ class HomeViewModel(
         }
     }
 
-    fun onRequestAccessibility(context: Context) {
-        viewModelScope.launch {
-            if (permissionManager.permissions.remoteAccessGranted) {
-                val success = permissionManager.quickGrantAccessibility()
-                if (success) return@launch
-            }
-            permissionManager.requestAccessibility(context)
-        }
-    }
-
-    fun onControlOverlayModeChanged(mode: OverlayControlMode) {
-        viewModelScope.launch {
-            appSettingsManager.setFloatWindowMode(mode)
-            if (_uiState.value.isShowControlOverlay) {
-                overlayController.applyMode(mode)
-            }
-        }
-    }
-
     fun onStartControlOverlay() {
         viewModelScope.launch {
             try {
@@ -306,7 +277,6 @@ class HomeViewModel(
                 val state = permissionManager.permissions
 
                 // 检查必要权限
-                val currentMode = appSettingsManager.overlayControlMode.value
                 if (!state.remoteAccessGranted) {
                     _uiState.update { it.copy(isLoading = false) }
                     _effects.send(
@@ -321,9 +291,6 @@ class HomeViewModel(
                 val missingPermissions = buildList {
                     if (!state.overlay) add(application.getString(R.string.home_permission_overlay))
                     if (!state.storage) add(application.getString(R.string.home_permission_storage))
-                    if (currentMode == OverlayControlMode.ACCESSIBILITY && !state.accessibility) {
-                        add(application.getString(R.string.home_permission_accessibility))
-                    }
                 }
 
                 if (missingPermissions.isNotEmpty()) {
@@ -345,7 +312,7 @@ class HomeViewModel(
                     return@launch
                 }
 
-                overlayController.show(currentMode)
+                overlayController.show()
                 _uiState.update { it.copy(isLoading = false) }
             } catch (e: Exception) {
                 Timber.e(e, "Error starting floating window")

@@ -93,7 +93,7 @@ class LogExportService(
 
             二、其它
             ------------------------------------------------------------
-            engine/engine.log    引擎完整日志（MaaMeow）
+            engine/engine.log    引擎完整日志（M7A）
             engine/logcat/...    按 tag 抓的引擎 + 原生日志（App 身份抓不到跨进程日志）
             logcat/full.txt      App 自身进程的 logcat
             device_info.txt      设备/虚拟屏/Shizuku 环境快照
@@ -279,7 +279,7 @@ class LogExportService(
      * 全量 logcat 动辄几十 MB（系统其它应用的日志也在里面），
      * 直接打包会让 zip 大到没法传。所以：
      *
-     * 1. 主抓 **本应用相关** 的 tag（`MaaMeow` 是引擎的统一 tag）
+     * 1. 主抓 **本应用相关** 的 tag（`M7A` 是引擎的统一 tag）
      * 2. 附带抓本进程 pid 的全部日志
      * 3. 只取**最近 [LOGCAT_MAX_LINES] 行**，避免超大
      * 4. 抓取失败不抛异常 —— 宁可少了 logcat，也不能让整个导出失败
@@ -313,7 +313,7 @@ class LogExportService(
             zos.addEntry("logcat/full.txt", body.byteInputStream())
             // 另外单独留一份引擎日志，方便直接看
             val engineOnly = body.lineSequence()
-                .filter { it.contains("MaaMeow") }
+                .filter { it.contains("M7A") }
                 .joinToString("\n")
             if (engineOnly.isNotBlank()) {
                 zos.addEntry("logcat/engine.txt", engineOnly.byteInputStream())
@@ -339,14 +339,14 @@ class LogExportService(
      *
      * ## 现在按 tag 过滤
      *
-     * 引擎统一用 `MaaMeow` 作 tag（见 `Ln` 门面），所以：
-     * 1. `-s MaaMeow:*` 精确抓引擎日志（优先）
+     * 引擎统一用 `M7A` 作 tag（见 `Ln` 门面），所以：
+     * 1. `-s M7A:*` 精确抓引擎日志（优先）
      * 2. 抓不到再退回全量缓冲区
      */
     private fun dumpLogcat(): String {
         val attempts = listOf(
             // 引擎日志：按 tag 精确抓，跨进程都有效
-            arrayOf("logcat", "-d", "-v", "time", "-s", "MaaMeow:V"),
+            arrayOf("logcat", "-d", "-v", "time", "-s", "M7A:V"),
             // 兜底：全量缓冲区（包含系统崩溃、ANR 等信息）
             arrayOf("logcat", "-d", "-v", "time"),
         )
@@ -361,9 +361,9 @@ class LogExportService(
                 text
             }.getOrNull()
 
-            if (cmd.contains("MaaMeow:V")) {
+            if (cmd.contains("M7A:V")) {
                 // tag 过滤成功且确实有内容 → 直接用
-                if (!out.isNullOrBlank() && out.contains("MaaMeow")) {
+                if (!out.isNullOrBlank() && out.contains("M7A")) {
                     return tailLines(out, LOGCAT_MAX_LINES)
                 }
             } else {
@@ -376,7 +376,7 @@ class LogExportService(
         if (fullBuffer.isNotBlank()) {
             val interesting = fullBuffer.lineSequence()
                 .filter { line ->
-                    line.contains("hkrpg") || line.contains("MaaMeow") ||
+                    line.contains("hkrpg") || line.contains("M7A") ||
                         line.contains("DEBUG") || line.contains("AndroidRuntime")
                 }
                 .joinToString("\n")
@@ -453,7 +453,7 @@ class LogExportService(
             // 以及每 2 分钟自动落盘 —— 用户没有电脑，这是唯一能拿到系统侧
             // 真实窗口与合成参数的途径。
             // `logcat/` 是 LogcatCaptureService 按 tag 抓的引擎 + 原生日志
-            // （`MaaMeow` / `LibBridge`），App 身份抓不到这些跨进程日志。
+            // （`M7A` / `LibBridge`），App 身份抓不到这些跨进程日志。
             val wanted = rel == "engine.log" ||
                 rel == "engine.log.old" ||
                 rel.startsWith("screenshots/") ||
@@ -499,7 +499,7 @@ class LogExportService(
     private fun buildDeviceInfo(): String = buildString {
         val line = "=".repeat(60)
         append(line).append("\n")
-        append("=== MaaMeow Device & App Info ===\n")
+        append("=== M7A Device & App Info ===\n")
         append("Export Time : ${ZonedDateTime.now().format(INFO_TIME_FORMAT)}\n")
         append("App         : ${BuildConfig.APPLICATION_ID}\n")
         append("Version     : ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})\n")

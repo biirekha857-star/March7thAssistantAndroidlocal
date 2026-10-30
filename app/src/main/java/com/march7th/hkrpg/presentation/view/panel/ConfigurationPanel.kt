@@ -73,12 +73,6 @@ import com.march7th.hkrpg.data.model.TaskTypeInfo
 import com.march7th.hkrpg.data.model.UserDataUpdateConfig
 import com.march7th.hkrpg.data.model.WakeUpConfig
 import com.march7th.hkrpg.presentation.components.ITextField
-import com.march7th.hkrpg.presentation.view.panel.depot.DepotMaintainConfigPanel
-import com.march7th.hkrpg.presentation.view.panel.fight.FightConfigPanel
-import com.march7th.hkrpg.presentation.view.panel.mall.MallConfigPanel
-import com.march7th.hkrpg.presentation.view.panel.roguelike.RoguelikeConfigPanel
-import com.march7th.hkrpg.presentation.view.panel.switchtheme.SwitchThemeConfigPanel
-import com.march7th.hkrpg.presentation.view.panel.userdata.UserDataUpdateConfigPanel
 
 @Composable
 fun TaskConfigPanel(
@@ -149,49 +143,22 @@ fun TaskConfigPanel(
                 val cfg = selectedNode.config
                 Box(modifier = Modifier.fillMaxSize()) {
                     when (cfg) {
-                        is WakeUpConfig -> WakeUpConfigPanel(
-                            config = cfg, onConfigChange = onConfigChange
-                        )
-
-                        is RecruitConfig -> RecruitConfigPanel(
-                            config = cfg, onConfigChange = onConfigChange
-                        )
-
-                        is InfrastConfig -> InfrastConfigPanel(
-                            config = cfg, onConfigChange = onConfigChange
-                        )
-
-                        is FightConfig -> FightConfigPanel(
-                            config = cfg, clientType = clientType, onConfigChange = onConfigChange
-                        )
-
-                        is MallConfig -> MallConfigPanel(
-                            config = cfg, onConfigChange = onConfigChange
-                        )
-
-                        is AwardConfig -> AwardConfigPanel(
-                            config = cfg, onConfigChange = onConfigChange
-                        )
-
-                        is RoguelikeConfig -> RoguelikeConfigPanel(
-                            config = cfg, onConfigChange = onConfigChange
-                        )
-
-                        is ReclamationConfig -> ReclamationConfigPanel(
-                            config = cfg, onConfigChange = onConfigChange
-                        )
-
-                        is UserDataUpdateConfig -> UserDataUpdateConfigPanel(
-                            config = cfg, onConfigChange = onConfigChange
-                        )
-
-                        is DepotMaintainConfig -> DepotMaintainConfigPanel(
-                            config = cfg, onConfigChange = onConfigChange
-                        )
-
-                        is SwitchThemeConfig -> SwitchThemeConfigPanel(
-                            config = cfg, onConfigChange = onConfigChange
-                        )
+                        // ## 上游方舟遗留的配置类型
+                        //
+                        // 这些类型在 `TaskTypeInfo` 里已经没有对应任务（当前只有
+                        // StartUp / Mail / Power / Daily / CloseDown 五个崩铁任务），
+                        // 所以 `selectedNode.config` **永远不可能是它们** ——
+                        // 对应的十几个配置面板（基建 1397 行、作战 896 行、仓库 823 行、
+                        // 公招 749 行……合计约 3500 行）在 UI 上完全不可达。
+                        //
+                        // 这里把分支归并成一条，面板实现文件已删除。
+                        // **但类型本身保留**：它们是 `@Serializable` 多态体系的注册项，
+                        // 删掉会让持有旧存档（JSON 里带 `"type":"Fight"` 之类）的用户
+                        // 反序列化时直接抛异常 —— 面板没人用，数据结构仍要能读。
+                        is WakeUpConfig, is RecruitConfig, is InfrastConfig,
+                        is FightConfig, is MallConfig, is AwardConfig,
+                        is RoguelikeConfig, is ReclamationConfig, is UserDataUpdateConfig,
+                        is DepotMaintainConfig, is SwitchThemeConfig -> NoConfigHint()
 
                         // 崩铁任务：目前都不需要配置，显示占位说明
                         is StarRailTaskConfig -> NoConfigHint()

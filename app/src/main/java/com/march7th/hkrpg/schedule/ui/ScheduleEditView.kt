@@ -79,7 +79,7 @@ import com.march7th.hkrpg.schedule.model.ScheduleHealthIssue
 import com.march7th.hkrpg.schedule.model.ScheduleType
 import com.march7th.hkrpg.schedule.service.ExactAlarmSettings
 import com.march7th.hkrpg.schedule.service.OemPowerHints
-import com.march7th.hkrpg.theme.MaaDesignTokens
+import com.march7th.hkrpg.theme.AppDesignTokens
 import com.march7th.hkrpg.theme.OpaqueTheme
 import com.march7th.hkrpg.utils.i18n.asString
 import com.dokar.sonner.ToastType
@@ -200,8 +200,8 @@ fun ScheduleEditView(
                 .fillMaxWidth()
                 .padding(padding),
             contentPadding = PaddingValues(
-                horizontal = MaaDesignTokens.Spacing.listHorizontal,
-                vertical = MaaDesignTokens.Spacing.sm
+                horizontal = AppDesignTokens.Spacing.listHorizontal,
+                vertical = AppDesignTokens.Spacing.sm
             )
         ) {
             item(key = "basic-header") {
@@ -230,7 +230,7 @@ fun ScheduleEditView(
             }
 
             item(key = "type-header") {
-                Spacer(Modifier.height(MaaDesignTokens.Spacing.sectionGap))
+                Spacer(Modifier.height(AppDesignTokens.Spacing.sectionGap))
                 SectionHeader(stringResource(R.string.schedule_section_type))
             }
             item(key = "type") {
@@ -262,7 +262,7 @@ fun ScheduleEditView(
             when (state.scheduleType) {
                 ScheduleType.FIXED_TIME -> {
                     item(key = "days-header") {
-                        Spacer(Modifier.height(MaaDesignTokens.Spacing.sectionGap))
+                        Spacer(Modifier.height(AppDesignTokens.Spacing.sectionGap))
                         SectionHeader(stringResource(R.string.schedule_section_days))
                     }
                     item(key = "days") {
@@ -294,7 +294,7 @@ fun ScheduleEditView(
                     }
 
                     item(key = "times-header") {
-                        Spacer(Modifier.height(MaaDesignTokens.Spacing.sectionGap))
+                        Spacer(Modifier.height(AppDesignTokens.Spacing.sectionGap))
                         SectionHeader(stringResource(R.string.schedule_section_times))
                     }
                     item(key = "times") {
@@ -346,7 +346,7 @@ fun ScheduleEditView(
 
                 ScheduleType.INTERVAL -> {
                     item(key = "start-time-header") {
-                        Spacer(Modifier.height(MaaDesignTokens.Spacing.sectionGap))
+                        Spacer(Modifier.height(AppDesignTokens.Spacing.sectionGap))
                         SectionHeader(stringResource(R.string.schedule_section_start_time))
                     }
                     item(key = "start-time") {
@@ -433,7 +433,7 @@ fun ScheduleEditView(
                     }
 
                     item(key = "interval-header") {
-                        Spacer(Modifier.height(MaaDesignTokens.Spacing.sectionGap))
+                        Spacer(Modifier.height(AppDesignTokens.Spacing.sectionGap))
                         SectionHeader(stringResource(R.string.schedule_section_interval))
                     }
                     item(key = "interval") {
@@ -484,7 +484,7 @@ fun ScheduleEditView(
             }
 
             item(key = "profile-header") {
-                Spacer(Modifier.height(MaaDesignTokens.Spacing.sectionGap))
+                Spacer(Modifier.height(AppDesignTokens.Spacing.sectionGap))
                 SectionHeader(stringResource(R.string.schedule_section_task_config))
             }
             item(key = "profile") {
@@ -522,14 +522,14 @@ fun ScheduleEditView(
                             text = stringResource(R.string.schedule_enabled_tasks, enabledTasks),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = MaaDesignTokens.Spacing.sm)
+                            modifier = Modifier.padding(top = AppDesignTokens.Spacing.sm)
                         )
                     }
                 }
             }
 
             item(key = "force-start") {
-                Spacer(Modifier.height(MaaDesignTokens.Spacing.sectionGap))
+                Spacer(Modifier.height(AppDesignTokens.Spacing.sectionGap))
                 SectionHeader(stringResource(R.string.schedule_section_advanced))
                 val (expanded, setExpanded) = remember { mutableStateOf(false) }
                 Row(
@@ -694,7 +694,7 @@ fun ScheduleEditView(
                     style = MaterialTheme.typography.bodySmall,
                     color = if (willClose) MaterialTheme.colorScheme.primary
                     else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = MaaDesignTokens.Spacing.sm)
+                    modifier = Modifier.padding(bottom = AppDesignTokens.Spacing.sm)
                 )
                 ExpandableTipContent(
                     visible = closeExpanded,
@@ -806,7 +806,7 @@ private fun TimePickerDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = MaaDesignTokens.Spacing.lg),
+                            .padding(bottom = AppDesignTokens.Spacing.lg),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
@@ -825,7 +825,7 @@ private fun TimePickerDialog(
                         rows = rows,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Spacer(Modifier.height(MaaDesignTokens.Spacing.md))
+                    Spacer(Modifier.height(AppDesignTokens.Spacing.md))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.End,

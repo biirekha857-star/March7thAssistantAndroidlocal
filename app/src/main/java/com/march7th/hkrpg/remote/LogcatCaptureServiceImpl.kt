@@ -20,7 +20,7 @@ import kotlin.system.exitProcess
  *
  * ```
  * com.march7th.hkrpg                  ← UI 进程（App 能读）
- * com.march7th.hkrpg:shizuku_service  ← 引擎进程（MaaMeow）
+ * com.march7th.hkrpg:shizuku_service  ← 引擎进程（M7A）
  * native 层                            ← LibBridge（帧尺寸校验）
  * ```
  *
@@ -31,7 +31,7 @@ import kotlin.system.exitProcess
  * ## 抓取策略
  *
  * 按 **tag 白名单**抓，不按 pid：
- * - `MaaMeow`：引擎全部业务日志（`Ln` 门面）
+ * - `M7A`：引擎全部业务日志（`Ln` 门面）
  * - `LibBridge`：native 采集层（帧尺寸、buffer 尺寸）
  * - `AndroidRuntime` / `DEBUG`：崩溃与 ANR 栈
  *
@@ -56,7 +56,7 @@ class LogcatCaptureServiceImpl : ILogcatService.Stub() {
          */
         private val LOGCAT_CMD = arrayOf(
             "logcat", "-v", "time", "-T", "200",
-            "-s", "MaaMeow:V", "LibBridge:V", "AndroidRuntime:E", "DEBUG:V",
+            "-s", "M7A:V", "LibBridge:V", "AndroidRuntime:E", "DEBUG:V",
         )
     }
 
@@ -104,7 +104,7 @@ class LogcatCaptureServiceImpl : ILogcatService.Stub() {
         val outFile = File(outDir, "logcat_$timestamp.log")
 
         Ln.i(
-            "$TAG: 开始抓取 tag=[MaaMeow,LibBridge,AndroidRuntime,DEBUG] " +
+            "$TAG: 开始抓取 tag=[M7A,LibBridge,AndroidRuntime,DEBUG] " +
                 "appPid=$appPid servicePid=$servicePid -> ${outFile.absolutePath}"
         )
         targets[ENGINE_KEY] = pipe(outFile)

@@ -18,7 +18,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.march7th.hkrpg.theme.MaaThemeAlphas
+import com.march7th.hkrpg.theme.AppThemeAlphas
 
 /**
  * 面板里的卡片按钮，取自牛杂「优先系列事件」那组
@@ -44,14 +44,14 @@ fun SelectableCardButton(
         else -> MaterialTheme.colorScheme.surface
     }
     val border = when {
-        !enabled -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = MaaThemeAlphas.DISABLED)
+        !enabled -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = AppThemeAlphas.DISABLED)
         // 未选中就不描红，不抢视线
         isError && selected -> MaterialTheme.colorScheme.error
         selected -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.outlineVariant
     }
     val content = when {
-        !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = MaaThemeAlphas.DISABLED)
+        !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = AppThemeAlphas.DISABLED)
         isError -> MaterialTheme.colorScheme.onErrorContainer
         selected -> MaterialTheme.colorScheme.onPrimaryContainer
         else -> MaterialTheme.colorScheme.onSurface

@@ -44,8 +44,8 @@ import com.march7th.hkrpg.presentation.components.SettingRow
 import com.march7th.hkrpg.presentation.components.SettingsGroupCard
 import com.march7th.hkrpg.presentation.components.TopAppBar
 import com.march7th.hkrpg.presentation.viewmodel.NotificationSettingsViewModel
-import com.march7th.hkrpg.theme.MaaAnimatedVisibility
-import com.march7th.hkrpg.theme.MaaDesignTokens
+import com.march7th.hkrpg.theme.AppAnimatedVisibility
+import com.march7th.hkrpg.theme.AppDesignTokens
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.koinInject
@@ -110,8 +110,8 @@ fun NotificationSettingsView(
                 .fillMaxSize()
                 .padding(top = paddingValues.calculateTopPadding()),
             contentPadding = PaddingValues(
-                horizontal = MaaDesignTokens.Spacing.listHorizontal,
-                vertical = MaaDesignTokens.Spacing.sm
+                horizontal = AppDesignTokens.Spacing.listHorizontal,
+                vertical = AppDesignTokens.Spacing.sm
             )
         ) {
             item {
@@ -197,7 +197,7 @@ fun NotificationSettingsView(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = MaaDesignTokens.Spacing.listItemVertical),
+                            .padding(vertical = AppDesignTokens.Spacing.listItemVertical),
                         shape = MaterialTheme.shapes.small,
                         contentPadding = ButtonDefaults.ContentPadding,
                     ) {
@@ -211,7 +211,7 @@ fun NotificationSettingsView(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = MaaDesignTokens.Spacing.listItemVertical),
+                            .padding(vertical = AppDesignTokens.Spacing.listItemVertical),
                         shape = MaterialTheme.shapes.small,
                         contentPadding = ButtonDefaults.ContentPadding,
                     ) {
@@ -221,7 +221,7 @@ fun NotificationSettingsView(
             }
 
             item {
-                Spacer(Modifier.height(MaaDesignTokens.Spacing.sectionGap))
+                Spacer(Modifier.height(AppDesignTokens.Spacing.sectionGap))
             }
 
             // 内部通知
@@ -240,7 +240,7 @@ fun NotificationSettingsView(
                             )
                         }
                     }
-                    MaaAnimatedVisibility(visible = isEnabled) {
+                    AppAnimatedVisibility(visible = isEnabled) {
                         Column {
                             ListItemDivider()
                             SwitchItem(
@@ -262,7 +262,7 @@ fun NotificationSettingsView(
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = MaaDesignTokens.Spacing.listItemVertical),
+                                    .padding(vertical = AppDesignTokens.Spacing.listItemVertical),
                                 shape = MaterialTheme.shapes.small,
                                 contentPadding = ButtonDefaults.ContentPadding
                             ) {
@@ -275,7 +275,7 @@ fun NotificationSettingsView(
 
             // 外部通知 - 触发条件
             item {
-                Spacer(Modifier.height(MaaDesignTokens.Spacing.sectionGap))
+                Spacer(Modifier.height(AppDesignTokens.Spacing.sectionGap))
                 SectionHeader(stringResource(R.string.notification_section_external))
                 SettingsGroupCard {
                     SwitchItem(
@@ -314,14 +314,14 @@ fun NotificationSettingsView(
 
             // 通知渠道
             item {
-                Spacer(Modifier.height(MaaDesignTokens.Spacing.sectionGap))
+                Spacer(Modifier.height(AppDesignTokens.Spacing.sectionGap))
                 SectionHeader(stringResource(R.string.notification_section_channels))
             }
 
             PROVIDERS.forEach { (id, displayNameRes) ->
                 item(key = id) {
                     val enabled = id in enabledProviders
-                    Spacer(Modifier.height(MaaDesignTokens.Spacing.sm))
+                    Spacer(Modifier.height(AppDesignTokens.Spacing.sm))
                     SettingsGroupCard {
                         SettingRow(
                             title = stringResource(displayNameRes),
@@ -333,10 +333,10 @@ fun NotificationSettingsView(
                                 )
                             },
                         )
-                        MaaAnimatedVisibility(visible = enabled) {
-                            Column(modifier = Modifier.padding(top = MaaDesignTokens.Spacing.sm)) {
+                        AppAnimatedVisibility(visible = enabled) {
+                            Column(modifier = Modifier.padding(top = AppDesignTokens.Spacing.sm)) {
                                 ListItemDivider()
-                                Spacer(Modifier.height(MaaDesignTokens.Spacing.sm))
+                                Spacer(Modifier.height(AppDesignTokens.Spacing.sm))
                                 ProviderConfig(id, settings, viewModel)
                             }
                         }
@@ -346,7 +346,7 @@ fun NotificationSettingsView(
 
             // 测试
             item {
-                Spacer(Modifier.height(MaaDesignTokens.Spacing.sectionGap))
+                Spacer(Modifier.height(AppDesignTokens.Spacing.sectionGap))
                 SectionHeader(stringResource(R.string.notification_section_test))
                 val testTitle = stringResource(R.string.notification_test_title)
                 val testContent = stringResource(R.string.notification_test_message_full)
@@ -364,7 +364,7 @@ fun NotificationSettingsView(
             }
 
             // 底部留白
-            item { Spacer(Modifier.height(MaaDesignTokens.Spacing.xxl)) }
+            item { Spacer(Modifier.height(AppDesignTokens.Spacing.xxl)) }
         }
     }
 }
@@ -394,7 +394,7 @@ private fun ProviderConfig(
                 label = stringResource(R.string.notification_label_server_url),
                 placeholder = "https://api.day.app"
             )
-            Spacer(Modifier.height(MaaDesignTokens.Spacing.sm))
+            Spacer(Modifier.height(AppDesignTokens.Spacing.sm))
             ITextField(
                 value = settings.barkSendKey,
                 onValueChange = { viewModel.updateSettings { copy(barkSendKey = it) } },
@@ -408,13 +408,13 @@ private fun ProviderConfig(
                 onValueChange = { viewModel.updateSettings { copy(telegramBotToken = it) } },
                 label = stringResource(R.string.notification_label_bot_token)
             )
-            Spacer(Modifier.height(MaaDesignTokens.Spacing.sm))
+            Spacer(Modifier.height(AppDesignTokens.Spacing.sm))
             ITextField(
                 value = settings.telegramChatId,
                 onValueChange = { viewModel.updateSettings { copy(telegramChatId = it) } },
                 label = stringResource(R.string.notification_label_chat_id)
             )
-            Spacer(Modifier.height(MaaDesignTokens.Spacing.sm))
+            Spacer(Modifier.height(AppDesignTokens.Spacing.sm))
             ITextField(
                 value = settings.telegramTopicId,
                 onValueChange = { viewModel.updateSettings { copy(telegramTopicId = it) } },
@@ -429,7 +429,7 @@ private fun ProviderConfig(
                 onValueChange = { viewModel.updateSettings { copy(discordBotToken = it) } },
                 label = stringResource(R.string.notification_label_bot_token)
             )
-            Spacer(Modifier.height(MaaDesignTokens.Spacing.sm))
+            Spacer(Modifier.height(AppDesignTokens.Spacing.sm))
             ITextField(
                 value = settings.discordUserId,
                 onValueChange = { viewModel.updateSettings { copy(discordUserId = it) } },
@@ -443,7 +443,7 @@ private fun ProviderConfig(
                 onValueChange = { viewModel.updateSettings { copy(dingTalkAccessToken = it) } },
                 label = stringResource(R.string.notification_label_access_token)
             )
-            Spacer(Modifier.height(MaaDesignTokens.Spacing.sm))
+            Spacer(Modifier.height(AppDesignTokens.Spacing.sm))
             ITextField(
                 value = settings.dingTalkSecret,
                 onValueChange = { viewModel.updateSettings { copy(dingTalkSecret = it) } },
@@ -458,14 +458,14 @@ private fun ProviderConfig(
                 onValueChange = { viewModel.updateSettings { copy(kookBotToken = it) } },
                 label = stringResource(R.string.notification_label_bot_token)
             )
-            Spacer(Modifier.height(MaaDesignTokens.Spacing.sm))
+            Spacer(Modifier.height(AppDesignTokens.Spacing.sm))
             ITextField(
                 value = settings.kookTargetId,
                 onValueChange = { viewModel.updateSettings { copy(kookTargetId = it) } },
                 label = stringResource(R.string.notification_label_kook_target_id),
                 placeholder = stringResource(R.string.notification_placeholder_kook_target_id)
             )
-            Spacer(Modifier.height(MaaDesignTokens.Spacing.sm))
+            Spacer(Modifier.height(AppDesignTokens.Spacing.sm))
             SwitchItem(
                 title = stringResource(R.string.notification_kook_direct_message),
                 checked = settings.kookDirectMessage.toBooleanStrictOrNull() ?: false,
@@ -489,14 +489,14 @@ private fun ProviderConfig(
                 label = stringResource(R.string.notification_label_smtp_server),
                 placeholder = "smtp.example.com"
             )
-            Spacer(Modifier.height(MaaDesignTokens.Spacing.sm))
+            Spacer(Modifier.height(AppDesignTokens.Spacing.sm))
             ITextField(
                 value = settings.smtpPort,
                 onValueChange = { viewModel.updateSettings { copy(smtpPort = it) } },
                 label = stringResource(R.string.notification_label_smtp_port),
                 placeholder = "465"
             )
-            Spacer(Modifier.height(MaaDesignTokens.Spacing.sm))
+            Spacer(Modifier.height(AppDesignTokens.Spacing.sm))
             SwitchItem(
                 title = stringResource(R.string.notification_use_ssl),
                 checked = settings.smtpUseSsl.toBooleanStrictOrNull() ?: false,
@@ -508,28 +508,28 @@ private fun ProviderConfig(
                 checked = settings.smtpRequireAuthentication.toBooleanStrictOrNull() ?: false,
                 contentColor = contentColor,
                 onCheckedChange = { viewModel.updateSettings { copy(smtpRequireAuthentication = it.toString()) } })
-            Spacer(Modifier.height(MaaDesignTokens.Spacing.sm))
+            Spacer(Modifier.height(AppDesignTokens.Spacing.sm))
             ITextField(
                 value = settings.smtpUser,
                 onValueChange = { viewModel.updateSettings { copy(smtpUser = it) } },
                 label = stringResource(R.string.notification_label_smtp_user),
                 placeholder = stringResource(R.string.notification_placeholder_optional_required_when_auth)
             )
-            Spacer(Modifier.height(MaaDesignTokens.Spacing.sm))
+            Spacer(Modifier.height(AppDesignTokens.Spacing.sm))
             ITextField(
                 value = settings.smtpPassword,
                 onValueChange = { viewModel.updateSettings { copy(smtpPassword = it) } },
                 label = stringResource(R.string.notification_label_smtp_password),
                 placeholder = stringResource(R.string.notification_placeholder_optional_required_when_auth)
             )
-            Spacer(Modifier.height(MaaDesignTokens.Spacing.sm))
+            Spacer(Modifier.height(AppDesignTokens.Spacing.sm))
             ITextField(
                 value = settings.smtpFrom,
                 onValueChange = { viewModel.updateSettings { copy(smtpFrom = it) } },
                 label = stringResource(R.string.notification_label_from),
                 placeholder = "sender@example.com"
             )
-            Spacer(Modifier.height(MaaDesignTokens.Spacing.sm))
+            Spacer(Modifier.height(AppDesignTokens.Spacing.sm))
             ITextField(
                 value = settings.smtpTo,
                 onValueChange = { viewModel.updateSettings { copy(smtpTo = it) } },
@@ -545,19 +545,19 @@ private fun ProviderConfig(
                 label = stringResource(R.string.notification_label_qmsg_server),
                 placeholder = "https://qmsg.zendee.cn"
             )
-            Spacer(Modifier.height(MaaDesignTokens.Spacing.sm))
+            Spacer(Modifier.height(AppDesignTokens.Spacing.sm))
             ITextField(
                 value = settings.qmsgKey,
                 onValueChange = { viewModel.updateSettings { copy(qmsgKey = it) } },
                 label = stringResource(R.string.notification_label_qmsg_key)
             )
-            Spacer(Modifier.height(MaaDesignTokens.Spacing.sm))
+            Spacer(Modifier.height(AppDesignTokens.Spacing.sm))
             ITextField(
                 value = settings.qmsgUser,
                 onValueChange = { viewModel.updateSettings { copy(qmsgUser = it) } },
                 label = stringResource(R.string.notification_label_user_qq)
             )
-            Spacer(Modifier.height(MaaDesignTokens.Spacing.sm))
+            Spacer(Modifier.height(AppDesignTokens.Spacing.sm))
             ITextField(
                 value = settings.qmsgBot,
                 onValueChange = { viewModel.updateSettings { copy(qmsgBot = it) } },
@@ -573,7 +573,7 @@ private fun ProviderConfig(
                 label = stringResource(R.string.notification_label_server),
                 placeholder = "https://gotify.example.com"
             )
-            Spacer(Modifier.height(MaaDesignTokens.Spacing.sm))
+            Spacer(Modifier.height(AppDesignTokens.Spacing.sm))
             ITextField(
                 value = settings.gotifyToken,
                 onValueChange = { viewModel.updateSettings { copy(gotifyToken = it) } },
@@ -586,14 +586,14 @@ private fun ProviderConfig(
                 selectedId = settings.customWebhookPresetId,
                 onSelected = { id -> viewModel.updateSettings { withWebhookPreset(id) } },
             )
-            Spacer(Modifier.height(MaaDesignTokens.Spacing.sm))
+            Spacer(Modifier.height(AppDesignTokens.Spacing.sm))
             ITextField(
                 value = settings.customWebhookUrl,
                 onValueChange = { viewModel.updateSettings { copy(customWebhookUrl = it) } },
                 label = stringResource(R.string.notification_label_webhook_url),
                 placeholder = "https://..."
             )
-            Spacer(Modifier.height(MaaDesignTokens.Spacing.sm))
+            Spacer(Modifier.height(AppDesignTokens.Spacing.sm))
             ITextField(
                 value = settings.customWebhookHeaders,
                 onValueChange = { viewModel.updateSettings { copy(customWebhookHeaders = it) } },
@@ -601,7 +601,7 @@ private fun ProviderConfig(
                 singleLine = false,
                 placeholder = "Content-Type: application/json"
             )
-            Spacer(Modifier.height(MaaDesignTokens.Spacing.sm))
+            Spacer(Modifier.height(AppDesignTokens.Spacing.sm))
             ITextField(
                 value = settings.customWebhookBody,
                 onValueChange = { viewModel.updateSettings { copy(customWebhookBody = it) } },
@@ -613,7 +613,7 @@ private fun ProviderConfig(
                 text = stringResource(R.string.notification_supported_placeholders),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.padding(top = MaaDesignTokens.Spacing.xs)
+                modifier = Modifier.padding(top = AppDesignTokens.Spacing.xs)
             )
         }
     }

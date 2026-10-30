@@ -21,8 +21,7 @@ import androidx.navigation.NavController
 import com.march7th.hkrpg.constant.Routes
 import com.march7th.hkrpg.presentation.components.consumeAllPointerEvents
 import com.march7th.hkrpg.presentation.pip.LocalIsInPip
-import com.march7th.hkrpg.presentation.view.background.BackgroundTaskView
-import com.march7th.hkrpg.presentation.view.home.HomeView
+import com.march7th.hkrpg.presentation.view.home.HomeConsoleView
 import com.march7th.hkrpg.presentation.view.settings.SettingsView
 import com.march7th.hkrpg.presentation.viewmodel.BackgroundTaskViewModel
 import com.march7th.hkrpg.schedule.ui.ScheduleListView
@@ -89,12 +88,11 @@ fun MainScreen(
         goToPage(BottomNavTab.all.indexOf(tab), animate)
     }
 
-    // 定时任务触发时自动浮出后台任务页
-    // （恢复旧导航 navigate(BACKGROUND){popUpTo(HOME)} 的“自动浮出后台页”语义）。
+    // 定时任务触发时自动浮出首页（首页即后台任务控制台）
     val pendingNavigateRequestId by backgroundTaskViewModel.pendingNavigateRequestId.collectAsStateWithLifecycle()
     LaunchedEffect(pendingNavigateRequestId) {
         if (pendingNavigateRequestId != null) {
-            surfaceToTab(BottomNavTab.BACKGROUND)
+            surfaceToTab(BottomNavTab.HOME)
             backgroundTaskViewModel.onNavigateForScheduledLaunch()
         }
     }
@@ -137,9 +135,9 @@ fun MainScreen(
                     userScrollEnabled = visible && !chromeHidden,
                 ) { page ->
                     when (BottomNavTab.all[page]) {
-                        BottomNavTab.HOME -> HomeView(navController = navController)
-                        BottomNavTab.BACKGROUND -> BackgroundTaskView(
-                            viewModel = backgroundTaskViewModel,
+                        // 首页 = 预检条 + 后台任务控制台（原两页合并）
+                        BottomNavTab.HOME -> HomeConsoleView(
+                            backgroundTaskViewModel = backgroundTaskViewModel,
                             isActivePage = visible && pagerState.targetPage == page,
                         )
 

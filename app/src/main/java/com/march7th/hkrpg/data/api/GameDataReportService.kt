@@ -114,7 +114,7 @@ class GameDataReportService(
             .url(url)
             .post(body.toRequestBody(JSON_MEDIA))
             .header("Accept", "application/json")
-            .header("User-Agent", "MaaMeow/${BuildConfig.VERSION_NAME}")
+            .header("User-Agent", "M7A/${BuildConfig.VERSION_NAME}")
         headers.forEach { (key, value) -> builder.addHeader(key, value) }
         return builder.build()
     }

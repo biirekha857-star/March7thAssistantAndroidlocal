@@ -2,7 +2,6 @@ package com.march7th.hkrpg.utils.i18n
 
 import android.content.Context
 import com.march7th.hkrpg.R
-import com.march7th.hkrpg.domain.models.OverlayControlMode
 import com.march7th.hkrpg.domain.models.RemoteBackend
 import com.march7th.hkrpg.domain.models.RunMode
 import com.march7th.hkrpg.domain.service.CoreResourceLoader
@@ -10,13 +9,6 @@ import com.march7th.hkrpg.domain.service.CoreResourceLoader
 fun Context.runModeDisplayName(mode: RunMode): String {
     return when (mode) {
         RunMode.BACKGROUND -> getString(R.string.home_run_mode_background)
-    }
-}
-
-fun Context.overlayControlModeDisplayName(mode: OverlayControlMode): String {
-    return when (mode) {
-        OverlayControlMode.ACCESSIBILITY -> getString(R.string.home_overlay_mode_accessibility)
-        OverlayControlMode.FLOAT_BALL -> getString(R.string.home_overlay_mode_float_ball)
     }
 }
 

@@ -56,7 +56,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.march7th.hkrpg.R
 import com.march7th.hkrpg.presentation.LocalFloatingWindowContext
 import com.march7th.hkrpg.theme.LocalReduceMotion
-import com.march7th.hkrpg.theme.MaaAnimatedVisibility
+import com.march7th.hkrpg.theme.AppAnimatedVisibility
 import com.march7th.hkrpg.theme.M7aMotion
 import com.march7th.hkrpg.theme.OpaqueTheme
 
@@ -171,7 +171,7 @@ private fun FloatingTaskPromptDialog(
     val cardInteractionSource = remember { MutableInteractionSource() }
     val reduceMotion = LocalReduceMotion.current
 
-    MaaAnimatedVisibility(
+    AppAnimatedVisibility(
         visible = true,
         enter = M7aMotion.fadeIn(reduceMotion),
         exit = M7aMotion.fadeOut(reduceMotion),
@@ -191,7 +191,7 @@ private fun FloatingTaskPromptDialog(
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            MaaAnimatedVisibility(
+            AppAnimatedVisibility(
                 visible = true,
                 enter = M7aMotion.dialogIn(reduceMotion),
                 exit = M7aMotion.dialogOut(reduceMotion),

@@ -56,7 +56,7 @@ import com.march7th.hkrpg.schedule.model.ExecutionResult
 import com.march7th.hkrpg.schedule.model.ScheduleFixAction
 import com.march7th.hkrpg.schedule.model.TriggerLogEntry
 import com.march7th.hkrpg.schedule.service.ScheduleTriggerLogger.TriggerLogSummary
-import com.march7th.hkrpg.theme.MaaDesignTokens
+import com.march7th.hkrpg.theme.AppDesignTokens
 import com.march7th.hkrpg.theme.OpaqueTheme
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -175,10 +175,10 @@ fun ScheduleTriggerLogView(
                         .fillMaxSize()
                         .padding(padding),
                     contentPadding = PaddingValues(
-                        horizontal = MaaDesignTokens.Spacing.listHorizontal,
-                        vertical = MaaDesignTokens.Spacing.sm
+                        horizontal = AppDesignTokens.Spacing.listHorizontal,
+                        vertical = AppDesignTokens.Spacing.sm
                     ),
-                    verticalArrangement = Arrangement.spacedBy(MaaDesignTokens.Spacing.sm)
+                    verticalArrangement = Arrangement.spacedBy(AppDesignTokens.Spacing.sm)
                 ) {
                     items(summaries, key = { it.fileName }) { summary ->
                         SummaryCard(
@@ -357,10 +357,10 @@ private fun DetailView(
                 .fillMaxSize()
                 .padding(padding),
             contentPadding = PaddingValues(
-                horizontal = MaaDesignTokens.Spacing.listHorizontal,
-                vertical = MaaDesignTokens.Spacing.sm
+                horizontal = AppDesignTokens.Spacing.listHorizontal,
+                vertical = AppDesignTokens.Spacing.sm
             ),
-            verticalArrangement = Arrangement.spacedBy(MaaDesignTokens.Spacing.sm)
+            verticalArrangement = Arrangement.spacedBy(AppDesignTokens.Spacing.sm)
         ) {
             itemsIndexed(entries, key = { index, _ -> index }) { _, entry ->
                 when (entry) {

@@ -45,7 +45,7 @@ import com.march7th.hkrpg.R
 import com.march7th.hkrpg.data.model.TaskChainNode
 import com.march7th.hkrpg.data.model.TaskTypeInfo
 import com.march7th.hkrpg.data.model.taskTypeOrNull
-import com.march7th.hkrpg.theme.MaaAnimatedVisibility
+import com.march7th.hkrpg.theme.AppAnimatedVisibility
 import sh.calvin.reorderable.ReorderableColumn
 
 /**
@@ -164,7 +164,7 @@ fun TaskListPanel(
         }
 
         // 新增任务按钮 - 仅在编辑模式下显示
-        MaaAnimatedVisibility(
+        AppAnimatedVisibility(
             visible = isEditMode,
             enter = fadeIn() + expandVertically(),
             exit = fadeOut() + shrinkVertically()

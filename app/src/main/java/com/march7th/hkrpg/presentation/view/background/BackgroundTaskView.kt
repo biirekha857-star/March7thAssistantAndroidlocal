@@ -144,7 +144,7 @@ import com.march7th.hkrpg.presentation.view.panel.TaskListDetailLayout
 import com.march7th.hkrpg.presentation.viewmodel.BackgroundTaskViewModel
 import com.march7th.hkrpg.theme.LocalReduceMotion
 import com.march7th.hkrpg.theme.M7aMotion
-import com.march7th.hkrpg.theme.MaaThemeAlphas
+import com.march7th.hkrpg.theme.AppThemeAlphas
 import com.march7th.hkrpg.utils.i18n.asString
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -157,6 +157,12 @@ fun BackgroundTaskView(
     viewModel: BackgroundTaskViewModel,
     /** 子页面盖上来时 MainScreen 用 alpha 0 保活组合树，本页仍在组合但看不见，此时不能开画中画 */
     isActivePage: Boolean = true,
+    /**
+     * 顶部插槽：首页合并后由 [com.march7th.hkrpg.presentation.view.home.PreflightCard] 占据，
+     * 即「能不能跑」的一行结论。单独开页面时（如从定时任务浮出）留空。
+     */
+    /** 顶部插槽：传入「任务是否进行中」，供预检卡决定要不要展开细节 */
+    preflight: (@Composable (taskActive: Boolean) -> Unit)? = null,
     compositionService: TaskCompositionService = koinInject(),
     dispatcher: UnifiedStateDispatcher = koinInject(),
     screenSaverManager: ScreenSaverOverlayManager = koinInject(),
@@ -283,6 +289,12 @@ fun BackgroundTaskView(
     }
 
     var previewBounds by remember { mutableStateOf<Rect?>(null) }
+    // 预览区左上角在窗口里的位置，每次布局都会变。
+    // 展开/收起预检卡时它在动画的每一帧都在变 —— 如果直接写进 state，
+    // 每帧都会：整页重组 + 重启下面的 DisposableEffect（每次都调一次
+    // setPictureInPictureParams），这就是点开权限栏时掉帧的原因。
+    // 所以先用普通引用接住，只在真的要投标 PiP 时才同步到 state。
+    val latestPreviewBounds = remember { PreviewBoundsRef() }
 
     val previewContent = remember {
         movableContentOf {
@@ -394,6 +406,12 @@ fun BackgroundTaskView(
         onDispose { arm(enabled = false, sourceRect = null) }
     }
 
+    // 开始投标 PiP 时补一次当前落点（上面只为可投标的情况持续同步）
+    LaunchedEffect(pipEligible) {
+        val rect = latestPreviewBounds.rect
+        if (pipEligible && rect != null && rect != previewBounds) previewBounds = rect
+    }
+
     if (isInPip) {
         Box(
             modifier = Modifier
@@ -417,6 +435,10 @@ fun BackgroundTaskView(
                 .padding(horizontal = 16.dp)
                 .padding(top = 8.dp, bottom = 8.dp)
         ) {
+            // --- 预检条：首页合并后由外部注入，正常时只占一行 ---
+            // 预检卡自己带尾部间距：它退场后不留空档
+            preflight?.invoke(isTaskActive)
+
             // --- 预览图区域：实时加载 ---
             Box(
                 modifier = Modifier
@@ -435,7 +457,10 @@ fun BackgroundTaskView(
                                     bounds.right.toInt(),
                                     bounds.bottom.toInt(),
                                 )
-                                if (!next.isEmpty && next != previewBounds) {
+                                if (next.isEmpty) return@onGloballyPositioned
+                                latestPreviewBounds.rect = next
+                                // 动画期间不写 state；只有正在投标 PiP 时才跟随
+                                if (pipEligible && next != previewBounds) {
                                     previewBounds = next
                                 }
                             },
@@ -592,7 +617,7 @@ fun BackgroundTaskView(
                                                     alpha = 0.12f
                                                 ),
                                                 contentColor = MaterialTheme.colorScheme.onSurface.copy(
-                                                    alpha = MaaThemeAlphas.DISABLED
+                                                    alpha = AppThemeAlphas.DISABLED
                                                 ),
                                             )
                                         } else {
@@ -1199,7 +1224,7 @@ private fun SettingSwitchRow(
             color = if (enabled) {
                 MaterialTheme.colorScheme.onSurface
             } else {
-                MaterialTheme.colorScheme.onSurface.copy(alpha = MaaThemeAlphas.DISABLED)
+                MaterialTheme.colorScheme.onSurface.copy(alpha = AppThemeAlphas.DISABLED)
             },
             modifier = Modifier.weight(1f)
         )
@@ -1248,7 +1273,7 @@ private fun RunDurationStepperRow(
             val valueColor = if (enabled) {
                 MaterialTheme.colorScheme.primary
             } else {
-                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = MaaThemeAlphas.DISABLED)
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = AppThemeAlphas.DISABLED)
             }
             Text(
                 text = stringResource(R.string.bg_auto_run_duration_limit_value, minutes),
@@ -1355,4 +1380,9 @@ private fun RunDurationRemainingRow(deadline: Long) {
             color = MaterialTheme.colorScheme.primary,
         )
     }
+}
+
+/** 只在组合外传递最新落点，避免布局回调每帧触发重组 */
+private class PreviewBoundsRef {
+    var rect: Rect? = null
 }

@@ -35,7 +35,7 @@ import com.march7th.hkrpg.presentation.pip.PipHost
 import com.march7th.hkrpg.presentation.pip.PipRequest
 import com.march7th.hkrpg.presentation.viewmodel.BackgroundTaskViewModel
 import com.march7th.hkrpg.schedule.LaunchIntentMapper
-import com.march7th.hkrpg.theme.MaaMeowTheme
+import com.march7th.hkrpg.theme.AppTheme
 import com.march7th.hkrpg.utils.EyeProtectionDetector
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -107,7 +107,7 @@ class MainActivity : AppCompatActivity(), PipHost {
 
             val isInPip by _isInPictureInPicture.collectAsStateWithLifecycle()
 
-            MaaMeowTheme(themeMode = themeMode, useSystemMonetColor = useSystemMonetColor) {
+            AppTheme(themeMode = themeMode, useSystemMonetColor = useSystemMonetColor) {
                 val baseDensity = LocalDensity.current
                 val configuration = LocalConfiguration.current
                 val effectiveScale = AppSettingsManager.resolveFontSizeScale(

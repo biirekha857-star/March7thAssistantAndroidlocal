@@ -39,7 +39,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.march7th.hkrpg.R
 import com.march7th.hkrpg.theme.LocalReduceMotion
-import com.march7th.hkrpg.theme.MaaAnimatedVisibility
+import com.march7th.hkrpg.theme.AppAnimatedVisibility
 import com.march7th.hkrpg.theme.M7aMotion
 
 /**
@@ -62,7 +62,7 @@ fun OverlayDialog(
     val resolvedDismissText = dismissText ?: stringResource(R.string.common_cancel)
     val reduceMotion = LocalReduceMotion.current
 
-    MaaAnimatedVisibility(
+    AppAnimatedVisibility(
         visible = visible,
         enter = M7aMotion.fadeIn(reduceMotion),
         exit = M7aMotion.fadeOut(reduceMotion),
@@ -79,7 +79,7 @@ fun OverlayDialog(
             contentAlignment = Alignment.Center
         ) {
             // 对话框卡片：带缩放动画
-            MaaAnimatedVisibility(
+            AppAnimatedVisibility(
                 visible = visible,
                 enter = M7aMotion.dialogIn(reduceMotion),
                 exit = M7aMotion.dialogOut(reduceMotion),

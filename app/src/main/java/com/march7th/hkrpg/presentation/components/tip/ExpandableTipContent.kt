@@ -10,7 +10,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.march7th.hkrpg.theme.MaaAnimatedVisibility
+import com.march7th.hkrpg.theme.AppAnimatedVisibility
 
 /**
  * 可展开的提示文字区域
@@ -22,7 +22,7 @@ fun ExpandableTipContent(
     tipText: String,
     modifier: Modifier = Modifier
 ) {
-    MaaAnimatedVisibility(
+    AppAnimatedVisibility(
         visible = visible,
         enter = expandVertically(),
         exit = shrinkVertically(),

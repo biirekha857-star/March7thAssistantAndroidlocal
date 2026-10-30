@@ -41,7 +41,7 @@ object GameFpsMonitor {
         Ln.i("$TAG: start ${next.name} for $packageName")
     }
 
-    /** 游戏不是由 MaaMeow 拉起时（未启用自动启动），由看门狗探测到在虚拟屏上后补开 */
+    /** 游戏不是由 M7A 拉起时（未启用自动启动），由看门狗探测到在虚拟屏上后补开 */
     @JvmStatic
     @Synchronized
     fun ensureStarted(packageName: String) {

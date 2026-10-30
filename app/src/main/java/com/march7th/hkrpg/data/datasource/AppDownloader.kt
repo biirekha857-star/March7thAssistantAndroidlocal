@@ -97,7 +97,7 @@ class AppDownloader(
     fun cleanOldApks(keepVersion: String) {
         val keepName = apkFileName(keepVersion)
         context.cacheDir.listFiles()?.filter {
-            it.name.startsWith("MaaMeow-") && (it.name.endsWith(".apk") || it.name.endsWith(
+            it.name.startsWith("M7A-") && (it.name.endsWith(".apk") || it.name.endsWith(
                 ".apk.dl"
             ))
         }?.filter { it.name != keepName }?.forEach { it.delete() }
@@ -108,10 +108,10 @@ class AppDownloader(
         val current = BuildConfig.VERSION_NAME
         context.cacheDir.listFiles()
             ?.filter {
-                if (!it.name.startsWith("MaaMeow-") || !it.name.endsWith(".apk")) {
+                if (!it.name.startsWith("M7A-") || !it.name.endsWith(".apk")) {
                     return@filter false
                 }
-                val version = it.name.removePrefix("MaaMeow-").removeSuffix(".apk")
+                val version = it.name.removePrefix("M7A-").removeSuffix(".apk")
                 compareVersions(version, current) <= 0
             }
             ?.forEach { it.delete() }
@@ -167,5 +167,5 @@ class AppDownloader(
         }
     }
 
-    private fun apkFileName(version: String): String = "MaaMeow-${version}.apk"
+    private fun apkFileName(version: String): String = "M7A-${version}.apk"
 }

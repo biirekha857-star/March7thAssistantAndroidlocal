@@ -47,7 +47,7 @@ private const val PARALLAX_ZOOM = 1.1f
  *   滑动时只刷新图层不触发重组；传 null 表示关闭视差（连恒定放大一并跳过）。
  */
 @Composable
-fun MaaBackgroundHost(
+fun AppBackgroundHost(
     image: ImageBitmap,
     imageAlpha: Float,
     scrimColor: Color,
@@ -131,10 +131,10 @@ fun AppBackgroundHost(
     // 取值函数保持同一实例，免得每次重组都重建 modifier 链
     val readParallax = remember(parallax) { { parallax.floatValue } }
     val reduceMotion = LocalReduceMotion.current
-    // 让 OpaqueTheme 复用当前配色（含莫奈取色结果），而不是外层 MaaMeowTheme 的原配色。
+    // 让 OpaqueTheme 复用当前配色（含莫奈取色结果），而不是外层 AppTheme 的原配色。
     CompositionLocalProvider(LocalOpaqueColorScheme provides effectiveBase) {
         ProvideColorScheme(glassScheme) {
-            MaaBackgroundHost(
+            AppBackgroundHost(
                 image = image,
                 imageAlpha = imageAlpha,
                 scrimColor = effectiveBase.background,

@@ -60,8 +60,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.march7th.hkrpg.data.permission.PermissionState
 import com.march7th.hkrpg.domain.models.RemoteBackend
-import com.march7th.hkrpg.theme.MaaDesignTokens
-import com.march7th.hkrpg.theme.MaaThemeAlphas
+import com.march7th.hkrpg.theme.AppDesignTokens
+import com.march7th.hkrpg.theme.AppThemeAlphas
 import kotlinx.coroutines.delay
 
 /**
@@ -183,10 +183,10 @@ private fun StepIndicator(current: Int, total: Int) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                horizontal = MaaDesignTokens.Spacing.xl,
-                vertical = MaaDesignTokens.Spacing.lg,
+                horizontal = AppDesignTokens.Spacing.xl,
+                vertical = AppDesignTokens.Spacing.lg,
             ),
-        horizontalArrangement = Arrangement.spacedBy(MaaDesignTokens.Spacing.sm),
+        horizontalArrangement = Arrangement.spacedBy(AppDesignTokens.Spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         repeat(total) { i ->
@@ -221,11 +221,11 @@ private fun StepScaffold(
                 .fillMaxWidth()
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = MaaDesignTokens.Spacing.xl),
+                .padding(horizontal = AppDesignTokens.Spacing.xl),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(MaaDesignTokens.Spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(AppDesignTokens.Spacing.lg),
         ) {
-            Spacer(Modifier.height(MaaDesignTokens.Spacing.xl))
+            Spacer(Modifier.height(AppDesignTokens.Spacing.xl))
 
             // 图标：带主色光晕的圆底
             Box(
@@ -258,17 +258,17 @@ private fun StepScaffold(
             )
 
             content()
-            Spacer(Modifier.height(MaaDesignTokens.Spacing.lg))
+            Spacer(Modifier.height(AppDesignTokens.Spacing.lg))
         }
 
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
-                    horizontal = MaaDesignTokens.Spacing.xl,
-                    vertical = MaaDesignTokens.Spacing.lg,
+                    horizontal = AppDesignTokens.Spacing.xl,
+                    vertical = AppDesignTokens.Spacing.lg,
                 ),
-            verticalArrangement = Arrangement.spacedBy(MaaDesignTokens.Spacing.sm),
+            verticalArrangement = Arrangement.spacedBy(AppDesignTokens.Spacing.sm),
         ) {
             actions()
         }
@@ -288,7 +288,7 @@ private fun PrimaryAction(
         modifier = Modifier
             .fillMaxWidth()
             .height(50.dp),
-        shape = RoundedCornerShape(MaaDesignTokens.CornerRadius.button),
+        shape = RoundedCornerShape(AppDesignTokens.CornerRadius.button),
     ) {
         Text(text, style = MaterialTheme.typography.titleSmall)
     }
@@ -355,7 +355,7 @@ private fun AgreementPage(
             // 滚动交给 StepScaffold，这里只负责内容排布。
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(MaaDesignTokens.Spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(AppDesignTokens.Spacing.sm),
             ) {
                 WarningCard(
                     title = "⚠️ 封号风险由您自行承担",
@@ -523,7 +523,7 @@ private fun BackendPage(
         content = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(MaaDesignTokens.Spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(AppDesignTokens.Spacing.sm),
             ) {
                 RemoteBackend.entries.forEach { candidate ->
                     val available = permissionState.isStartupBackendAvailable(candidate)
@@ -557,7 +557,7 @@ private fun BackendOption(
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(MaaDesignTokens.CornerRadius.card),
+        shape = RoundedCornerShape(AppDesignTokens.CornerRadius.card),
         colors = CardDefaults.cardColors(
             containerColor = if (selected) {
                 MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
@@ -569,9 +569,9 @@ private fun BackendOption(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(MaaDesignTokens.Spacing.md),
+                .padding(AppDesignTokens.Spacing.md),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(MaaDesignTokens.Spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(AppDesignTokens.Spacing.sm),
         ) {
             RadioButton(selected = selected, onClick = onClick)
             Column(modifier = Modifier.weight(1f)) {
@@ -618,7 +618,7 @@ private fun PermissionPage(
         content = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(MaaDesignTokens.Spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(AppDesignTokens.Spacing.sm),
             ) {
                 PermissionRow(
                     label = "${backend.display} 提权",
@@ -666,15 +666,15 @@ private fun PermissionRow(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(MaaDesignTokens.CornerRadius.card),
+        shape = RoundedCornerShape(AppDesignTokens.CornerRadius.card),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
-                    horizontal = MaaDesignTokens.Spacing.md,
-                    vertical = MaaDesignTokens.Spacing.md,
+                    horizontal = AppDesignTokens.Spacing.md,
+                    vertical = AppDesignTokens.Spacing.md,
                 ),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -702,7 +702,7 @@ private fun PermissionRow(
                 )
             }
 
-            Spacer(Modifier.width(MaaDesignTokens.Spacing.md))
+            Spacer(Modifier.width(AppDesignTokens.Spacing.md))
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -714,7 +714,7 @@ private fun PermissionRow(
                     Text(
                         text = "必需",
                         style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.error.copy(alpha = MaaThemeAlphas.MEDIUM),
+                        color = MaterialTheme.colorScheme.error.copy(alpha = AppThemeAlphas.MEDIUM),
                     )
                 }
             }
@@ -742,7 +742,7 @@ private fun ClientPage(
         content = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(MaaDesignTokens.Spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(AppDesignTokens.Spacing.sm),
             ) {
                 ClientOption(
                     label = "国服",
@@ -775,7 +775,7 @@ private fun ClientOption(
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(MaaDesignTokens.CornerRadius.card),
+        shape = RoundedCornerShape(AppDesignTokens.CornerRadius.card),
         colors = CardDefaults.cardColors(
             containerColor = if (selected) {
                 MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
@@ -787,9 +787,9 @@ private fun ClientOption(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(MaaDesignTokens.Spacing.md),
+                .padding(AppDesignTokens.Spacing.md),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(MaaDesignTokens.Spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(AppDesignTokens.Spacing.sm),
         ) {
             RadioButton(selected = selected, onClick = onClick)
             Column {

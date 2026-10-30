@@ -11,8 +11,6 @@ import com.march7th.hkrpg.data.preferences.AppSettingsManager
 import com.march7th.hkrpg.domain.models.RemoteBackend
 import com.march7th.hkrpg.domain.models.RunMode
 import com.march7th.hkrpg.remote.PermissionGrantRequest
-import com.march7th.hkrpg.remote.PermissionGrantRequest.Companion.PERM_ACCESSIBILITY
-import com.march7th.hkrpg.service.AccessibilityHelperService
 import com.hjq.permissions.XXPermissions
 import com.hjq.permissions.permission.PermissionLists
 import kotlinx.coroutines.CoroutineScope
@@ -82,7 +80,6 @@ class PermissionManager(
                 startupBackend = remoteState.configuredBackend,
                 overlay = checkOverlay(),
                 storage = checkStorage(),
-                accessibility = checkAccessibility(),
                 batteryWhitelist = checkBatteryWhitelist(),
                 notification = checkNotification(),
             )
@@ -135,20 +132,6 @@ class PermissionManager(
             }
         } catch (e: Exception) {
             Timber.e(e, "Error checking storage permission")
-            false
-        }
-    }
-
-    private fun checkAccessibility(): Boolean {
-        return try {
-            XXPermissions.isGrantedPermission(
-                context,
-                PermissionLists.getBindAccessibilityServicePermission(
-                    AccessibilityHelperService::class.java
-                )
-            )
-        } catch (e: Exception) {
-            Timber.e(e, "Error checking accessibility permission")
             false
         }
     }
@@ -287,56 +270,6 @@ class PermissionManager(
         return granted
     }
 
-    suspend fun requestAccessibility(context: Context): Boolean {
-        if (checkAccessibility()) {
-            _state.update { it.copy(accessibility = true) }
-            return true
-        }
-
-        val granted = suspendCancellableCoroutine { cont ->
-            XXPermissions.with(context)
-                .permission(
-                    PermissionLists.getBindAccessibilityServicePermission(
-                        AccessibilityHelperService::class.java
-                    )
-                )
-                .request { grantedList, _ ->
-                    cont.resume(grantedList.isNotEmpty())
-                }
-        }
-
-        _state.update { it.copy(accessibility = granted) }
-        return granted
-    }
-
-    suspend fun quickGrantAccessibility(): Boolean {
-        if (!permissions.remoteAccessGranted) return false
-        return try {
-            val result = RemoteServiceManager.useRemoteService { srv ->
-                srv.grantPermissions(
-                    PermissionGrantRequest(
-                        packageName = context.packageName,
-                        uid = context.applicationInfo.uid,
-                        accessibilityServiceId = AccessibilityHelperService.SERVICE_ID,
-                        permissions = PERM_ACCESSIBILITY
-                    )
-                )
-            }
-            if (result.accessibilityPermission) {
-                withTimeoutOrNull(3000L) {
-                    AccessibilityHelperService.isConnected
-                        .filter { it }
-                        .first()
-                }
-                refresh()
-            }
-            result.accessibilityPermission
-        } catch (e: Exception) {
-            Timber.e(e, "quickGrantAccessibility failed")
-            false
-        }
-    }
-
     suspend fun grantRequiredPermissions(srv: RemoteService) {
         if (!permissions.remoteAccessGranted) {
             Timber.w("grantAll: remote permission not granted")
@@ -355,8 +288,7 @@ class PermissionManager(
             val result = srv.grantPermissions(
                 PermissionGrantRequest(
                     packageName = packageName,
-                    uid = uid,
-                    accessibilityServiceId = ""
+                    uid = uid
                 )
             )
 

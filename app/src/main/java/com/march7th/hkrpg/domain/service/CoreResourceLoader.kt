@@ -126,7 +126,7 @@ class CoreResourceLoader(
                     // 用户反馈的日志包里都没有引擎/原生日志 —— 而反馈问题的用户
                     // 大多没有电脑，开不了 adb，只能靠日志包自证。
                     //
-                    // 抓取是 tag 白名单（MaaMeow / LibBridge / 崩溃栈），
+                    // 抓取是 tag 白名单（M7A / LibBridge / 崩溃栈），
                     // 单次任务量级只有几百 KB，常开代价可忽略。
                     runCatching {
                         val appPid = Process.myPid()

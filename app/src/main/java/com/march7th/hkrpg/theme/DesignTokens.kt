@@ -3,7 +3,7 @@ package com.march7th.hkrpg.theme
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-object MaaDesignTokens {
+object AppDesignTokens {
 
     object Spacing {
         val xs: Dp = 4.dp

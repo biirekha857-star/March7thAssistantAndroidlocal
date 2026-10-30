@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.dp
 import com.march7th.hkrpg.R
 import com.march7th.hkrpg.presentation.components.tip.ExpandableTipContent
 import com.march7th.hkrpg.presentation.components.tip.ExpandableTipIcon
-import com.march7th.hkrpg.theme.MaaThemeAlphas
+import com.march7th.hkrpg.theme.AppThemeAlphas
 
 /**
  * 带可展开提示的复选框
@@ -113,7 +113,7 @@ fun CheckBoxWithLabel(
                 text = label,
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (enabled) MaterialTheme.colorScheme.onSurface
-                else MaterialTheme.colorScheme.onSurface.copy(alpha = MaaThemeAlphas.DISABLED)
+                else MaterialTheme.colorScheme.onSurface.copy(alpha = AppThemeAlphas.DISABLED)
             )
             if (subtitle != null) {
                 Text(

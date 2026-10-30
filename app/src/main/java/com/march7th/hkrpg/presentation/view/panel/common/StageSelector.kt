@@ -38,7 +38,7 @@ import com.march7th.hkrpg.R
 import com.march7th.hkrpg.data.resource.StageAliasMapper
 import com.march7th.hkrpg.data.resource.StageGroup
 import com.march7th.hkrpg.presentation.components.ITextFieldWithFocus
-import com.march7th.hkrpg.theme.MaaAnimatedVisibility
+import com.march7th.hkrpg.theme.AppAnimatedVisibility
 
 /**
  * 已选关卡徽章：主色底、白字、圆角
@@ -140,7 +140,7 @@ internal fun GroupedStageButtonGroup(
         }
 
         // 分组内容（折叠时隐藏）
-        MaaAnimatedVisibility(
+        AppAnimatedVisibility(
             visible = expanded,
             enter = expandVertically(),
             exit = shrinkVertically()

@@ -17,7 +17,7 @@ import kotlinx.coroutines.sync.withLock
 import timber.log.Timber
 
 /**
- * 全部逻辑围绕一个标记展开：markedPackage 非空，表示该游戏包可能被 MaaMeow 静音过、
+ * 全部逻辑围绕一个标记展开：markedPackage 非空，表示该游戏包可能被 M7A 静音过、
  * 声音尚未恢复。内存中的值是权威，DataStore 只用于进程重启后找回标记
  *
  * 状态流转：

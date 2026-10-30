@@ -14,7 +14,6 @@ import com.march7th.hkrpg.data.resource.ResourceDataManager
 import com.march7th.hkrpg.domain.models.AppSettings
 import com.march7th.hkrpg.domain.models.AppSettingsSchema
 import com.march7th.hkrpg.domain.models.CoreDataLocation
-import com.march7th.hkrpg.domain.models.OverlayControlMode
 import com.march7th.hkrpg.domain.models.RemoteBackend
 import com.march7th.hkrpg.domain.models.RunDurationLimit
 import com.march7th.hkrpg.domain.models.RunMode
@@ -121,18 +120,6 @@ class AppSettingsManager internal constructor(
 
     suspend fun setSettings(settings: AppSettings) {
         with(AppSettingsSchema) { context.dataStore.update(settings) }
-    }
-
-    // 悬浮窗模式
-    val overlayControlMode: StateFlow<OverlayControlMode> = setting {
-        runCatching { OverlayControlMode.valueOf(it.overlayMode) }
-            .getOrDefault(OverlayControlMode.ACCESSIBILITY)
-    }
-
-    suspend fun setFloatWindowMode(mode: OverlayControlMode) {
-        with(AppSettingsSchema) {
-            context.dataStore.edit { it[overlayMode] = mode.name }
-        }
     }
 
     // 运行模式

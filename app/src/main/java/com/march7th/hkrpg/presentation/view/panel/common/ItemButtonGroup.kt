@@ -29,7 +29,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.march7th.hkrpg.R
 import com.march7th.hkrpg.presentation.components.SelectableChipGroup
-import com.march7th.hkrpg.theme.MaaAnimatedVisibility
+import com.march7th.hkrpg.theme.AppAnimatedVisibility
 
 /** 材料选择（可折叠，交互对齐 [GroupedStageButtonGroup]） */
 @Composable
@@ -77,7 +77,7 @@ fun ItemButtonGroup(
             )
         }
 
-        MaaAnimatedVisibility(
+        AppAnimatedVisibility(
             visible = expanded,
             enter = expandVertically(),
             exit = shrinkVertically()

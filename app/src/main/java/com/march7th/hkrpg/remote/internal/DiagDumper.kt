@@ -299,7 +299,7 @@ object DiagDumper {
             "dumpsys activity activities 2>&1 | grep -iE 'hkrpg|Display #|mDisplayId|displayId=' | head -c 60000",
         "procs" to "ps -A 2>/dev/null | grep -iE 'hkrpg|maameow|surfaceflinger' | head -40",
         "native-logcat" to
-            "logcat -d -v time -t 800 -s LibBridge:V MaaMeow:V 2>&1 | tail -c 120000",
+            "logcat -d -v time -t 800 -s LibBridge:V M7A:V 2>&1 | tail -c 120000",
         "props" to
             "getprop 2>/dev/null | grep -iE 'display|density|resolution|screen|dfps|hw_sc' | head -60",
     )

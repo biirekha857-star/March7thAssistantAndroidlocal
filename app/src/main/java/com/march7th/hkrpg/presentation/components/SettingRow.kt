@@ -13,7 +13,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
-import com.march7th.hkrpg.theme.MaaDesignTokens
+import com.march7th.hkrpg.theme.AppDesignTokens
 
 @Composable
 fun SettingRow(
@@ -23,7 +23,7 @@ fun SettingRow(
     titleColor: Color = MaterialTheme.colorScheme.onSurface,
     descriptionColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
     enabled: Boolean = true,
-    verticalPadding: Dp = MaaDesignTokens.Spacing.listItemVertical,
+    verticalPadding: Dp = AppDesignTokens.Spacing.listItemVertical,
     trailing: @Composable (() -> Unit)? = null,
     onClick: (() -> Unit)? = null,
 ) {
@@ -43,11 +43,11 @@ fun SettingRow(
             modifier = if (trailing != null) {
                 Modifier
                     .weight(1f)
-                    .padding(end = MaaDesignTokens.Spacing.lg)
+                    .padding(end = AppDesignTokens.Spacing.lg)
             } else {
                 Modifier
             },
-            verticalArrangement = Arrangement.spacedBy(MaaDesignTokens.Spacing.rowTitleGap),
+            verticalArrangement = Arrangement.spacedBy(AppDesignTokens.Spacing.rowTitleGap),
         ) {
             Text(
                 text = title,

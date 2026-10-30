@@ -13,7 +13,6 @@ data class PermissionState(
     val startupBackend: RemoteBackend = RemoteBackend.SHIZUKU,
     val overlay: Boolean = false,
     val storage: Boolean = false,
-    val accessibility: Boolean = false,
     val batteryWhitelist: Boolean = false,
     val notification: Boolean = false
 ) {
@@ -31,5 +30,5 @@ data class PermissionState(
         }
 
     val allRequiredGranted: Boolean
-        get() = remoteAccessGranted && overlay && storage && accessibility && batteryWhitelist && notification
+        get() = remoteAccessGranted && overlay && storage && batteryWhitelist && notification
 }

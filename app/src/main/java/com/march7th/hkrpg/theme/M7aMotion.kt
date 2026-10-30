@@ -136,12 +136,12 @@ fun ProvideMaaMotion(content: @Composable () -> Unit) {
 }
 
 @Composable
-fun MaaAnimatedVisibility(
+fun AppAnimatedVisibility(
     visible: Boolean,
     modifier: Modifier = Modifier,
     enter: EnterTransition? = null,
     exit: ExitTransition? = null,
-    label: String = "MaaAnimatedVisibility",
+    label: String = "AppAnimatedVisibility",
     content: @Composable AnimatedVisibilityScope.() -> Unit,
 ) {
     val reduce = LocalReduceMotion.current

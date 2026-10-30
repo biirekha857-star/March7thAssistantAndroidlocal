@@ -62,8 +62,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.march7th.hkrpg.R
-import com.march7th.hkrpg.theme.MaaDesignTokens
-import com.march7th.hkrpg.theme.MaaMeowTheme
+import com.march7th.hkrpg.theme.AppDesignTokens
+import com.march7th.hkrpg.theme.AppTheme
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
@@ -175,7 +175,7 @@ fun WheelTimePicker(
 ) {
     val visibleRows = rows.coerceAtLeast(3).let { if (it % 2 == 0) it - 1 else it }
     val colors = MaterialTheme.colorScheme
-    val selectionShape = RoundedCornerShape(MaaDesignTokens.CornerRadius.card)
+    val selectionShape = RoundedCornerShape(AppDesignTokens.CornerRadius.card)
     val digitStyle = MaterialTheme.typography.headlineMedium.copy(
         fontWeight = FontWeight.SemiBold,
         // 等宽数字，滚动时字形不会左右抖
@@ -190,7 +190,7 @@ fun WheelTimePicker(
             modifier = Modifier
                 .widthIn(max = if (state.is24Hour) WHEELS_ONLY_MAX_WIDTH else PICKER_MAX_WIDTH)
                 .fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(MaaDesignTokens.Spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(AppDesignTokens.Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
@@ -217,7 +217,7 @@ fun WheelTimePicker(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = MaaDesignTokens.Spacing.md)
+                            .padding(horizontal = AppDesignTokens.Spacing.md)
                             .fadeVerticalEdges(edgeFraction = 0.75f / visibleRows),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -269,7 +269,7 @@ fun WheelTimeFormatToggle(
 ) {
     Row(
         modifier = modifier.selectableGroup(),
-        horizontalArrangement = Arrangement.spacedBy(MaaDesignTokens.Spacing.xs),
+        horizontalArrangement = Arrangement.spacedBy(AppDesignTokens.Spacing.xs),
     ) {
         listOf(false, true).forEach { target ->
             SegmentCell(
@@ -292,7 +292,7 @@ private fun PeriodSelector(state: WheelTimePickerState) {
         modifier = Modifier
             .width(56.dp)
             .selectableGroup(),
-        verticalArrangement = Arrangement.spacedBy(MaaDesignTokens.Spacing.xs),
+        verticalArrangement = Arrangement.spacedBy(AppDesignTokens.Spacing.xs),
     ) {
         listOf(false, true).forEach { pm ->
             SegmentCell(
@@ -318,7 +318,7 @@ private fun SegmentCell(
 ) {
     val haptic = LocalHapticFeedback.current
     val colors = MaterialTheme.colorScheme
-    val shape = RoundedCornerShape(MaaDesignTokens.CornerRadius.button)
+    val shape = RoundedCornerShape(AppDesignTokens.CornerRadius.button)
     Box(
         modifier = modifier
             .clip(shape)
@@ -455,11 +455,11 @@ private fun WheelColumn(
 @Preview(name = "Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
 @Composable
 private fun WheelTimePickerPreview() {
-    MaaMeowTheme(useSystemMonetColor = false) {
+    AppTheme(useSystemMonetColor = false) {
         Surface {
             WheelTimePicker(
                 state = rememberWheelTimePickerState(9, 41),
-                modifier = Modifier.padding(MaaDesignTokens.Spacing.xxl),
+                modifier = Modifier.padding(AppDesignTokens.Spacing.xxl),
             )
         }
     }
@@ -469,10 +469,10 @@ private fun WheelTimePickerPreview() {
 @Preview(name = "24h Dark", uiMode = Configuration.UI_MODE_NIGHT_YES, showBackground = true)
 @Composable
 private fun Hour24WheelTimePickerPreview() {
-    MaaMeowTheme(useSystemMonetColor = false) {
+    AppTheme(useSystemMonetColor = false) {
         Surface {
             Column(
-                modifier = Modifier.padding(MaaDesignTokens.Spacing.xxl),
+                modifier = Modifier.padding(AppDesignTokens.Spacing.xxl),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 WheelTimeFormatToggle(is24Hour = true, onFormatChange = {})
@@ -485,12 +485,12 @@ private fun Hour24WheelTimePickerPreview() {
 @Preview(name = "Compact", showBackground = true)
 @Composable
 private fun CompactWheelTimePickerPreview() {
-    MaaMeowTheme(useSystemMonetColor = false) {
+    AppTheme(useSystemMonetColor = false) {
         Surface {
             WheelTimePicker(
                 state = rememberWheelTimePickerState(23, 59),
                 rows = 3,
-                modifier = Modifier.padding(MaaDesignTokens.Spacing.xxl),
+                modifier = Modifier.padding(AppDesignTokens.Spacing.xxl),
             )
         }
     }

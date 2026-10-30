@@ -45,7 +45,7 @@ private val DarkLogPalette = LogPalette(
 /** static 是因为色板只在主题切换时变更——远低于状态读取频率。 */
 val LocalLogPalette = staticCompositionLocalOf { LightLogPalette }
 
-/** 由 [com.march7th.hkrpg.theme.MaaMeowTheme] 在已知 `isDark` 的入口调用。 */
+/** 由 [com.march7th.hkrpg.theme.AppTheme] 在已知 `isDark` 的入口调用。 */
 @Composable
 fun ProvideLogPalette(isDark: Boolean, content: @Composable () -> Unit) {
     val palette = if (isDark) DarkLogPalette else LightLogPalette

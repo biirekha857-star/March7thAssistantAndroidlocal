@@ -40,7 +40,7 @@ import com.march7th.hkrpg.data.resource.ResourceDataManager
 import com.march7th.hkrpg.presentation.components.tip.ExpandableTipContent
 import com.march7th.hkrpg.presentation.components.tip.ExpandableTipIcon
 import com.march7th.hkrpg.presentation.view.panel.common.bringIntoViewOnExpand
-import com.march7th.hkrpg.theme.MaaThemeAlphas
+import com.march7th.hkrpg.theme.AppThemeAlphas
 import kotlinx.coroutines.launch
 import timber.log.Timber
 
@@ -151,7 +151,7 @@ fun CoreCharSelector(
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.Medium,
             color = if (enabled) MaterialTheme.colorScheme.onSurface
-            else MaterialTheme.colorScheme.onSurface.copy(alpha = MaaThemeAlphas.DISABLED)
+            else MaterialTheme.colorScheme.onSurface.copy(alpha = AppThemeAlphas.DISABLED)
         )
 
         // 只有带专属开局建议的主题才显示入口，单独占一行

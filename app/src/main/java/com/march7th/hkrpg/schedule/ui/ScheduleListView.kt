@@ -63,7 +63,7 @@ import com.march7th.hkrpg.schedule.model.ScheduleStrategy
 import com.march7th.hkrpg.schedule.service.AutoStartHelper
 import com.march7th.hkrpg.schedule.service.AutoStartTarget
 import com.march7th.hkrpg.schedule.service.ExactAlarmSettings
-import com.march7th.hkrpg.theme.MaaDesignTokens
+import com.march7th.hkrpg.theme.AppDesignTokens
 import com.march7th.hkrpg.theme.OpaqueTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -176,8 +176,8 @@ fun ScheduleListView(
                 .fillMaxSize()
                 .padding(padding),
             contentPadding = PaddingValues(
-                horizontal = MaaDesignTokens.Spacing.listHorizontal,
-                vertical = MaaDesignTokens.Spacing.sm,
+                horizontal = AppDesignTokens.Spacing.listHorizontal,
+                vertical = AppDesignTokens.Spacing.sm,
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {

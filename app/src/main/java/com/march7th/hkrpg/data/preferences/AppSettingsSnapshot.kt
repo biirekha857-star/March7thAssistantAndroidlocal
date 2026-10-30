@@ -35,7 +35,7 @@ object AppSettingsSnapshot {
         val pad = values.keys.maxOfOrNull { it.length } ?: 0
         return buildString {
             append(line).append("\n")
-            append("=== MaaMeow App Settings ===\n")
+            append("=== M7A App Settings ===\n")
             for ((key, value) in values) {
                 append(key.padEnd(pad)).append(" = ").append(display(key, value)).append("\n")
             }

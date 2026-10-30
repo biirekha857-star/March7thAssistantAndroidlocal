@@ -241,6 +241,19 @@
 
     <!-- settings: top-level -->
     <string name="settings_title">设置</string>
+    <!-- settings: 一级分类页（每项点进去才是具体开关） -->
+    <string name="settings_category_general">通用</string>
+    <string name="settings_category_general_desc">语言、主题与背景</string>
+    <string name="settings_category_launch">启动与运行</string>
+    <string name="settings_category_launch_desc">启动方式、全屏与解锁</string>
+    <string name="settings_category_log">日志与诊断</string>
+    <string name="settings_category_log_desc">查看、导出日志与调试开关</string>
+    <string name="settings_category_data_desc">配置的导入与导出</string>
+    <string name="settings_category_about_desc">版本信息、反馈与更新日志</string>
+    <string name="settings_category_version_summary">版本 %1$s</string>
+    <!-- 首页预检条 -->
+    <string name="home_preflight_blocked_hint">点开查看还差什么</string>
+    <string name="home_preflight_permission_count">权限 %1$d/%2$d</string>
 
     <!-- settings: update section -->
     <string name="settings_section_update">更新管理</string>
@@ -276,10 +289,10 @@
     <string name="settings_section_task">任务设置</string>
     <string name="settings_startup_backend_title">启动模式</string>
     <string name="settings_startup_backend_desc">选择应用获取系统权限的方式</string>
-    <string name="settings_core_data_location_title">MAA 资源目录</string>
+    <string name="settings_core_data_location_title">内核资源目录</string>
     <string name="settings_core_data_location_app_dir">应用目录</string>
     <string name="settings_core_data_location_local_tmp">独立目录</string>
-    <string name="dialog_core_data_location_switch_title">切换 MAA 资源目录</string>
+    <string name="dialog_core_data_location_switch_title">切换内核资源目录</string>
     <string name="dialog_core_data_location_switch_message">切换到「%1$s」需要重启应用，是否继续？</string>
     <string name="dialog_core_data_location_switch_confirm">切换并重启</string>
     <string name="settings_core_data_clear_title">清除独立目录数据</string>
@@ -385,8 +398,8 @@
     <string name="oper_box_yituliu_busy">正在拉取，请稍候</string>
     <string name="runlog_oper_box_yituliu_failed">从一图流获取干员数据失败：%1$s</string>
     <string name="report_http_failed">上报失败，放弃上传企鹅物流</string>
-    <string name="settings_tasks_override_title">MAA 任务覆盖</string>
-    <string name="settings_tasks_override_desc">如果你不知道这是什么请不要修改，会导致 MAA 无法正常工作</string>
+    <string name="settings_tasks_override_title">任务参数覆盖</string>
+    <string name="settings_tasks_override_desc">如果你不知道这是什么请不要修改，会导致程序无法正常工作</string>
     <string name="settings_tasks_override_edit_title">编辑配置 JSON</string>
     <string name="editor_json_valid">JSON 格式有效</string>
     <string name="editor_json_invalid">JSON 格式错误</string>
@@ -485,19 +498,12 @@
     <string name="home_permission_storage">外部存储权限</string>
     <string name="home_permission_battery">电源管理白名单</string>
     <string name="home_permission_battery_added">已添加</string>
-    <string name="home_permission_accessibility">无障碍权限</string>
-    <string name="home_permission_quick_grant">快捷授权</string>
     <string name="home_permission_notification">通知权限</string>
 
     <!-- home: foreground-mode section -->
     <string name="home_resolution_title">分辨率调整</string>
     <string name="home_resolution_apply_16_9">调整为适配分辨率</string>
     <string name="home_resolution_reset">重置分辨率</string>
-    <string name="home_overlay_mode_title">悬浮窗模式</string>
-    <string name="home_overlay_mode_accessibility_desc">音量上下键同时按切换面板</string>
-    <string name="home_overlay_mode_floatball_desc">点击悬浮球切换面板</string>
-    <string name="home_overlay_mode_accessibility">快捷键模式</string>
-    <string name="home_overlay_mode_float_ball">悬浮球模式</string>
     <string name="home_overlay_open">打开操作面板</string>
     <string name="home_overlay_close">关闭操作面板</string>
 
@@ -690,7 +696,7 @@
     <!-- update card -->
     <string name="update_card_title">更新管理</string>
     <string name="update_card_app">App本体</string>
-    <string name="update_card_resource">MAA资源</string>
+    <string name="update_card_resource">资源</string>
     <string name="update_card_check_button">检查更新</string>
     <string name="update_card_source_label">下载源</string>
     <string name="update_source_github">GitHub</string>
@@ -701,7 +707,7 @@
     <string name="update_card_visit_site">前往官网</string>
     <string name="update_card_github_desc">从 GitHub 官方仓库下载资源。适合网络环境良好的用户，可直接获取最新版本。</string>
     <string name="update_card_mirror_brand">Mirror酱</string>
-    <string name="update_card_mirror_desc">是独立的第三方加速下载服务，需要付费使用，并非「MAA」收费。\n\n其运营成本由订阅收入支撑，部分收益将回馈项目开发者。欢迎订阅 CDK 享受高速下载，同时支持项目持续开发。\n\n选择 Mirror酱 作为下载源时需要填写 CDK。</string>
+    <string name="update_card_mirror_desc">是独立的第三方加速下载服务，需要付费使用，并非「本应用」收费。\n\n其运营成本由订阅收入支撑，部分收益将回馈项目开发者。欢迎订阅 CDK 享受高速下载，同时支持项目持续开发。\n\n选择 Mirror酱 作为下载源时需要填写 CDK。</string>
     <string name="update_card_about_source_cd">关于%1$s</string>
 
     <!-- update cdk input -->

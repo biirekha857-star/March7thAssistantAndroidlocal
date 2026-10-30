@@ -102,7 +102,7 @@ class SmtpProvider(
         return """
             <html lang="zh">
             <body style="font-family: sans-serif; color: #222222; line-height: 1.6;">
-                <h1 style="text-align: center;">MaaMeow</h1>
+                <h1 style="text-align: center;">M7A</h1>
                 <hr />
                 <h2>$safeTitle</h2>
                 <p>$safeContent</p>

@@ -8,47 +8,6 @@ import com.march7th.hkrpg.third.Ln
 object PermissionGrantHelper {
     private const val TAG = "PermissionGrantHelper"
 
-    fun grantAccessibilityService(serviceId: String): Boolean {
-        if (serviceId == "") {
-            return false
-        }
-        return try {
-            val contentResolver = FakeContext.get().contentResolver
-            val existingServices = Settings.Secure.getString(
-                contentResolver,
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-            ) ?: ""
-
-            if (existingServices.contains(serviceId)) {
-                Ln.i("$TAG: Accessibility service already enabled: $serviceId")
-                return true
-            }
-
-            val newServices = if (existingServices.isEmpty()) {
-                serviceId
-            } else {
-                "$existingServices:$serviceId"
-            }
-
-            Settings.Secure.putString(
-                contentResolver,
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-                newServices
-            )
-            Settings.Secure.putInt(
-                contentResolver,
-                Settings.Secure.ACCESSIBILITY_ENABLED,
-                1
-            )
-            Ln.i("$TAG: Accessibility service enabled: $serviceId")
-            true
-        } catch (e: Exception) {
-            Ln.e("$TAG: Failed to enable accessibility service: $e")
-            false
-        }
-    }
-
-
     fun grantFloatingWindowPermission(packageName: String, uid: Int): Boolean {
         return try {
             // OP_SYSTEM_ALERT_WINDOW = 24

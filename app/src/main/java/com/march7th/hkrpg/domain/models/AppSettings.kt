@@ -8,9 +8,6 @@ import kotlinx.serialization.Serializable
 @Serializable
 @PrefSchema
 data class AppSettings(
-    @PrefKey(default = "ACCESSIBILITY")
-    val overlayMode: String = "ACCESSIBILITY",
-
     @PrefKey(default = "BACKGROUND")
     val runMode: String = "BACKGROUND",
 
@@ -52,7 +49,7 @@ data class AppSettings(
     @PrefKey(default = "false")
     val muteOnGameLaunch: String = "false",
 
-    /** 非空表示该包可能残留 MaaMeow 设置的静音，需要在关闭或重连时恢复。 */
+    /** 非空表示该包可能残留 M7A 设置的静音，需要在关闭或重连时恢复。 */
     @PrefKey(default = "")
     val mutedGamePackage: String = "",
 

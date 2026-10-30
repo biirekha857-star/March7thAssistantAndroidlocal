@@ -24,7 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.march7th.hkrpg.domain.service.CoreResourceLoader
 import com.march7th.hkrpg.theme.LocalReduceMotion
-import com.march7th.hkrpg.theme.MaaAnimatedVisibility
+import com.march7th.hkrpg.theme.AppAnimatedVisibility
 import com.march7th.hkrpg.theme.M7aMotion
 import com.march7th.hkrpg.utils.i18n.resourceLoaderMessage
 import org.koin.compose.koinInject
@@ -45,7 +45,7 @@ fun ResourceLoadingOverlay(
             || state is CoreResourceLoader.State.Reloading
 
     val reduceMotion = LocalReduceMotion.current
-    MaaAnimatedVisibility(
+    AppAnimatedVisibility(
         visible = isVisible,
         enter = M7aMotion.fadeIn(reduceMotion),
         exit = M7aMotion.fadeOut(reduceMotion),

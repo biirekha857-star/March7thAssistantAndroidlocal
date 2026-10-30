@@ -51,7 +51,7 @@ import com.march7th.hkrpg.R
 import com.march7th.hkrpg.data.model.TaskProfile
 import com.march7th.hkrpg.presentation.components.AdaptiveTaskPromptDialog
 import com.march7th.hkrpg.presentation.components.ITextField
-import com.march7th.hkrpg.theme.MaaAnimatedVisibility
+import com.march7th.hkrpg.theme.AppAnimatedVisibility
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
@@ -288,7 +288,7 @@ private fun ProfileCard(
             }
 
             // 编辑区: 向下展开，包含重命名输入框和 Profile ID 复制
-            MaaAnimatedVisibility(
+            AppAnimatedVisibility(
                 visible = isEditing,
                 enter = expandVertically(),
                 exit = shrinkVertically()

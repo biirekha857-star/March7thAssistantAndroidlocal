@@ -7,7 +7,7 @@ import android.os.PowerManager
 internal object ScheduleWakeLock {
     fun acquire(context: Context, timeoutMs: Long): PowerManager.WakeLock {
         val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-        return powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "MaaMeow:schedule").apply {
+        return powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "M7A:schedule").apply {
             setReferenceCounted(false)
             acquire(timeoutMs)
         }

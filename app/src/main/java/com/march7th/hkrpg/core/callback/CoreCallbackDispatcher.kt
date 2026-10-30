@@ -168,7 +168,7 @@ class CoreCallbackDispatcher(
             }
         }
         // override it
-        headers["User-Agent"] = "MaaMeow/${BuildConfig.VERSION_NAME}"
+        headers["User-Agent"] = "M7A/${BuildConfig.VERSION_NAME}"
         gameDataReporter.submit(
             CoreReportRequest(
                 url = url,

@@ -33,7 +33,7 @@ internal val keepRootForInputInjection: Boolean
 
 /**
  * 自研 starter 进程路径的公共基座：launcher 拉起 app_process，
- * binder 回投经 MaaMeow 自己的 bootstrap provider 按 token 认领，
+ * binder 回投经 M7A 自己的 bootstrap provider 按 token 认领，
  * 生命周期由 appLifecycleBinder linkToDeath + 心跳看门狗自管
  *
  * 拉起方式由 [spawner] 决定（su 后台化 / Shizuku 前台 exec），服务规格由子类给出

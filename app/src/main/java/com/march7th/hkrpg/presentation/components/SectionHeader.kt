@@ -29,8 +29,8 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.march7th.hkrpg.R
-import com.march7th.hkrpg.theme.MaaAnimatedVisibility
-import com.march7th.hkrpg.theme.MaaDesignTokens
+import com.march7th.hkrpg.theme.AppAnimatedVisibility
+import com.march7th.hkrpg.theme.AppDesignTokens
 
 @Composable
 fun SectionHeader(
@@ -41,7 +41,7 @@ fun SectionHeader(
         text = title,
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = modifier.padding(bottom = MaaDesignTokens.Spacing.sm),
+        modifier = modifier.padding(bottom = AppDesignTokens.Spacing.sm),
     )
 }
 
@@ -99,7 +99,7 @@ fun CollapsibleSection(
                     role = Role.Button,
                     onClickLabel = if (expanded) collapseLabel else expandLabel,
                 ) { userExpanded = !expanded }
-                .padding(vertical = MaaDesignTokens.Spacing.sm),
+                .padding(vertical = AppDesignTokens.Spacing.sm),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -115,7 +115,7 @@ fun CollapsibleSection(
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        MaaAnimatedVisibility(visible = expanded) {
+        AppAnimatedVisibility(visible = expanded) {
             Column(content = content)
         }
     }
@@ -127,8 +127,8 @@ fun ListItemDivider(
     color: Color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
 ) {
     HorizontalDivider(
-        modifier = modifier.padding(start = MaaDesignTokens.Separator.inset),
-        thickness = MaaDesignTokens.Separator.thickness,
+        modifier = modifier.padding(start = AppDesignTokens.Separator.inset),
+        thickness = AppDesignTokens.Separator.thickness,
         color = color,
     )
 }

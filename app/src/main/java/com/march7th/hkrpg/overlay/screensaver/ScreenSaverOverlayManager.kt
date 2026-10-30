@@ -21,7 +21,7 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.march7th.hkrpg.data.preferences.AppSettingsManager
 import com.march7th.hkrpg.domain.service.CoreSessionLogger
 import com.march7th.hkrpg.domain.service.ScreenSaverController
-import com.march7th.hkrpg.theme.MaaMeowTheme
+import com.march7th.hkrpg.theme.AppTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -72,7 +72,7 @@ class ScreenSaverOverlayManager(
             setViewTreeSavedStateRegistryOwner(this@ScreenSaverOverlayManager)
 
             setContent {
-                MaaMeowTheme(themeMode = AppSettingsManager.ThemeMode.DARK) {
+                AppTheme(themeMode = AppSettingsManager.ThemeMode.DARK) {
                     val baseDensity = LocalDensity.current
                     CompositionLocalProvider(
                         LocalDensity provides Density(

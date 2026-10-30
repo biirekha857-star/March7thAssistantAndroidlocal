@@ -25,6 +25,17 @@
     <string name="settings_export_failed">Export failed: %1$s</string>
     <string name="settings_import_failed">Import failed: %1$s</string>
     <string name="settings_title">Settings</string>
+    <string name="settings_category_general">General</string>
+    <string name="settings_category_general_desc">Language, theme and background</string>
+    <string name="settings_category_launch">Launch &amp; Runtime</string>
+    <string name="settings_category_launch_desc">Backend, fullscreen and unlock</string>
+    <string name="settings_category_log">Logs &amp; Diagnostics</string>
+    <string name="settings_category_log_desc">View and export logs, debug switches</string>
+    <string name="settings_category_data_desc">Import and export configuration</string>
+    <string name="settings_category_about_desc">Version, feedback and changelog</string>
+    <string name="settings_category_version_summary">Version %1$s</string>
+    <string name="home_preflight_blocked_hint">Tap to see what is missing</string>
+    <string name="home_preflight_permission_count">Permissions %1$d/%2$d</string>
     <string name="settings_section_update">Updates</string>
     <string name="settings_reinit_resource_title">Reinitialize Resources</string>
     <string name="settings_reinit_resource_desc">Re-extract from the bundled resource pack</string>
@@ -54,10 +65,10 @@
     <string name="settings_section_task">Task Settings</string>
     <string name="settings_startup_backend_title">Startup Mode</string>
     <string name="settings_startup_backend_desc">Choose how the app obtains system permissions</string>
-    <string name="settings_core_data_location_title">MAA resource directory</string>
+    <string name="settings_core_data_location_title">Core resource directory</string>
     <string name="settings_core_data_location_app_dir">App directory</string>
     <string name="settings_core_data_location_local_tmp">Separate directory</string>
-    <string name="dialog_core_data_location_switch_title">Switch MAA resource directory</string>
+    <string name="dialog_core_data_location_switch_title">Switch core resource directory</string>
     <string name="dialog_core_data_location_switch_message">Switching to "%1$s" requires an app restart. Continue?</string>
     <string name="dialog_core_data_location_switch_confirm">Switch and restart</string>
     <string name="settings_core_data_clear_title">Clear separate directory</string>
@@ -163,8 +174,8 @@
     <string name="oper_box_yituliu_busy">Already fetching, please wait</string>
     <string name="runlog_oper_box_yituliu_failed">Failed to fetch operator data from Yituliu: %1$s</string>
     <string name="report_http_failed">Failed to report, abort upload to Penguin Statistics</string>
-    <string name="settings_tasks_override_title">MAA Task Override</string>
-    <string name="settings_tasks_override_desc">Do not modify unless you know what you are doing — incorrect values will break MAA</string>
+    <string name="settings_tasks_override_title">Task Override</string>
+    <string name="settings_tasks_override_desc">Do not modify unless you know what you are doing — incorrect values will break the app</string>
     <string name="settings_tasks_override_edit_title">Edit Config JSON</string>
     <string name="common_save">Save</string>
     <string name="editor_json_valid">JSON valid</string>
@@ -257,19 +268,12 @@
     <string name="home_permission_storage">Storage Permission</string>
     <string name="home_permission_battery">Battery Whitelist</string>
     <string name="home_permission_battery_added">Added</string>
-    <string name="home_permission_accessibility">Accessibility</string>
-    <string name="home_permission_quick_grant">Quick Grant</string>
     <string name="home_permission_notification">Notification</string>
 
     <!-- home: foreground-mode section -->
     <string name="home_resolution_title">Resolution Adjustment</string>
     <string name="home_resolution_apply_16_9">Apply 16:9 Resolution</string>
     <string name="home_resolution_reset">Reset Resolution</string>
-    <string name="home_overlay_mode_title">Overlay Mode</string>
-    <string name="home_overlay_mode_accessibility_desc">Press volume up + down together to toggle the panel</string>
-    <string name="home_overlay_mode_floatball_desc">Tap the floating ball to toggle the panel</string>
-    <string name="home_overlay_mode_accessibility">Shortcut Mode</string>
-    <string name="home_overlay_mode_float_ball">Floating Ball Mode</string>
     <string name="home_overlay_open">Open Control Panel</string>
     <string name="home_overlay_close">Close Control Panel</string>
 
@@ -462,7 +466,7 @@
     <!-- update card -->
     <string name="update_card_title">Updates</string>
     <string name="update_card_app">App</string>
-    <string name="update_card_resource">MAA Resources</string>
+    <string name="update_card_resource">Resources</string>
     <string name="update_card_check_button">Check</string>
     <string name="update_card_source_label">Source</string>
     <string name="update_source_github">GitHub</string>
@@ -473,7 +477,7 @@
     <string name="update_card_visit_site">Visit Website</string>
     <string name="update_card_github_desc">Download resources from the official GitHub repository. Suitable for users with a stable network connection; always serves the latest version.</string>
     <string name="update_card_mirror_brand">MirrorChyan</string>
-    <string name="update_card_mirror_desc">is an independent third-party acceleration service. It is a paid service, not charged by MAA.\n\nIts operating cost is covered by subscription revenue; part of the revenue supports project development. Subscribing to a CDK unlocks high-speed downloads and helps sustain development.\n\nA CDK is required when Mirrorchyan is selected as the source.</string>
+    <string name="update_card_mirror_desc">is an independent third-party acceleration service. It is a paid service, not charged by this app.\n\nIts operating cost is covered by subscription revenue; part of the revenue supports project development. Subscribing to a CDK unlocks high-speed downloads and helps sustain development.\n\nA CDK is required when Mirrorchyan is selected as the source.</string>
     <string name="update_card_about_source_cd">About %1$s</string>
 
     <!-- update cdk input -->

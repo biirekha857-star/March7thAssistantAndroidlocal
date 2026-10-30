@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.PlayArrow
+
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -31,19 +31,14 @@ import androidx.compose.ui.unit.dp
 import com.march7th.hkrpg.R
 import com.march7th.hkrpg.constant.Routes
 import com.march7th.hkrpg.presentation.components.M7aWindowInsets
-import com.march7th.hkrpg.theme.MaaDesignTokens
+import com.march7th.hkrpg.theme.AppDesignTokens
 
 sealed class BottomNavTab(
     val route: String, @param:StringRes val labelRes: Int, val icon: ImageVector
 ) {
+    // 首页与后台任务页已合并为一页（预检条 + 控制台），故不再有独立的 BACKGROUND 项
     data object HOME : BottomNavTab(
         route = Routes.HOME, labelRes = R.string.bottom_nav_home, icon = Icons.Default.Home
-    )
-
-    data object BACKGROUND : BottomNavTab(
-        route = Routes.BACKGROUND_TASK,
-        labelRes = R.string.bottom_nav_background_task,
-        icon = Icons.Default.PlayArrow
     )
 
     data object SCHEDULE : BottomNavTab(
@@ -59,7 +54,7 @@ sealed class BottomNavTab(
     )
 
     companion object {
-        val all = listOf(HOME, BACKGROUND, SCHEDULE, SETTINGS)
+        val all = listOf(HOME, SCHEDULE, SETTINGS)
     }
 }
 
@@ -74,7 +69,7 @@ fun AppBottomNavigation(
     ) {
         Column {
             HorizontalDivider(
-                thickness = MaaDesignTokens.Separator.thickness,
+                thickness = AppDesignTokens.Separator.thickness,
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
             )
             Row(

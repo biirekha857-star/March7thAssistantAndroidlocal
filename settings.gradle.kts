@@ -40,7 +40,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "MaaMeow"
+rootProject.name = "March7thAssistantAndroid"
 include(":app")
 include(":hidden-api")
 include(":annotation-api")

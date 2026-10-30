@@ -21,7 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.march7th.hkrpg.R
-import com.march7th.hkrpg.theme.MaaThemeAlphas
+import com.march7th.hkrpg.theme.AppThemeAlphas
 
 /**
  * 底部按钮
@@ -46,7 +46,7 @@ fun BottomButtons(
             enabled = !isStarting,
             colors = ButtonDefaults.outlinedButtonColors(
                 contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = MaaThemeAlphas.DISABLED)
+                disabledContentColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = AppThemeAlphas.DISABLED)
             )
         ) {
             Text(stringResource(R.string.panel_bottom_hide))
@@ -64,7 +64,7 @@ fun BottomButtons(
             enabled = !isStarting,
             colors = ButtonDefaults.buttonColors(
                 containerColor = MaterialTheme.colorScheme.primary,
-                disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = MaaThemeAlphas.DISABLED)
+                disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = AppThemeAlphas.DISABLED)
             )
         ) {
             if (isStarting) {

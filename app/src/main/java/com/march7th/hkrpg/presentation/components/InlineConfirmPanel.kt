@@ -23,7 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.march7th.hkrpg.R
-import com.march7th.hkrpg.theme.MaaAnimatedVisibility
+import com.march7th.hkrpg.theme.AppAnimatedVisibility
 
 /**
  * 内嵌二次确认面板
@@ -46,7 +46,7 @@ fun InlineConfirmPanel(
     confirmText: String = stringResource(R.string.common_confirm),
     dismissText: String = stringResource(R.string.common_cancel),
 ) {
-    MaaAnimatedVisibility(visible = visible) {
+    AppAnimatedVisibility(visible = visible) {
         Surface(
             modifier = modifier.fillMaxWidth(),
             color = MaterialTheme.colorScheme.errorContainer,

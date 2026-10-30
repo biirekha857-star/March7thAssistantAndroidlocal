@@ -44,8 +44,8 @@ import com.march7th.hkrpg.R
 import com.march7th.hkrpg.presentation.components.SettingsGroupCard
 import com.march7th.hkrpg.presentation.components.TopAppBar
 import com.march7th.hkrpg.presentation.viewmodel.SettingsViewModel
-import com.march7th.hkrpg.theme.MaaAnimatedVisibility
-import com.march7th.hkrpg.theme.MaaDesignTokens
+import com.march7th.hkrpg.theme.AppAnimatedVisibility
+import com.march7th.hkrpg.theme.AppDesignTokens
 import org.koin.androidx.compose.koinViewModel
 import kotlin.math.roundToInt
 
@@ -84,8 +84,8 @@ fun WallpaperSettingsView(
                 .fillMaxSize()
                 .padding(top = paddingValues.calculateTopPadding()),
             contentPadding = PaddingValues(
-                horizontal = MaaDesignTokens.Spacing.listHorizontal,
-                vertical = MaaDesignTokens.Spacing.sm,
+                horizontal = AppDesignTokens.Spacing.listHorizontal,
+                vertical = AppDesignTokens.Spacing.sm,
             ),
         ) {
             item {
@@ -154,13 +154,13 @@ private fun SettingCustomBackgroundSection(
             onCheckedChange = onEnabledChange,
         )
 
-        MaaAnimatedVisibility(
+        AppAnimatedVisibility(
             visible = enabled,
             enter = expandVertically(),
             exit = shrinkVertically()
         ) {
             Column(
-                modifier = Modifier.padding(bottom = MaaDesignTokens.Spacing.listItemVertical),
+                modifier = Modifier.padding(bottom = AppDesignTokens.Spacing.listItemVertical),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 if (previewImage != null) {
