@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
@@ -74,180 +75,60 @@ import com.march7th.hkrpg.data.model.UserDataUpdateConfig
 import com.march7th.hkrpg.data.model.WakeUpConfig
 import com.march7th.hkrpg.presentation.components.ITextField
 
+/**
+ * 单个任务的配置内容。
+ *
+ * 卡片流布局下配置不再常驻半屏，而是随卡片展开，所以这里只负责
+ * 「这个任务要填哪些参数」；标题、序号、开关、折叠全由卡片管。
+ */
 @Composable
-fun TaskConfigPanel(
-    selectedNode: TaskChainNode?,
-    isEditMode: Boolean,
-    isAddingTask: Boolean,
-    isProfileMode: Boolean,
-    profiles: List<TaskProfile>,
-    activeProfileId: String,
-    clientType: String,
+internal fun TaskConfigBody(
+    node: TaskChainNode,
     onConfigChange: (TaskParamProvider) -> Unit,
-    onAddNode: (TaskTypeInfo) -> Unit,
-    onRemoveNode: (String) -> Unit,
-    onDuplicateNode: (String) -> Unit,
-    onRenameNode: (String, String) -> Unit,
-    onSwitchProfile: (String) -> Unit,
-    onRenameProfile: (String, String) -> Unit,
-    onDuplicateProfile: (String) -> Unit,
-    onDeleteProfile: (String) -> Unit,
-    onCreateProfile: () -> Unit,
-    onReorderProfile: (Int, Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
 ) {
-    Box(modifier = modifier) {
-        when {
-            // 配置管理模式
-            isProfileMode -> {
-                ProfileManagementPanel(
-                    profiles = profiles,
-                    activeProfileId = activeProfileId,
-                    onSwitch = onSwitchProfile,
-                    onRename = onRenameProfile,
-                    onDuplicate = onDuplicateProfile,
-                    onDelete = onDeleteProfile,
-                    onCreate = onCreateProfile,
-                    onReorder = onReorderProfile
-                )
-            }
-            // 编辑模式：正在新增任务
-            isEditMode && isAddingTask -> {
-                TaskGalleryView(onAddNode = onAddNode)
-            }
+    Box(modifier = modifier.fillMaxWidth()) {
+        when (val cfg = node.config) {
+            // ## 上游方舟遗留的配置类型
+            //
+            // 这些类型在 `TaskTypeInfo` 里已经没有对应任务（当前只有
+            // StartUp / Mail / Power / Daily / CloseDown 五个崩铁任务），
+            // 所以 `node.config` **永远不可能是它们** —— 对应的十几个配置面板
+            // （基建 1397 行、作战 896 行、仓库 823 行、公招 749 行……
+            // 合计约 3500 行）在 UI 上完全不可达。
+            //
+            // 这里把分支归并成一条，面板实现文件已删除。
+            // **但类型本身保留**：它们是 `@Serializable` 多态体系的注册项，
+            // 删掉会让持有旧存档（JSON 里带 `"type":"Fight"` 之类）的用户
+            // 反序列化时直接抛异常 —— 面板没人用，数据结构仍要能读。
+            is WakeUpConfig, is RecruitConfig, is InfrastConfig,
+            is FightConfig, is MallConfig, is AwardConfig,
+            is RoguelikeConfig, is ReclamationConfig, is UserDataUpdateConfig,
+            is DepotMaintainConfig, is SwitchThemeConfig -> NoConfigHint()
 
-            // 编辑模式：已选中任务
-            isEditMode && selectedNode != null -> {
-                TaskManagementView(
-                    node = selectedNode,
-                    onRename = { onRenameNode(selectedNode.id, it) },
-                    onDuplicate = { onDuplicateNode(selectedNode.id) },
-                    onRemove = { onRemoveNode(selectedNode.id) })
-            }
+            // 崩铁任务里的邮件 / 关闭游戏：没有可调参数
+            is StarRailTaskConfig -> NoConfigHint()
 
-            // 编辑模式：未选中
-            isEditMode -> {
-                EmptyStateHint(
-                    title = stringResource(R.string.panel_config_empty_edit_title),
-                    descriptions = listOf(
-                        stringResource(R.string.panel_config_empty_edit_desc_primary),
-                        stringResource(R.string.panel_config_empty_edit_desc_add)
-                    )
-                )
-            }
+            // 启动游戏：选客户端（本地 / 云游戏）
+            is StartUpTaskConfig -> StartUpConfigPanel(
+                config = cfg, onConfigChange = onConfigChange
+            )
 
-            // 普通模式：已选中任务
-            // key(node.id)：切任务时销毁并重建配置面板，避免复用同一 composition/输入框节点，
-            // 导致焦点残留跳转，以及各任务的 remember 状态（展开态/Tab/滚动/输入缓冲）互相串台
-            !isEditMode && selectedNode != null -> key(selectedNode.id) {
-                val cfg = selectedNode.config
-                Box(modifier = Modifier.fillMaxSize()) {
-                    when (cfg) {
-                        // ## 上游方舟遗留的配置类型
-                        //
-                        // 这些类型在 `TaskTypeInfo` 里已经没有对应任务（当前只有
-                        // StartUp / Mail / Power / Daily / CloseDown 五个崩铁任务），
-                        // 所以 `selectedNode.config` **永远不可能是它们** ——
-                        // 对应的十几个配置面板（基建 1397 行、作战 896 行、仓库 823 行、
-                        // 公招 749 行……合计约 3500 行）在 UI 上完全不可达。
-                        //
-                        // 这里把分支归并成一条，面板实现文件已删除。
-                        // **但类型本身保留**：它们是 `@Serializable` 多态体系的注册项，
-                        // 删掉会让持有旧存档（JSON 里带 `"type":"Fight"` 之类）的用户
-                        // 反序列化时直接抛异常 —— 面板没人用，数据结构仍要能读。
-                        is WakeUpConfig, is RecruitConfig, is InfrastConfig,
-                        is FightConfig, is MallConfig, is AwardConfig,
-                        is RoguelikeConfig, is ReclamationConfig, is UserDataUpdateConfig,
-                        is DepotMaintainConfig, is SwitchThemeConfig -> NoConfigHint()
+            // 清体力：选副本 + 次数上限 + 是否用燃料
+            is PowerTaskConfig -> PowerConfigPanel(
+                config = cfg, onConfigChange = onConfigChange
+            )
 
-                        // 崩铁任务：目前都不需要配置，显示占位说明
-                        is StarRailTaskConfig -> NoConfigHint()
-
-                        // 启动游戏：选客户端（本地 / 云游戏）
-                        is StartUpTaskConfig -> StartUpConfigPanel(
-                            config = cfg, onConfigChange = onConfigChange
-                        )
-
-                        // 清体力：选副本 + 次数上限 + 是否用燃料
-                        is PowerTaskConfig -> PowerConfigPanel(
-                            config = cfg, onConfigChange = onConfigChange
-                        )
-
-                        // 每日实训：选副本（排除周本）+ 是否自动消耗体力
-                        is DailyTaskConfig -> DailyConfigPanel(
-                            config = cfg, onConfigChange = onConfigChange
-                        )
-                    }
-                }
-            }
-
-            // 普通模式：未选中
-            else -> {
-                EmptyStateHint(
-                    title = stringResource(R.string.panel_config_empty_view_title),
-                    descriptions = listOf(stringResource(R.string.panel_config_empty_view_desc))
-                )
-            }
+            // 每日实训：逐项勾选今天要做的条目
+            is DailyTaskConfig -> DailyConfigPanel(
+                config = cfg, onConfigChange = onConfigChange
+            )
         }
     }
 }
 
 @Composable
-private fun EmptyStateHint(
-    title: String, descriptions: List<String>, showReorderHint: Boolean = true
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 20.dp)
-    ) {
-        Spacer(modifier = Modifier.height(48.dp)) // 固定顶部高度，防止切换标题时跳变
-
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-            fontWeight = FontWeight.ExtraBold
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        descriptions.forEach { desc ->
-            HintItem(Icons.Default.Info, desc)
-            Spacer(modifier = Modifier.height(12.dp))
-        }
-
-        if (showReorderHint) {
-            HintItem(Icons.Default.Info, stringResource(R.string.panel_config_reorder_hint))
-        }
-    }
-}
-
-@Composable
-private fun HintItem(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
-    Row(
-        modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier
-                .size(18.dp)
-                .padding(top = 2.dp),
-            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            lineHeight = 22.sp
-        )
-    }
-}
-
-@Composable
-private fun TaskGalleryView(onAddNode: (TaskTypeInfo) -> Unit) {
+internal fun TaskGalleryView(onAddNode: (TaskTypeInfo) -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -290,49 +171,23 @@ private fun TaskGalleryView(onAddNode: (TaskTypeInfo) -> Unit) {
     }
 }
 
+/**
+ * 卡片内联的重命名编辑器（编辑模式下展开卡片时出现）。
+ *
+ * 复制 / 删除已改为卡片右侧的图标按钮，这里只处理改名。
+ */
 @Composable
-private fun TaskManagementView(
-    node: TaskChainNode, onRename: (String) -> Unit, onDuplicate: () -> Unit, onRemove: () -> Unit
+internal fun NodeRenameEditor(
+    node: TaskChainNode,
+    onRename: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var text by remember(node.id) { mutableStateOf(node.name) }
-    val typeDisplayName = taskTypeInfoForConfig(node.config)?.let { taskTypeLabel(it) }
-        ?: stringResource(R.string.panel_config_unknown_task_type)
-
     val trimmedText = text.trim()
     val isError = trimmedText.isEmpty()
     val isTooLong = text.length > 20
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState())
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Surface(
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                shape = RoundedCornerShape(4.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.panel_config_editing_badge),
-                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = typeDisplayName,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
+    Column(modifier = modifier.fillMaxWidth()) {
         ITextField(
             value = text,
             onValueChange = { newText ->
@@ -343,7 +198,7 @@ private fun TaskManagementView(
                 }
             },
             label = stringResource(R.string.panel_config_task_name_label),
-            shape = RoundedCornerShape(4.dp),
+            shape = RoundedCornerShape(8.dp),
             modifier = Modifier.fillMaxWidth(),
             supportingText = {
                 if (isError) {
@@ -354,8 +209,6 @@ private fun TaskManagementView(
             },
             outlineColor = if (isError || isTooLong) MaterialTheme.colorScheme.error else null
         )
-
-        // 字数统计在 ITextField 下方展示，因为 ITextField 内部目前可能不支持 trailingIcon（取决于具体实现）
         Text(
             text = "${text.length}/20",
             style = MaterialTheme.typography.labelSmall,
@@ -365,52 +218,36 @@ private fun TaskManagementView(
                 .padding(top = 4.dp),
             textAlign = TextAlign.End
         )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedButton(
-            onClick = onDuplicate,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(4.dp)
-        ) {
-            Icon(
-                Icons.Default.ContentCopy,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(stringResource(R.string.panel_config_duplicate_task))
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        OutlinedButton(
-            onClick = onRemove,
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.outlinedButtonColors(
-                contentColor = MaterialTheme.colorScheme.error
-            ),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.6f)),
-            shape = RoundedCornerShape(4.dp)
-        ) {
-            Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(stringResource(R.string.panel_config_delete_task))
-        }
     }
 }
 
 /**
- * 崩铁任务的配置占位。
+ * 「这个任务没有可调参数」的占位。
  *
- * 目前崩铁的邮件是"一键领取"语义，不需要参数。
+ * 卡片摘要里已经写过一次，展开后再给一行低调说明，
+ * 免得用户以为展开失败。
  */
 @Composable
-private fun NoConfigHint() {
-    EmptyStateHint(
-        title = stringResource(R.string.panel_config_empty_view_title),
-        descriptions = listOf(stringResource(R.string.panel_config_empty_view_desc)),
-    )
+internal fun NoConfigHint() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Tune,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = MaterialTheme.colorScheme.outline,
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = stringResource(R.string.panel_task_card_no_config),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
 }
 
 /**
@@ -834,6 +671,11 @@ private fun DailyConfigPanel(
  *
  * @param score 这项值多少活跃度（显示在右侧，方便用户算总分）
  */
+/**
+ * 每日实训面板里的一个勾选行。
+ *
+ * @param score 这项值多少活跃度（显示在右侧，方便用户算总分）
+ */
 @Composable
 private fun DailyCheckItem(
     title: String,
@@ -863,16 +705,8 @@ private fun DailyCheckItem(
     }
 }
 
-private fun taskTypeInfoForConfig(config: TaskParamProvider): TaskTypeInfo? {    // 崩铁任务的参数都是 StarRailTaskConfig，按 type 字段精确匹配；
-    // 方舟任务的参数类型各不相同，走类名匹配。
-    if (config is StarRailTaskConfig) {
-        return TaskTypeInfo.entries.firstOrNull { it.taskType == config.type }
-    }
-    return TaskTypeInfo.entries.firstOrNull { it.defaultConfig()::class == config::class }
-}
-
 @Composable
-private fun taskTypeLabel(typeInfo: TaskTypeInfo): String {
+internal fun taskTypeLabel(typeInfo: TaskTypeInfo): String {
     return when (typeInfo) {
         // 崩铁任务（成就已删除）
         TaskTypeInfo.START_UP -> stringResource(R.string.panel_task_type_start_up)
@@ -1033,7 +867,7 @@ private fun StartUpConfigPanel(
 
 /** 客户端显示名。 */
 @Composable
-private fun clientLabel(client: StartUpTaskConfig.GameClient): String = when (client) {
+internal fun clientLabel(client: StartUpTaskConfig.GameClient): String = when (client) {
     StartUpTaskConfig.GameClient.LOCAL ->
         stringResource(R.string.panel_startup_client_local)
     StartUpTaskConfig.GameClient.CLOUD ->

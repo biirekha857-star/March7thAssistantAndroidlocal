@@ -14,21 +14,20 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.List
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.FolderZip
 import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.Timeline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +42,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
@@ -50,6 +51,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -58,12 +60,33 @@ import com.march7th.hkrpg.R
 import com.march7th.hkrpg.data.model.LogColorRole
 import com.march7th.hkrpg.data.model.LogItem
 import com.march7th.hkrpg.data.model.LogLevel
+import com.march7th.hkrpg.data.model.LogSeverity
 import com.march7th.hkrpg.data.model.RecruitCombination
 import com.march7th.hkrpg.presentation.components.AdaptiveTaskPromptDialog
 import com.march7th.hkrpg.theme.LocalLogPalette
 import com.march7th.hkrpg.theme.themedColor
 
-/** 浮层形式的任务执行日志面板。 */
+/** 时间列宽度：`HH:mm:ss` 在 10sp 等宽字体下约 48dp，留一点余量。 */
+private val TimeColumnWidth = 52.dp
+
+/** 时间列和内容之间那条竖线的槽宽。 */
+private val AxisSlotWidth = 12.dp
+
+/** 行内边距：竖线的上下端点、圆点的位置都以它为基准。 */
+private val EntryVerticalPadding = 5.dp
+
+/**
+ * 任务执行日志面板（时间线）。
+ *
+ * ## 为什么改成时间线
+ *
+ * 老实现是「时间戳 + 级别徽章 + 正文」三列平铺，每行都挂一个
+ * 带底色的 INFO 方块。级别色块比正文还抢眼，一眼看过去全是色块，
+ * 真正要紧的 WARNING / ERROR 反而淹在里面。
+ *
+ * 现在把级别收进左侧时间轴上的圆点：普通日志是灰线灰点，
+ * 警告/错误才亮起来并加粗。想确认级别可以点开详情，那里仍有完整徽章。
+ */
 @Composable
 fun LogPanel(
     modifier: Modifier = Modifier,
@@ -88,62 +111,33 @@ fun LogPanel(
     }
 
     Column(modifier = modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.List,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.panel_log_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Row {
-                if (onExportLogs != null) {
-                    IconButton(onClick = onExportLogs) {
-                        Icon(
-                            imageVector = Icons.Rounded.FolderZip,
-                            contentDescription = stringResource(R.string.settings_log_export_title),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                IconButton(onClick = onClearLogs) {
-                    Icon(
-                        imageVector = Icons.Rounded.Delete,
-                        contentDescription = stringResource(R.string.common_clear),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
+        LogToolbar(
+            count = logs.size,
+            onExportLogs = onExportLogs,
+            onClearLogs = onClearLogs,
+        )
 
         Box(modifier = Modifier.weight(1f)) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                items(
-                    items = logs,
-                    key = { it.id }
-                ) { logItem ->
-                    LogLine(
-                        logItem = logItem,
-                        onClick = { selectedLog = logItem }
-                    )
+            if (logs.isEmpty()) {
+                EmptyLogHint(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 24.dp)
+                )
+            } else {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                    itemsIndexed(items = logs, key = { _, item -> item.id }) { index, logItem ->
+                        TimelineEntry(
+                            logItem = logItem,
+                            isFirst = index == 0,
+                            isLast = index == logs.lastIndex,
+                            onClick = { selectedLog = logItem },
+                        )
+                    }
                 }
             }
 
@@ -178,59 +172,183 @@ fun LogPanel(
     }
 }
 
+/** 顶部工具条：标题 + 条数 + 导出 / 清空。 */
 @Composable
-private fun LogLine(
-    logItem: LogItem,
-    onClick: () -> Unit
+private fun LogToolbar(
+    count: Int,
+    onExportLogs: (() -> Unit)?,
+    onClearLogs: () -> Unit,
 ) {
-    val levelColor = logItem.level.themedColor()
-    Surface(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp))
-            .clickable { onClick() },
-        color = Color.Transparent
+            .padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            modifier = Modifier.padding(vertical = 4.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            Text(
-                text = logItem.formattedTime,
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 10.sp
-                ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                maxLines = 1,
-                modifier = Modifier.widthIn(min = 55.dp)
-            )
+        Icon(
+            imageVector = Icons.Rounded.Timeline,
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = MaterialTheme.colorScheme.primary,
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = stringResource(R.string.panel_log_title),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = count.toString(),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.outline,
+        )
 
-            LogLevelBadge(level = logItem.level, color = levelColor, compact = true)
+        Spacer(modifier = Modifier.weight(1f))
 
-            Spacer(modifier = Modifier.width(6.dp))
-
-            Text(
-                text = logItem.content,
-                style = MaterialTheme.typography.bodySmall.copy(
-                    fontSize = 12.sp
-                ),
-                color = levelColor,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-
-            if (logItem.hasDetails) {
-                Spacer(modifier = Modifier.width(4.dp))
+        if (onExportLogs != null) {
+            IconButton(onClick = onExportLogs, modifier = Modifier.size(36.dp)) {
                 Icon(
-                    imageVector = Icons.Outlined.Info,
-                    contentDescription = stringResource(R.string.panel_log_view_details),
-                    modifier = Modifier.size(14.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    imageVector = Icons.Rounded.FolderZip,
+                    contentDescription = stringResource(R.string.settings_log_export_title),
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
+        IconButton(onClick = onClearLogs, modifier = Modifier.size(36.dp)) {
+            Icon(
+                imageVector = Icons.Rounded.Delete,
+                contentDescription = stringResource(R.string.common_clear),
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+/**
+ * 时间线上的一条记录。
+ *
+ * 左列时间 → 竖轴上的圆点 → 正文。圆点颜色就是级别色，
+ * 警告/错误额外放大并加粗正文，其余保持安静。
+ */
+@Composable
+private fun TimelineEntry(
+    logItem: LogItem,
+    isFirst: Boolean,
+    isLast: Boolean,
+    onClick: () -> Unit,
+) {
+    val levelColor = logItem.level.themedColor()
+    val severity = logItem.level.severity
+    val emphasized = severity == LogSeverity.WARNING || severity == LogSeverity.ERROR
+    val axisColor = MaterialTheme.colorScheme.outlineVariant
+    val dotSize = if (emphasized) 8.dp else 6.dp
+    val dotTop = EntryVerticalPadding + if (emphasized) 9.dp else 10.dp
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .drawBehind {
+                val axisX = (TimeColumnWidth + 6.dp + AxisSlotWidth / 2).toPx()
+                val dotCenterY = (EntryVerticalPadding + 13.dp).toPx()
+                val stroke = 1.dp.toPx()
+                if (!isFirst) {
+                    drawLine(
+                        color = axisColor,
+                        start = Offset(axisX, 0f),
+                        end = Offset(axisX, dotCenterY),
+                        strokeWidth = stroke,
+                    )
+                }
+                if (!isLast) {
+                    drawLine(
+                        color = axisColor,
+                        start = Offset(axisX, dotCenterY),
+                        end = Offset(axisX, size.height),
+                        strokeWidth = stroke,
+                    )
+                }
+            }
+            .clickable(onClick = onClick)
+            .padding(vertical = EntryVerticalPadding),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            text = logItem.formattedTime,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp,
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            maxLines = 1,
+            textAlign = TextAlign.End,
+            modifier = Modifier.width(TimeColumnWidth),
+        )
+
+        Spacer(modifier = Modifier.width(6.dp))
+
+        Box(
+            modifier = Modifier.width(AxisSlotWidth),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            Box(
+                modifier = Modifier
+                    .padding(top = dotTop)
+                    .size(dotSize)
+                    .clip(CircleShape)
+                    .background(if (emphasized) levelColor else axisColor.copy(alpha = 0.9f))
+            )
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Text(
+            text = logItem.content,
+            style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
+            color = if (emphasized) levelColor else MaterialTheme.colorScheme.onSurface,
+            fontWeight = if (emphasized) FontWeight.Medium else FontWeight.Normal,
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+
+        if (logItem.hasDetails) {
+            Spacer(modifier = Modifier.width(4.dp))
+            Icon(
+                imageVector = Icons.Outlined.Info,
+                contentDescription = stringResource(R.string.panel_log_view_details),
+                modifier = Modifier
+                    .padding(top = 1.dp)
+                    .size(13.dp),
+                tint = MaterialTheme.colorScheme.outline,
+            )
+        }
+    }
+}
+
+/** 没有日志时的空态：告诉用户日志会在开跑后出现，而不是留一片空白。 */
+@Composable
+private fun EmptyLogHint(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Timeline,
+            contentDescription = null,
+            modifier = Modifier.size(26.dp),
+            tint = MaterialTheme.colorScheme.outline,
+        )
+        Spacer(modifier = Modifier.size(8.dp))
+        Text(
+            text = stringResource(R.string.panel_log_empty),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -258,7 +376,7 @@ private fun LogDetailDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    LogLevelBadge(level = logItem.level, color = levelColor, compact = false)
+                    LogLevelBadge(level = logItem.level, color = levelColor)
                     Text(
                         text = logItem.formattedTime,
                         style = MaterialTheme.typography.bodySmall,
@@ -339,32 +457,21 @@ private fun LogDetailDialog(
     )
 }
 
-/** [compact] 切换列表行 / 详情弹窗两档尺寸。 */
+/** 详情弹窗里的级别徽章。 */
 @Composable
 private fun LogLevelBadge(
     level: LogLevel,
     color: Color,
-    compact: Boolean,
 ) {
     Surface(
-        shape = RoundedCornerShape(if (compact) 3.dp else 4.dp),
+        shape = RoundedCornerShape(4.dp),
         color = color.copy(alpha = 0.15f)
     ) {
         Text(
             text = stringResource(level.labelRes),
-            style = if (compact) {
-                MaterialTheme.typography.labelSmall.copy(
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            } else {
-                MaterialTheme.typography.labelMedium
-            },
+            style = MaterialTheme.typography.labelMedium,
             color = color,
-            modifier = Modifier.padding(
-                horizontal = if (compact) 4.dp else 6.dp,
-                vertical = if (compact) 1.dp else 2.dp,
-            )
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
         )
     }
 }

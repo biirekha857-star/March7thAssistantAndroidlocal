@@ -796,13 +796,8 @@
     <string name="panel_config_empty_edit_title">编辑模式</string>
     <string name="panel_config_empty_edit_desc_primary">选择左侧任务进行重命名、删除等操作。</string>
     <string name="panel_config_empty_edit_desc_add">点击左侧 ｢新增任务｣ 往脚本末尾添加新功能。</string>
-    <string name="panel_config_empty_view_title">配置任务</string>
-    <string name="panel_config_empty_view_desc">从左侧选择一个任务项，即可在此调整执行参数。</string>
-    <string name="panel_config_reorder_hint">长按左侧任务项并拖拽，可自由调整执行顺序。</string>
     <string name="panel_config_select_type">选择任务类型</string>
-    <string name="panel_config_editing_badge">正在编辑</string>
     <string name="panel_config_task_name_label">任务名称</string>
-    <string name="panel_config_unknown_task_type">未知任务</string>
     <string name="panel_task_type_wake_up">开始唤醒</string>
     <string name="panel_task_type_recruiting">自动公招</string>
     <string name="panel_task_type_base">基建换班</string>
@@ -1252,9 +1247,23 @@
     <string name="panel_task_list_edit_config">编辑配置</string>
     <string name="panel_task_list_edit_tasks">编辑任务</string>
     <string name="panel_task_list_add">新增任务</string>
+    <!-- 任务卡片流 -->
+    <string name="panel_task_list_summary">%1$d 项 · 已启用 %2$d</string>
+    <string name="panel_task_list_empty">还没有任务，点右上角「编辑」后添加</string>
+    <string name="panel_task_list_profiles_title">配置方案</string>
+    <string name="panel_task_list_add_title">添加任务</string>
+    <string name="panel_task_card_no_config">这个任务没有可调参数</string>
+    <string name="panel_task_card_summary_client">客户端：%1$s</string>
+    <string name="panel_task_card_summary_power">%1$s · 最多 %2$d 次</string>
+    <string name="panel_task_card_summary_power_unlimited">%1$s · 刷到体力用完</string>
+    <string name="panel_task_card_summary_daily">已勾选 %1$d 项实训</string>
+    <string name="panel_task_card_summary_daily_none">尚未勾选任何实训</string>
+    <string name="panel_task_card_duplicate">复制</string>
+    <string name="panel_task_card_delete">删除</string>
 
     <!-- panel: log -->
     <string name="panel_log_title">任务日志</string>
+    <string name="panel_log_empty">还没有日志，开始任务后这里会逐条出现</string>
     <string name="panel_log_resume_auto_scroll">恢复自动滚动</string>
     <string name="panel_log_view_details">查看详情</string>
     <string name="panel_log_details_section">详细信息</string>

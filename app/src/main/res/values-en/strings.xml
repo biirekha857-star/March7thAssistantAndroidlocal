@@ -740,13 +740,8 @@
     <string name="panel_config_empty_edit_title">Edit Mode</string>
     <string name="panel_config_empty_edit_desc_primary">Select a task on the left to rename it, delete it, and more.</string>
     <string name="panel_config_empty_edit_desc_add">Use \"Add Task\" on the left to append a new action to the end of the script.</string>
-    <string name="panel_config_empty_view_title">Task Settings</string>
-    <string name="panel_config_empty_view_desc">Select a task on the left to adjust its execution parameters here.</string>
-    <string name="panel_config_reorder_hint">Long-press and drag task items on the left to reorder them freely.</string>
     <string name="panel_config_select_type">Select Task Type</string>
-    <string name="panel_config_editing_badge">Editing</string>
     <string name="panel_config_task_name_label">Task Name</string>
-    <string name="panel_config_unknown_task_type">Unknown Task</string>
     <string name="panel_task_type_wake_up">Login</string>
     <string name="panel_task_type_recruiting">Auto Recruit</string>
     <string name="panel_task_type_base">Base</string>
@@ -1196,9 +1191,23 @@
     <string name="panel_task_list_edit_config">Edit Config</string>
     <string name="panel_task_list_edit_tasks">Edit Tasks</string>
     <string name="panel_task_list_add">Add Task</string>
+    <!-- 任务卡片流 -->
+    <string name="panel_task_list_summary">%1$d tasks · %2$d enabled</string>
+    <string name="panel_task_list_empty">No tasks yet — tap Edit, then +</string>
+    <string name="panel_task_list_profiles_title">Profiles</string>
+    <string name="panel_task_list_add_title">Add task</string>
+    <string name="panel_task_card_no_config">No options for this task</string>
+    <string name="panel_task_card_summary_client">Client: %1$s</string>
+    <string name="panel_task_card_summary_power">%1$s · up to %2$d runs</string>
+    <string name="panel_task_card_summary_power_unlimited">%1$s · until power runs out</string>
+    <string name="panel_task_card_summary_daily">%1$d drills selected</string>
+    <string name="panel_task_card_summary_daily_none">No drills selected</string>
+    <string name="panel_task_card_duplicate">Duplicate</string>
+    <string name="panel_task_card_delete">Delete</string>
 
     <!-- panel: log -->
     <string name="panel_log_title">Task Logs</string>
+    <string name="panel_log_empty">No logs yet — they appear here once a task starts</string>
     <string name="panel_log_resume_auto_scroll">Resume auto-scroll</string>
     <string name="panel_log_view_details">View details</string>
     <string name="panel_log_details_section">Details</string>
