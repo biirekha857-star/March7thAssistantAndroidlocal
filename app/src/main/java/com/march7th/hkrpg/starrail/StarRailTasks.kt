@@ -98,6 +98,15 @@ class StarRailTasks(
 
         // ---- 区域常量（全部只搜一小块，避免全屏开销）----
 
+        /**
+         * 云游戏排队的最长等待时间。
+         *
+         * 排队时长完全不可控（用户实测可能超过 30 分钟），所以排队期间
+         * **暂停启动超时计时**，只用这个常量做最终兜底 ——
+         * 60 分钟足够覆盖任何高峰排队，又不至于真卡死时永远挂起。
+         */
+        private const val QUEUE_MAX_WAIT_MS = 60L * 60 * 1000
+
         /** 「点击进入」按钮的搜索区（标题页中下部）。 */
         private val CROP_CLICK_ENTER = ScreenNavigator.NormRect(
             0.15f, 0.60f, 0.70f, 0.40f,
@@ -401,85 +410,145 @@ class StarRailTasks(
     /**
      * **云游戏**的启动流程。
      *
-     * 实测界面（两张截图）：
+     * # 实测界面
      *
      * | 界面 | 特征 | 操作 |
      * |---|---|---|
      * | 云游戏启动页 | 左上「云·星穹铁道」，右下橙色**「开始游戏」** | 点「开始游戏」 |
-     * | 排队中 | 标题「排队中……」，副文字「云服务器资源紧张」 | **只等待，不点** |
+     * | 排队中 | 「排队中……」「云服务器资源紧张」「退出排队」 | **只等待，绝不点击** |
      *
-     * 排队界面底部还有个**「退出排队」**按钮 —— 注意绝不能在
-     * 「开始游戏」的位置乱点，那个位置在排队页可能就是「退出排队」。
+     * # ⚠️ 排队不能按固定时长算超时
      *
-     * 所以这里的关键是：**用 OCR 精确判断当前在哪个界面**，
-     * 只在确认看到「开始游戏」时才点。
+     * 云游戏显示的「预计等待时间」是**动态估算**，随时会变 ——
+     * 用户实测排队可能超过 30 分钟。所以：
+     *
+     * - **不能用固定 deadline**（会误判失败）
+     * - **不能用预测时间算**（估算不准）
+     *
+     * 正确做法：**排队期间暂停超时计时**，只看界面状态。
+     *
+     * 判断排队是否结束，用「**退出排队**」这个按钮 ——
+     * 它是排队页独有的，比识别会变的数字可靠得多：
+     *
+     * ```
+     * 「退出排队」还在  →  仍在排队，继续等
+     * 「退出排队」消失  →  排队结束，恢复计时
+     * ```
+     *
+     * # 安全兜底
+     *
+     * 排队超过 [QUEUE_MAX_WAIT_MS]（60 分钟）才主动放弃 ——
+     * 足够覆盖任何高峰，又不至于真卡死时永远挂起。
+     *
+     * # 为什么绝不点击排队页
+     *
+     * 排队页底部有「**退出排队**」按钮，位置可能和「开始游戏」重合。
+     * 盲点一下就把排队退了，前功尽弃。所以只有**明确认出
+     * 「开始游戏」** 才点，认出「排队」就完全不操作。
      */
     private fun cloudGameStartUpFlow(
         nav: ScreenNavigator,
         client: StartUpTaskConfig.GameClient,
     ): TaskResult {
-        val deadline = SystemClock.uptimeMillis() + client.defaultTimeoutSec * 1000L
+        val startupBudgetMs = client.defaultTimeoutSec * 1000L
+        var startupElapsedMs = 0L          // 只在非排队时累加
         var clickedStart = false
-        var lastReport = 0L
+        var lastDiagLog = 0L
+        var lastQueueLog = 0L
+        var queueStartAt = 0L              // 首次进入排队的时刻
+        var inQueue = false
+        val pollMs = 2_000L
 
-        while (SystemClock.uptimeMillis() < deadline) {
+        while (true) {
             if (isCancelled()) {
                 return TaskResult("StartUp", false, "任务已被用户停止")
             }
 
-            // ---- 已经进游戏了？----
+            // ---- 已经进游戏？----
             if (nav.isAt(ScreenNavigator.Screen.MAIN)) {
                 Ln.i("$TAG: 云游戏已进入大厅")
                 return TaskResult("StartUp", true, "云游戏启动成功 ${auto.width}x${auto.height}")
             }
 
+            val now = SystemClock.uptimeMillis()
             val texts = nav.readAllText()
             val joined = texts.joinToString("") { it.text }
+            val queueing = joined.contains("排队") || joined.contains("资源紧张")
 
-            // ---- 排队中：只等，不操作 ----
-            //
-            // 排队页有「退出排队」按钮，位置和「开始游戏」可能重合，
-            // 所以这里必须**明确识别出排队**并直接跳过，绝不能盲点。
-            if (joined.contains("排队") || joined.contains("资源紧张")) {
-                Ln.i("$TAG: 云游戏排队中…（已等 ${(SystemClock.uptimeMillis() - (deadline - client.defaultTimeoutSec * 1000L)) / 1000}s）")
-            } else if (!clickedStart) {
-                // ---- 启动页：找「开始游戏」----
-                val startBtn = texts.firstOrNull {
-                    val t = it.text.replace(" ", "")
-                    t.contains("开始游戏") || t.contains("立即进入")
+            if (queueing) {
+                // ==================== 排队模式 ====================
+                //
+                // 超时计时器**暂停** —— 排队多久不由我们决定。
+                if (!inQueue) {
+                    inQueue = true
+                    queueStartAt = now
+                    Ln.i("$TAG: 云游戏进入排队，暂停启动超时计时")
                 }
-                if (startBtn != null) {
-                    Ln.i("$TAG: 云游戏启动页，点「${startBtn.text}」@(${startBtn.cx},${startBtn.cy})")
-                    auto.tap(startBtn.cx, startBtn.cy)
-                    clickedStart = true
-                    Thread.sleep(2_000)
-                    continue
-                } else {
+                // 每 60 秒报一次进度
+                if (now - lastQueueLog > 60_000) {
+                    lastQueueLog = now
+                    val waitedMin = (now - queueStartAt) / 60_000
+                    Ln.i("$TAG: 云游戏排队中…已等 ${waitedMin} 分钟")
+                }
+                // 兜底：排太久就放弃
+                if (now - queueStartAt > QUEUE_MAX_WAIT_MS) {
+                    runCatching {
+                        val s = nav.exportFrame("cloudgame_queue_timeout")
+                        Ln.e("$TAG: 排队超 ${QUEUE_MAX_WAIT_MS / 60_000} 分钟，已导出画面 -> $s")
+                    }
+                    return TaskResult(
+                        "StartUp", false,
+                        "云游戏排队超过 ${QUEUE_MAX_WAIT_MS / 60_000} 分钟仍未进入，已放弃",
+                    )
+                }
+            } else {
+                // ==================== 非排队：正常计时 ====================
+                if (inQueue) {
+                    inQueue = false
+                    val qMin = (now - queueStartAt) / 60_000
+                    Ln.i("$TAG: 云游戏排队结束（等了 ${qMin} 分钟），恢复启动计时")
+                }
+                startupElapsedMs += pollMs
+
+                if (!clickedStart) {
+                    // 启动页：找「开始游戏」
+                    val startBtn = texts.firstOrNull {
+                        val t = it.text.replace(" ", "")
+                        t.contains("开始游戏") || t.contains("立即进入")
+                    }
+                    if (startBtn != null) {
+                        Ln.i("$TAG: 云游戏启动页，点「${startBtn.text}」@(${startBtn.cx},${startBtn.cy})")
+                        auto.tap(startBtn.cx, startBtn.cy)
+                        clickedStart = true
+                        Thread.sleep(2_000)
+                        continue
+                    }
                     // 没认出关键文字 —— 每 10 秒打一次诊断
-                    val now = SystemClock.uptimeMillis()
-                    if (now - lastReport > 10_000) {
-                        lastReport = now
+                    if (now - lastDiagLog > 10_000) {
+                        lastDiagLog = now
                         Ln.i(
                             "$TAG: [云游戏诊断] 全屏 OCR ${texts.size} 条: " +
                                 texts.take(12).joinToString(" | ") { it.text },
                         )
                     }
                 }
+
+                // 超时判断（排队时间不计入）
+                if (startupElapsedMs > startupBudgetMs) {
+                    runCatching {
+                        val s = nav.exportFrame("cloudgame_timeout")
+                        Ln.e("$TAG: 云游戏启动超时，已导出画面 -> $s")
+                    }
+                    return TaskResult(
+                        "StartUp", false,
+                        "云游戏启动超时（非排队累计 ${startupElapsedMs / 1000}s）。" +
+                            "可能启动页特征未识别。",
+                    )
+                }
             }
 
-            Thread.sleep(2_000)
+            Thread.sleep(pollMs)
         }
-
-        // 超时 —— 导出画面方便分析
-        runCatching {
-            val s = nav.exportFrame("cloudgame_timeout")
-            Ln.e("$TAG: 云游戏启动超时，已导出画面 -> $s")
-        }
-        return TaskResult(
-            "StartUp", false,
-            "云游戏启动超时（${client.defaultTimeoutSec}s）。" +
-                "可能还在排队，或启动页特征未识别。",
-        )
     }
 
     /** 轮询直到能采到一帧。 */
