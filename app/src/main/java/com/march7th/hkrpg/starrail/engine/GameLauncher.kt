@@ -69,6 +69,75 @@ object GameLauncher {
     }.onFailure { Ln.w("$TAG: force-stop 失败: ${it.message}") }.getOrDefault(false)
 
     /**
+     * 强制停止，并**确认进程真的消失了**才返回。
+     *
+     * ## 为什么不能发完 force-stop 就当它死了
+     *
+     * 部分定制 ROM（实测荣耀 MagicOS）有「应用速启 / 游戏预加载」：
+     * 游戏被放进内存里的热进程池，`forceStopPackage` 之后会被立刻拉起来。
+     * 这个热进程是**带着上一份图形环境**的 —— 它在物理屏上按 1272×2800
+     * 初始化过，激活到 1920×1080 的虚拟屏时系统不做重新布局，只把内容
+     * 放大裁切填满：
+     *
+     * ```
+     * 1272×2800 按宽度填满 1920 → 放大 1.51 倍
+     * 2800×1.51 = 4228，画框只有 1080 → 只显示顶部约 1/4
+     * ```
+     *
+     * 于是背景视频（按 surface 铺满）看着完全正常，而 UI 层
+     * （logo、「点击进入」）全在裁切区之外 —— 就是用户看到的
+     * 「画面放大了、点击进入不见了」。
+     *
+     * 同一份代码在 OnePlus 上会直接崩（分辨率不匹配被老实地报出来），
+     * 在荣耀上被系统糊过去，所以只有这台机器出问题。
+     *
+     * @return true = 已确认进程不存在；false = 反复 force-stop 后仍存活（ROM 保活）
+     */
+    fun forceStopAndConfirm(pkg: String = PKG_CN, timeoutMs: Long = 8_000L): Boolean {
+        forceStop(pkg)
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (!isRunning(pkg)) {
+                Ln.i("$TAG: 已确认 $pkg 进程退出")
+                return true
+            }
+            SystemClock.sleep(400)
+            // 补刀：保活策略可能在上一次 force-stop 后把它拉回来
+            forceStop(pkg)
+        }
+
+        // 最后手段：直接 kill -9
+        killByPid(pkg)
+        SystemClock.sleep(600)
+        return if (!isRunning(pkg)) {
+            Ln.i("$TAG: kill -9 后进程已退出")
+            true
+        } else {
+            Ln.w("$TAG: ⚠️ force-stop + kill -9 后 $pkg 仍在运行（ROM 保活/速启），" +
+                    "启动时可能复用它那份按物理屏初始化的图形环境")
+            false
+        }
+    }
+
+    /** 按 pid 强杀。返回是否发出了 kill。 */
+    private fun killByPid(pkg: String = PKG_CN): Boolean = runCatching {
+        val p = Runtime.getRuntime().exec(arrayOf("pidof", pkg))
+        // 先读流再 waitFor，避免管道写满把自己堵死
+        val out = com.march7th.hkrpg.third.IO.toString(p.inputStream).trim()
+        p.waitFor()
+        if (out.isEmpty()) {
+            false
+        } else {
+            out.split(Regex("\\s+")).filter { it.isNotEmpty() }.forEach { pid ->
+                val k = Runtime.getRuntime().exec(arrayOf("kill", "-9", pid))
+                k.waitFor()
+            }
+            Ln.w("$TAG: kill -9 $pkg (pid=$out)")
+            true
+        }
+    }.onFailure { Ln.w("$TAG: kill -9 失败: ${it.message}") }.getOrDefault(false)
+
+    /**
      * 启动游戏到指定 display。
      *
      * @return true 表示启动指令被接受（**不代表已落到目标屏**，需配合 [ensureOnDisplay]）
@@ -124,15 +193,61 @@ object GameLauncher {
     }
 
     /**
-     * 启动到虚拟屏的完整流程：force-stop → 等一会儿 → launch。
+     * 启动到虚拟屏的完整流程：**确认杀掉** → 等一会儿 → launch。
      *
-     * @return 启动指令是否被接受
+     * 这里用 [forceStopAndConfirm] 而不是裸的 `forceStop`：
+     * 发完指令不代表进程死了，ROM 的速启会把它拉回来，
+     * 而那个热进程的图形环境是按物理屏初始化的 —— 直接复用就会错位。
      */
     fun startOnDisplay(pkg: String = PKG_CN, displayId: Int, waitAfterStopMs: Long = 2500L): Boolean {
         Ln.i("$TAG: 启动 $pkg 到 display $displayId")
-        forceStop(pkg)
+        forceStopAndConfirm(pkg)
         SystemClock.sleep(waitAfterStopMs)
         return launch(pkg, displayId)
+    }
+
+    /**
+     * 强制游戏重新按当前显示尺寸布局一次（「主屏往返」）。
+     *
+     * ## 治的是「画面被放大裁切」
+     *
+     * 游戏若带着物理屏的图形环境被塞进虚拟屏，系统只会缩放裁切、
+     * 不会让它重新布局，于是 UI 层整个跑到画框外（见 [forceStopAndConfirm] 的注释）。
+     *
+     * 而**一次真实的显示变更会触发重新布局**：把 task 移到主屏、停一下、
+     * 再移回来，游戏会重新读取一次显示尺寸，UI 就回到正确位置。
+     * 这个动作用户手工验证过 —— 切到主屏再切回来就正常了。
+     *
+     * @param dwellMs 停留在主屏的时长。太短游戏来不及感知这次变更，
+     *   实测 400~600ms 足够；太长会明显闪一下游戏画面。
+     */
+    fun kickRelayout(pkg: String = PKG_CN, displayId: Int, dwellMs: Long = 450L): Boolean {
+        val taskId = findTaskId(pkg)
+        if (taskId <= 0) {
+            Ln.w("$TAG: kickRelayout 找不到 $pkg 的 task，跳过")
+            return false
+        }
+
+        Ln.w("$TAG: kickRelayout — 把 task $taskId 移到主屏 ${dwellMs}ms 再移回 display $displayId（强制重新布局）")
+        if (!moveTaskToDisplay(taskId, android.view.Display.DEFAULT_DISPLAY)) {
+            Ln.w("$TAG: kickRelayout 移到主屏失败")
+            return false
+        }
+        SystemClock.sleep(dwellMs)
+
+        if (!moveTaskToDisplay(taskId, displayId)) {
+            Ln.w("$TAG: kickRelayout 移回 display $displayId 失败")
+            return false
+        }
+        SystemClock.sleep(800)
+
+        val back = currentDisplayOf(pkg)
+        if (back != displayId) {
+            Ln.w("$TAG: kickRelayout 后游戏在 display=$back（期望 $displayId），尝试 repin")
+            return repin(pkg, displayId)
+        }
+        Ln.i("$TAG: kickRelayout 完成，游戏已回到 display $displayId")
+        return true
     }
 
     /** 当前 pkg 所在 displayId。 -1 = 无 task， -2 = 无法判断。 */

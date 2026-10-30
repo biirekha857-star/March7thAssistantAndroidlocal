@@ -224,11 +224,17 @@ class LaunchPipeline(
             }
 
             // 前台无倒计时；后台 Dialog 倒计时，控制层需用户曾手动启动
-            // 前台模式已删除：一律后台虚拟屏运行，不呈现 UI
+            // 前台模式已删除：一律后台虚拟屏运行，不呈现前台 UI
             val isForeground = false
+            // presentUi 的语义是「是否展示后台倒计时 Dialog」（BackgroundTaskViewModel
+            // 依赖它置位），**不代表**要做前台呈现
             presentUi = !isForeground
             outcome.backgroundRun = !isForeground
-            val needsActivityLaunch = request.source == LaunchSource.Schedule && presentUi
+            // bug #8：这里原来是 `request.source == Schedule && presentUi`，
+            // 对定时任务恒真 → 每次定时启动都 activityLauncher() 把 App 拉到前台。
+            // 前台 Activity 抢焦点本身就会加剧虚拟屏漂移，且与「一律后台运行」
+            // 的设计相悖。前台 UI 已删除，恒 false。
+            val needsActivityLaunch = false
 
             // 后台 + 待机才盖；用户已开的熄屏挂机不收走，好连跑多轮
             if (request.autoScreenSaver && outcome.backgroundRun && outcome.tookOverIdleDevice) {

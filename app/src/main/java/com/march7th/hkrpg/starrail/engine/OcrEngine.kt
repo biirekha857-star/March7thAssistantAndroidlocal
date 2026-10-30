@@ -405,14 +405,21 @@ object OcrEngine {
         mask.put(0, 0, mb)
 
         val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0))
-        Imgproc.dilate(mask, mask, kernel)
         val contours = ArrayList<MatOfPoint>()
-        Imgproc.findContours(
-            mask, contours, Mat(), Imgproc.RETR_EXTERNAL,
-            Imgproc.CHAIN_APPROX_SIMPLE,
-        )
-        mask.release()
-        kernel.release()
+        // `findContours` 的 hierarchy 参数不能传匿名 `Mat()` —— 那是一个
+        // 立刻丢失引用的 native 对象，永远没人 release。每次检测漏一个。
+        val hierarchy = Mat()
+        try {
+            Imgproc.dilate(mask, mask, kernel)
+            Imgproc.findContours(
+                mask, contours, hierarchy, Imgproc.RETR_EXTERNAL,
+                Imgproc.CHAIN_APPROX_SIMPLE,
+            )
+        } finally {
+            hierarchy.release()
+            mask.release()
+            kernel.release()
+        }
 
         val boxes = ArrayList<Rect>()
         for (c in contours) {
@@ -448,54 +455,69 @@ object OcrEngine {
         val r = rec ?: return null
         val e = env ?: return null
 
+        // ## ROI 必须释放（bug #4）
+        //
+        // `Mat(src, box)` 不拷贝像素，只是共享底层数据的**头**。但头只要活着，
+        // OpenCV 的引用计数就不归零 —— 整帧 6MB 无法回收。
+        // 一次全屏 OCR 有几十个文本框，就对应几十个这样的头。
+        //
+        // 之前这里只有 resized / rgb / planes 被释放，roi 从头漏到尾。
         val roi = Mat(src, box)
-        val scale = REC_HEIGHT.toDouble() / roi.height()
-        var w = (roi.width() * scale).toInt().coerceAtLeast(1)
-        if (w > REC_MAX_WIDTH) w = REC_MAX_WIDTH
         val resized = Mat()
-        Imgproc.resize(
-            roi, resized, Size(w.toDouble(), REC_HEIGHT.toDouble()),
-            0.0, 0.0, Imgproc.INTER_LINEAR,
-        )
-
-        // 同样用 OpenCV C++ 做归一化，避免逐像素 Kotlin 循环
         val rgb = Mat()
-        Imgproc.cvtColor(resized, rgb, Imgproc.COLOR_BGR2RGB)
-        resized.release()
-        rgb.convertTo(rgb, CvType.CV_32FC3, 1.0 / 255.0)
         val planes = ArrayList<Mat>(3)
-        Core.split(rgb, planes)
-        rgb.release()
+        try {
+            val scale = REC_HEIGHT.toDouble() / roi.height()
+            var w = (roi.width() * scale).toInt().coerceAtLeast(1)
+            if (w > REC_MAX_WIDTH) w = REC_MAX_WIDTH
+            Imgproc.resize(
+                roi, resized, Size(w.toDouble(), REC_HEIGHT.toDouble()),
+                0.0, 0.0, Imgproc.INTER_LINEAR,
+            )
 
-        val data = FloatArray(3 * REC_HEIGHT * w)
-        val plane = FloatArray(REC_HEIGHT * w)
-        for (c in 0..2) {
-            // 识别归一化：(x/255 - 0.5) / 0.5  →  alpha=2, beta=-1
-            planes[c].convertTo(planes[c], CvType.CV_32F, 2.0, -1.0)
-            planes[c].get(0, 0, plane)
-            System.arraycopy(plane, 0, data, c * REC_HEIGHT * w, REC_HEIGHT * w)
-            planes[c].release()
-        }
+            // 同样用 OpenCV C++ 做归一化，避免逐像素 Kotlin 循环
+            Imgproc.cvtColor(resized, rgb, Imgproc.COLOR_BGR2RGB)
+            resized.release()
+            rgb.convertTo(rgb, CvType.CV_32FC3, 1.0 / 255.0)
+            Core.split(rgb, planes)
+            rgb.release()
 
-        return try {
-            OnnxTensor.createTensor(
-                e, FloatBuffer.wrap(data),
-                longArrayOf(1, 3, REC_HEIGHT.toLong(), w.toLong()),
-            ).use { input ->
-                val name = r.inputNames.iterator().next()
-                r.run(mapOf(name to input)).use { out ->
-                    val t = out.get(0) as OnnxTensor
-                    val shape = t.info.shape
-                    val steps = shape[1].toInt()
-                    val classes = shape[2].toInt()
-                    val buf = FloatArray(steps * classes)
-                    t.floatBuffer.get(buf)
-                    decodeCtc(buf, steps, classes)
-                }
+            val data = FloatArray(3 * REC_HEIGHT * w)
+            val plane = FloatArray(REC_HEIGHT * w)
+            for (c in 0..2) {
+                // 识别归一化：(x/255 - 0.5) / 0.5  →  alpha=2, beta=-1
+                planes[c].convertTo(planes[c], CvType.CV_32F, 2.0, -1.0)
+                planes[c].get(0, 0, plane)
+                System.arraycopy(plane, 0, data, c * REC_HEIGHT * w, REC_HEIGHT * w)
+                planes[c].release()
             }
-        } catch (t: Throwable) {
-            Ln.w("$TAG: 识别推理失败: ${t.message}")
-            null
+
+            return try {
+                OnnxTensor.createTensor(
+                    e, FloatBuffer.wrap(data),
+                    longArrayOf(1, 3, REC_HEIGHT.toLong(), w.toLong()),
+                ).use { input ->
+                    val name = r.inputNames.iterator().next()
+                    r.run(mapOf(name to input)).use { out ->
+                        val t = out.get(0) as OnnxTensor
+                        val shape = t.info.shape
+                        val steps = shape[1].toInt()
+                        val classes = shape[2].toInt()
+                        val buf = FloatArray(steps * classes)
+                        t.floatBuffer.get(buf)
+                        decodeCtc(buf, steps, classes)
+                    }
+                }
+            } catch (t: Throwable) {
+                Ln.w("$TAG: 识别推理失败: ${t.message}")
+                null
+            }
+        } finally {
+            // 幂等：正常路径已经 release 过的再释放一次是空操作
+            planes.forEach { runCatching { it.release() } }
+            resized.release()
+            rgb.release()
+            roi.release()
         }
     }
 

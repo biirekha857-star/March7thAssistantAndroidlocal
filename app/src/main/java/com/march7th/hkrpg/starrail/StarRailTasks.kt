@@ -31,6 +31,15 @@ class StarRailTasks(
      * 各任务实现，让它们在等待循环里自查。
      */
     private val isCancelled: () -> Boolean = { false },
+    /**
+     * 非致命事件上报 —— 让外壳能「提个醒」而不是只写日志。
+     *
+     * 引擎跑在特权进程，主进程看不到它的日志，所以要走
+     * `M7aCoreCallback`（[com.march7th.hkrpg.starrail.StarRailLocalEngine] 里接的）
+     * 把事件送回主进程。参数是 `(what, 附加字段的 JSON 片段)`，
+     * `what` 会被 [com.march7th.hkrpg.core.callback.SubTaskHandler] 路由。
+     */
+    private val onNotice: ((what: String, extraJson: String) -> Unit)? = null,
 ) {
 
     companion object {
@@ -95,6 +104,15 @@ class StarRailTasks(
 
         /** 总时长硬上限（实测 90 秒不够，放宽到 110 秒）：超过就判定启动失败并中止任务链。 */
         private const val TOTAL_LIMIT_MS = 180_000L
+
+        /**
+         * 等「点击进入」多久还没出现，就强制游戏重新布局一次（「主屏往返」）。
+         *
+         * 正常启动 40~50 秒内必然出现该按钮（实测 42s 左右）。留到 50 秒
+         * 说明不是"加载慢"，而是画面本身有问题 —— 典型是荣耀类 ROM 的速启
+         * 让游戏带着物理屏的图形环境进来，UI 被放大裁切到画框外。
+         */
+        private const val RELAYOUT_KICK_AFTER_SEC = 50L
 
         // ---- 区域常量（全部只搜一小块，避免全屏开销）----
 
@@ -331,9 +349,10 @@ class StarRailTasks(
         // ---- 不在虚拟屏上：先杀掉再重新启动 ----
         if (running) {
             Ln.w("$TAG: 游戏在 display=$onDisplay（不是虚拟屏），先强杀进程再重启")
-            GameLauncher.forceStop(effectivePkg)
-            // 给系统一点时间真正回收进程
-            Thread.sleep(2500)
+            // 用确认版：发完 force-stop 不代表进程死了，ROM 速启会把它拉回来，
+            // 拉回来的热进程带着物理屏的图形环境，直接复用就会画面放大错位
+            GameLauncher.forceStopAndConfirm(effectivePkg)
+            Thread.sleep(800)
         } else {
             Ln.i("$TAG: 游戏进程不在，直接冷启动")
         }
@@ -636,6 +655,7 @@ class StarRailTasks(
     private fun waitAndClickEnter(nav: ScreenNavigator): Boolean {
         val startAt = SystemClock.uptimeMillis()
         var retryCount = 0
+        var kickedRelayout = false
         Thread.sleep(FIRST_CHECK_MS)
 
         while (SystemClock.uptimeMillis() - startAt < TOTAL_LIMIT_MS) {
@@ -665,6 +685,50 @@ class StarRailTasks(
             // 手游启动时若真有弹窗，下面的全屏 OCR 诊断会把它暴露出来。
 
             val waited = (SystemClock.uptimeMillis() - startAt) / 1000
+
+            // ## 卡住了就踢一次「主屏往返」
+            //
+            // ## 这是什么问题（已由诊断日志确认，2026-10-30）
+            //
+            // 不是"游戏没重新布局"那么简单，是**同一个缩放被叠加了两次**：
+            //
+            // 崩铁不支持自由改窗口尺寸，被放到 1920×1080/240dpi 的虚拟屏上时，
+            // 系统让它进 size-compat 模式 —— 本该给它 1631×917 的逻辑画布，
+            // 画完再放大 1.1774 倍（=1920/1631）铺满。但部分 ROM 在这一步
+            // **只算了一半**：`mCompatFrame` 已经是 1631×917，layout 下发的
+            // 却是全尺寸 1920×1080。
+            //
+            // 结果应用按 1920×1080 画满 buffer（实测 `geomBufferSize=[0 0 1920 1080]`），
+            // SurfaceFlinger 又按 1.1774 倍贴上去：
+            //
+            // ```
+            // 1080 × 1.1774 = 1272  → 右侧空出
+            // 1920 × 1.1774 = 2261  → 屏幕只有 1080，只剩顶部可见
+            // ```
+            //
+            // 于是画面以左上角为锚点放大、右下被丢弃。「点击进入」正常在
+            // y=997，放大后变 1174 —— **正好出框**，所以 OCR 一条都读不到。
+            // 触控不受影响：它走 window frame + scaleFactor=0.8493(=1/1.1774)
+            // 的坐标映射，压根不经过合成。
+            //
+            // 对策：把 task 移到主屏停一下再移回来，触发一次真正的 display
+            // change，逼 WindowManager 完整重算 —— 实测 `Requested` 会从
+            // 1920×1080 变回 1631×917，与 1.1774 重新对齐，2.2 秒内就恢复。
+            //
+            // **只踢一次**：真失败时踢再多次也没用，不如早点判超时。
+            if (!kickedRelayout && waited >= RELAYOUT_KICK_AFTER_SEC) {
+                kickedRelayout = true
+                Ln.w("$TAG: 已等 ${waited}s 仍未出现「点击进入」，疑似画面被放大裁切，强制重新布局一次")
+                onNotice?.invoke("ScreenAnomalyDetected", """{"waited":$waited}""")
+                val ok = GameLauncher.kickRelayout(pkg, displayId)
+                Ln.w("$TAG: 强制重新布局${if (ok) "完成" else "失败"}，继续等「点击进入」")
+                onNotice?.invoke(
+                    if (ok) "ScreenAnomalyRepaired" else "ScreenAnomalyRepairFailed",
+                    """{"waited":$waited}""",
+                )
+                Thread.sleep(2_000)
+                continue
+            }
 
             // ## 每 3 次重试打一次**全屏 OCR**
             //
@@ -904,8 +968,9 @@ class StarRailTasks(
     /** 冷启动游戏 —— 自救的最后手段。 */
     private fun coldRestart(nav: ScreenNavigator): Boolean {
         Ln.w("$TAG: —— 冷启动游戏 ——")
-        GameLauncher.forceStop(pkg)
-        Thread.sleep(3000)
+        // 确认版：必须确保进程真的退了，否则荣耀类 ROM 会用热进程顶上来
+        GameLauncher.forceStopAndConfirm(pkg)
+        Thread.sleep(800)
 
         if (!GameLauncher.launch(pkg, displayId)) {
             Ln.e("$TAG: 冷启动失败：无法拉起游戏")

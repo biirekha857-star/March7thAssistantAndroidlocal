@@ -61,6 +61,47 @@ class LogExportService(
          * 的执行过程，又不至于让日志包大到用户传不动。
          */
         private const val LOGCAT_MAX_LINES = 8000
+
+        /**
+         * 日志包内的诊断说明。
+         *
+         * 用户不会看代码，出问题时只会说「画面错位了」。这张表告诉他
+         * （也告诉未来的我们）包里哪几个文件能定位到什么，省去来回追问。
+         */
+        private val DIAG_README = """
+            M7A 诊断包说明
+            ============================================================
+
+            一、画面/触控错位要看哪里
+            ------------------------------------------------------------
+            engine/diag/diag_*_vd_start.txt      虚拟屏创建瞬间的系统现场
+            engine/diag/diag_*_repin_before.txt  把游戏搬进虚拟屏之前
+            engine/diag/diag_*_repin_after.txt   搬进去之后（与 before 对比）
+            engine/diag/timeline.log             每 15 秒一行摘要，用来定位错位发生的时刻
+
+            每份 diag 文件里包含：
+              display             虚拟屏声明的尺寸/密度/旋转
+              window-displays     各 display 的帧区域
+              game-window         游戏窗口的 frame 与 surface 尺寸  ← 触控命中依据
+              sf-layers / sf-transform
+                                  SurfaceFlinger 实际合成到 buffer 的内容 ← 画面显示依据
+              input-viewport      每个 display 的 Viewport.physicalFrame/deviceWidth
+                                  ← 输入映射依据。与 game-window 不一致即为错位根因
+              native-logcat       LibBridge 的帧尺寸校验（AImageReader 尺寸正常/不匹配）
+              props / wm / tasks / procs
+                                  系统属性、强制分辨率、任务栈、进程
+
+            二、其它
+            ------------------------------------------------------------
+            engine/engine.log    引擎完整日志（MaaMeow）
+            engine/logcat/...    按 tag 抓的引擎 + 原生日志（App 身份抓不到跨进程日志）
+            logcat/full.txt      App 自身进程的 logcat
+            device_info.txt      设备/虚拟屏/Shizuku 环境快照
+            app_settings.txt     当时的 App 设置
+
+            若 engine/diag/ 为空：说明导出时虚拟屏尚未创建过，
+            或特权服务未连接 —— 请复现问题后**立即**再导一次。
+        """.trimIndent()
     }
 
     /** 导出日志 ZIP；失败返回 null。无日志时仍生成仅含 properties/device_info 的包。不删除 debug 源日志。 */
@@ -176,6 +217,10 @@ class LogExportService(
             //
             // 之前用户导出的 zip 里没有 logcat，导致这类问题只能反复猜。
             appendLogcat(zos)
+
+            runCatching {
+                zos.addEntry("diag_readme.txt", DIAG_README.byteInputStream())
+            }.onFailure { Timber.w(it, "Failed to write diag readme") }
 
             appendRemoteDebugFiles(zos)
 
@@ -401,8 +446,19 @@ class LogExportService(
 
         var ok = 0
         for (rel in entries) {
-            // 只收引擎产物：engine.log 和 screenshots/ 下的图
-            val wanted = rel == "engine.log" || rel.startsWith("screenshots/")
+            // 只收引擎产物：engine.log、截图、以及 DiagDumper 的现场快照
+            //
+            // `diag/` 是排查画面错位的关键证据（dumpsys display / window /
+            // SurfaceFlinger / input Viewport），由特权进程在 VD 起止、搬屏、
+            // 以及每 2 分钟自动落盘 —— 用户没有电脑，这是唯一能拿到系统侧
+            // 真实窗口与合成参数的途径。
+            // `logcat/` 是 LogcatCaptureService 按 tag 抓的引擎 + 原生日志
+            // （`MaaMeow` / `LibBridge`），App 身份抓不到这些跨进程日志。
+            val wanted = rel == "engine.log" ||
+                rel == "engine.log.old" ||
+                rel.startsWith("screenshots/") ||
+                rel.startsWith("diag/") ||
+                rel.startsWith("logcat/")
             if (!wanted) continue
 
             val pfd = runCatching { srv.openCoreDebugFile(rel) }

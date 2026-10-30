@@ -56,6 +56,39 @@ class TaskNotificationCenter(
         pushExternal(settings.sendOnComplete, title, content)
     }
 
+    /**
+     * 画面异常自动修复提醒 —— **提醒，不是报错**。
+     *
+     * ## 为什么单独开一个方法
+     *
+     * 这类问题（部分 ROM 把游戏的 size-compat 缩放系数和窗口尺寸算叉了，
+     * 导致画面被放大裁切、UI 整个跑到框外）**引擎能自愈**：
+     * 触发一次主屏往返，逼系统重算布局，通常 2 秒内恢复。
+     *
+     * 既然自愈了，就不该走 [notifyTaskError] —— 那会把任务标成失败，
+     * 用户看到红的会以为白跑了。也不该只写一行 log：这是**设备/ROM 级**
+     * 的兼容问题，不主动说一声，用户永远不知道，我们也就永远收不到反馈。
+     *
+     * 所以用 `isError = false` 的浮出卡片：会弹一下、60 秒后自动消失，
+     * 点开能看到完整说明。
+     *
+     * @param repaired 自愈是否成功。失败时措辞改为"可能失败"，但**仍不标红** ——
+     *   真正的失败会由启动超时那条链路报出来，不必在这里重复报错。
+     */
+    fun notifyScreenAnomaly(repaired: Boolean, waitedSec: Int) {
+        val titleRes =
+            if (repaired) R.string.notification_event_screen_anomaly
+            else R.string.notification_event_screen_anomaly_failed
+        val textRes =
+            if (repaired) R.string.notification_event_screen_anomaly_text
+            else R.string.notification_event_screen_anomaly_failed_text
+        publishResult(
+            title = appContext.getString(titleRes),
+            text = appContext.getString(textRes, waitedSec),
+            timeoutSec = 60,
+        )
+    }
+
     fun notifyRecruitSpecialTag(tag: String) {
         eventNotifier.notifyRecruitSpecialTag(tag)
     }

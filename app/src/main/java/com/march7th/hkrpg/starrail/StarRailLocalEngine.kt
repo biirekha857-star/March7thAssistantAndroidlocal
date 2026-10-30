@@ -319,7 +319,20 @@ class StarRailLocalEngine(
         // 几分钟）中途取消拦不住 —— 用户点停止后仍在操作游戏。
         // 导航层的等待也要能被打断（它内部有大量 900ms 的 SETTLE_MS）
         nav.isCancelled = { !running.get() }
-        val impl = StarRailTasks(auto, packageName, nav, isCancelled = { !running.get() })
+        // onNotice 闭包要填 taskid/taskchain，但它是在循环外构造的，
+        // 所以用一个可变引用指向"当前任务"。
+        var currentTask: StarRailEngine.QueuedTask? = null
+        val impl = StarRailTasks(
+            auto,
+            packageName,
+            nav,
+            isCancelled = { !running.get() },
+            // 引擎日志主进程看不到（跑在特权进程、写 /data/local/tmp），
+            // 所以非致命事件要走 callback 送回去，外壳才好"提个醒"。
+            onNotice = { what, extra ->
+                emit(callback, AsstMsg.SubTaskExtraInfo, extraJson(currentTask, what, extra))
+            },
+        )
         var stopped = false
         // 是否因 StartUp 失败而中止（区别于用户手动停止）
         var remainedAborted = false
@@ -336,6 +349,7 @@ class StarRailLocalEngine(
                 continue
             }
             Ln.i("$TAG: 执行「${def.label}」(${task.type}) 来源=${def.source}")
+            currentTask = task
 
             emit(callback, AsstMsg.TaskChainStart, chainJson(task))
 
@@ -392,6 +406,23 @@ class StarRailLocalEngine(
         if (callback == null) return
         runCatching { callback.onCallback(msg.value, json) }
             .onFailure { Ln.w("$TAG: 回调 ${msg.name} 失败: ${it.message}") }
+    }
+
+    /**
+     * 构造 `SubTaskExtraInfo` 的信封。
+     *
+     * 外壳 [com.march7th.hkrpg.core.callback.SubTaskHandler.onSubTaskExtraInfo]
+     * 的读取顺序是三层：先按根级 `taskchain` 路由，再按根级 `what` 分支，
+     * 最后从 `details` 里取附加字段。三层缺一不可，所以这里必须写全。
+     */
+    private fun extraJson(
+        task: StarRailEngine.QueuedTask?,
+        what: String,
+        subJson: String,
+    ): String {
+        val id = task?.id ?: -1
+        val chain = task?.type.orEmpty()
+        return """{"taskid":$id,"taskchain":"$chain","what":"$what","details":$subJson}"""
     }
 
     override fun stop(): Boolean {

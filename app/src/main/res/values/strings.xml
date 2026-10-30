@@ -291,7 +291,7 @@
     <string name="dialog_core_dir_inaccessible_message">当前系统限制了对应用目录的访问，切换到独立目录并重启后即可正常使用。</string>
     <!-- settings: monet theme color (system Material You toggle, Android 12+) -->
     <string name="settings_monet_color_title">莫奈主题色</string>
-    <string name="settings_monet_color_desc">根据壁纸动态取色，关闭则使用内置蓝色主题</string>
+    <string name="settings_monet_color_desc">根据壁纸动态取色，关闭则使用内置金色主题</string>
 
     <string name="settings_achievement_title">成就</string>
     <string name="settings_achievement_desc">查看 M7A 使用记录与隐藏彩蛋</string>
@@ -461,7 +461,7 @@
     <string name="achievement_debug_clear_done">已删除所有成就记录</string>
 
     <!-- home: top bar & app title -->
-    <string name="home_app_title">M7A</string>
+    <string name="home_app_title">March7thAssistant</string>
 
     <!-- home: screen info card -->
     <string name="home_screen_resolution">屏幕分辨率</string>
@@ -518,8 +518,8 @@
     <string name="home_status_task_running">运行中</string>
     <string name="home_status_ready">就绪</string>
     <string name="remote_backend_permission_label">%1$s权限</string>
-    <string name="resource_loader_loading_message">正在加载MAA资源, 请稍等 …</string>
-    <string name="resource_loader_reloading_message">正在重新加载MAA资源, 请稍等 …</string>
+    <string name="resource_loader_loading_message">正在加载资源, 请稍等 …</string>
+    <string name="resource_loader_reloading_message">正在重新加载资源, 请稍等 …</string>
 
     <!-- home: toast messages -->
     <string name="home_toast_backend_unavailable">%1$s不可用，请检查对应服务是否启动</string>
@@ -1681,6 +1681,10 @@ MAA 不会因为取消勾选此选项而提前在局内结束探索</string>
     <string name="notification_event_recruit_special_tag">发现稀有 Tag: %1$s</string>
     <string name="notification_event_recruit_robot_tag">发现小车 Tag: %1$s</string>
     <string name="notification_event_recruit_high_rarity">发现 %1$d ★ 组合</string>
+    <string name="notification_event_screen_anomaly">画面异常已修复</string>
+    <string name="notification_event_screen_anomaly_text">检测到游戏画面被放大裁切（等待 %1$d 秒仍未出现「点击进入」），已通过重新布局自动恢复。若反复出现，请导出日志反馈。</string>
+    <string name="notification_event_screen_anomaly_failed">画面异常修复失败</string>
+    <string name="notification_event_screen_anomaly_failed_text">检测到游戏画面被放大裁切，自动重新布局未能恢复（已等待 %1$d 秒）。本次启动可能失败，请导出日志反馈。</string>
     <string name="notification_event_subtask_failure">子任务异常</string>
     <string name="notification_test_title">测试通知</string>
     <string name="notification_test_message_full">这是一条来自 M7A 的测试通知</string>

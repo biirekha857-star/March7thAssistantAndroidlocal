@@ -120,7 +120,15 @@ class CoreResourceLoader(
                     }
                     srv.setForceFullscreenOnVirtualDisplay(appSettings.forceFullscreenOnVirtualDisplay.value)
 
-                    if (appSettings.debugMode.value) {
+                    // ## logcat 抓取：**不再**只在调试模式开启
+                    //
+                    // 之前这里是 `if (appSettings.debugMode.value)`，结果几乎所有
+                    // 用户反馈的日志包里都没有引擎/原生日志 —— 而反馈问题的用户
+                    // 大多没有电脑，开不了 adb，只能靠日志包自证。
+                    //
+                    // 抓取是 tag 白名单（MaaMeow / LibBridge / 崩溃栈），
+                    // 单次任务量级只有几百 KB，常开代价可忽略。
+                    runCatching {
                         val appPid = Process.myPid()
                         val servicePid = srv.pid()
                         CoroutineScope(Dispatchers.IO).async {
@@ -133,7 +141,7 @@ class CoreResourceLoader(
                                 )
                             }.onFailure { Timber.w(it, "LogcatService startCapture failed") }
                         }
-                    }
+                    }.onFailure { Timber.w(it, "LogcatService 启动异常: %s", it.message) }
 
                     val maa = srv.getM7aCoreService()
                     val isGlobal = resourceProfileOf(clientType).isNotEmpty()

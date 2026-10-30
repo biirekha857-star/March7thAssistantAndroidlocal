@@ -233,7 +233,11 @@ fun HomeView(
                     Text(
                         text = stringResource(R.string.home_app_title),
                         fontWeight = FontWeight.SemiBold,
-                        style = MaterialTheme.typography.headlineMedium
+                        style = MaterialTheme.typography.headlineMedium,
+                        // 标题已从 "M7A" 换成全名，窄屏上必须限单行，
+                        // 否则会折成两行把 TopAppBar 撑高、压掉下面的内容。
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

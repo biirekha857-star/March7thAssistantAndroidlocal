@@ -6,28 +6,33 @@
 
 ## Current Version
 
-**0.5.5beta**
+**0.5.6beta**
 
 ---
 
 ## What's New
 
-### Added
-
-- **Cloud game client support** — the *Start Game* task now lets you pick
-  either the local client or Cloud Star Rail
-  (`com.miHoYo.cloudgames.hkrpg`). The cloud path is separate:
-  tap *Start Game* → queue (does not count against the timeout, 60-minute
-  cap) → tap *Tap to Enter* → lobby
-
 ### Fixed
 
-- **Truncated frames on tall screens** — the capture layer now reads the
-  buffer at its real size and rescales it, fixing the case where the
-  virtual display is 1920×1080 but frames arrive as 1920×872, cutting off
-  *Tap to Enter* and timing out the launch
-- **Cloud stream never tapping *Tap to Enter*** — that step is now
-  implemented instead of waiting out the timeout
+- **Upscaled and cropped frames, *Tap to Enter* never appears** — when some
+  ROMs (e.g. HONOR MagicOS) move the game onto the 1920×1080 virtual display,
+  the system's size-compat scale factor (1.1774) is computed but the window
+  size is never shrunk to match. The app therefore renders at full size and the
+  system scales it again, zooming the canvas from the top-left corner and
+  pushing *Tap to Enter* outside the frame, so OCR reads nothing at all.
+  When the launch is still stuck after 51 seconds, the app now performs one
+  "home-screen round trip" to force a re-layout; recovery takes ~2.2 seconds
+- **Display anomalies are no longer silent** — a notification explains what
+  happened when the app self-heals. It is **a notice, not an error**: the task
+  keeps running to completion
+- **Theme description corrected** — turning off *Monet color* actually uses the
+  built-in **gold** theme; the old text said blue. Three unreferenced blue
+  color schemes were also removed
+
+### UI
+
+- Home title changed from "M7A" to the full name **March7thAssistant**
+- Resource loading hint shortened to "Loading resources"
 
 ### Core Features
 

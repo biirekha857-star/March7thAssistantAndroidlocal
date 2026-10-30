@@ -198,10 +198,26 @@ object ImageUtils {
             }
         }
 
+        // bug #6：4 通道 / 灰度分支里 `cvtColor` 产出的是**新** Mat，
+        // 原来的 `raw` 必须释放；只有 3 通道分支是直接把 raw 当结果，不能放。
         val bgr = when (raw.channels()) {
-            4 -> Mat().also { Imgproc.cvtColor(raw, it, Imgproc.COLOR_BGRA2BGR) }
             3 -> raw
-            else -> Mat().also { Imgproc.cvtColor(raw, it, Imgproc.COLOR_GRAY2BGR) }
+            else -> {
+                val out = Mat()
+                try {
+                    Imgproc.cvtColor(
+                        raw, out,
+                        if (raw.channels() == 4) Imgproc.COLOR_BGRA2BGR
+                        else Imgproc.COLOR_GRAY2BGR,
+                    )
+                } catch (t: Throwable) {
+                    out.release()
+                    throw t
+                } finally {
+                    raw.release()
+                }
+                out
+            }
         }
         return bgr to mask
     }

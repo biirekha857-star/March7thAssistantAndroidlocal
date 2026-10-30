@@ -749,6 +749,39 @@ class SubTaskHandler(
                 }
             }
 
+            // ---- 画面异常自愈（引擎侧 GameLauncher.kickRelayout）----
+            //
+            // 三条都用 WARNING 而不是 ERROR，是刻意的：这类问题引擎能自己修好，
+            // 任务会继续跑完。标红会让用户以为这一轮白跑了，反而误判。
+            // 但也不能只写普通日志 —— 这是 ROM 级的兼容问题，不主动提一句，
+            // 用户永远不知道，我们也就永远收不到反馈。
+            "ScreenAnomalyDetected" -> {
+                val waited = subDetails?.getIntValue("waited") ?: 0
+                append(
+                    "检测到游戏画面异常（画面被放大裁切，「点击进入」落在画框外），" +
+                        "已等待 ${waited}s。正在强制重新布局…",
+                    LogLevel.WARNING,
+                )
+            }
+
+            "ScreenAnomalyRepaired" -> {
+                val waited = subDetails?.getIntValue("waited") ?: 0
+                append(
+                    "画面异常已自动修复（等待 ${waited}s 后重新布局生效），继续执行",
+                    LogLevel.WARNING,
+                )
+                notificationCenter.notifyScreenAnomaly(repaired = true, waitedSec = waited)
+            }
+
+            "ScreenAnomalyRepairFailed" -> {
+                val waited = subDetails?.getIntValue("waited") ?: 0
+                append(
+                    "画面异常自动重新布局未能恢复，若持续无法进入将按启动超时处理",
+                    LogLevel.WARNING,
+                )
+                notificationCenter.notifyScreenAnomaly(repaired = false, waitedSec = waited)
+            }
+
             else -> {
                 Timber.d("SubTaskExtraInfo unhandled what=$what")
             }

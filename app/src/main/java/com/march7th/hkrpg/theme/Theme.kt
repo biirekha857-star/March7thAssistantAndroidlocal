@@ -157,25 +157,15 @@ private val HonkaiPureDark = createDarkColorScheme(
     isPureDark = true
 )
 
-// --- 原蓝色配色（保留，供"跟随莫奈"之外的兜底）---
-private val BlueLight = createLightColorScheme(
-    primary = Color(0xFF2B6BCA),
-    primaryContainer = Color(0xFFE5F1FF),
-    onPrimaryContainer = Color(0xFF002453)
-)
-
-private val BlueDark = createDarkColorScheme(
-    primary = Color(0xFF2B6BCA),
-    primaryContainer = Color(0xFF004088),
-    onPrimaryContainer = Color(0xFFD6E8FF)
-)
-
-private val BluePureDark = createDarkColorScheme(
-    primary = Color(0xFF2B6BCA),
-    primaryContainer = Color(0xFF004088),
-    onPrimaryContainer = Color(0xFFD6E8FF),
-    isPureDark = true
-)
+// --- 曾有一套"原蓝色配色"（primary #2B6BCA），已于 0.5.6beta 删除 ---
+//
+// 那三套 Blue* 是早期默认主题的遗留物。改成崩铁配色后，
+// [MaaMeowTheme] 的兜底分支就只走 [HonkaiLight]/[HonkaiDark] 了，
+// 它们**一个引用点都没有**，属于纯死代码 —— 留着只会让"关闭莫奈
+// 到底用哪套颜色"这个问题每次都要翻一遍源码才能回答。
+//
+// 现在关系是唯一的：关闭莫奈 = 金色（[HonkaiLight]/[HonkaiDark]/[HonkaiPureDark]），
+// 开启莫奈 = 系统壁纸取色。设置页文案与这里保持同一句话。
 
 val MaaShapes = Shapes(
     extraSmall = RoundedCornerShape(MaaDesignTokens.CornerRadius.inner),

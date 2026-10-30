@@ -16,6 +16,7 @@ import com.march7th.hkrpg.constant.DisplayMode
 import com.march7th.hkrpg.core.InputControlUtils
 import com.march7th.hkrpg.remote.internal.ActivityUtils
 import com.march7th.hkrpg.remote.internal.CoreDataStore
+import com.march7th.hkrpg.remote.internal.DiagDumper
 import com.march7th.hkrpg.remote.internal.GameAudioMuteController
 import com.march7th.hkrpg.remote.internal.GameFpsMonitor
 import com.march7th.hkrpg.remote.internal.GestureRecorder
@@ -231,6 +232,11 @@ class RemoteServiceImpl : RemoteService.Stub() {
             return SetupResult.ERR_USER_DIR_INACCESSIBLE
         }
         RemoteBootTrace.bindUserDir(dir)
+        // 画面错位排查：用户没有电脑，dumpsys 现场只能由特权进程自己落盘
+        runCatching {
+            DiagDumper.init(dir)
+            DiagDumper.start()
+        }.onFailure { Ln.w("$TAG: DiagDumper 初始化失败: ${it.message}") }
         // 换芯为崩铁后不再依赖 MaaCore：它的 userDir 设置是可选的。
         // MaaContext 为 null 说明没装 MaaCore（正常情况），继续走崩铁引擎的初始化。
         val ctx = CoreManager.MaaContext
@@ -429,6 +435,7 @@ class RemoteServiceImpl : RemoteService.Stub() {
         if (id != DefaultDisplayConfig.DISPLAY_NONE) {
             runCatching { CoreManager.starRailEngine.attachDisplay(id) }
                 .onFailure { Ln.w("$TAG: 接入崩铁引擎失败: ${it.message}") }
+            DiagDumper.snapshot("vd_start", "displayId=$id")
         }
         return id
     }
@@ -445,6 +452,7 @@ class RemoteServiceImpl : RemoteService.Stub() {
         runCatching { CoreManager.starRailEngine.detachDisplay() }
             .onFailure { Ln.w("$TAG: 引擎断开采集失败: ${it.message}") }
         GameAudioMuteController.restoreAll()
+        DiagDumper.snapshot("vd_stop")
     }
 
     override fun getGameFps(): Float = GameFpsMonitor.currentFps()
@@ -532,7 +540,11 @@ class RemoteServiceImpl : RemoteService.Stub() {
             return false
         }
         Ln.i("$TAG: moveAppToVirtualDisplay($packageName) -> display $targetDisplayId")
-        return ActivityUtils.repinAppToDisplay(packageName, targetDisplayId)
+        // 搬屏前后各留一份现场：错位是否发生在 repin 这一刻，只能靠这两份对比
+        DiagDumper.snapshot("repin_before", "pkg=$packageName display=$targetDisplayId")
+        val ok = ActivityUtils.repinAppToDisplay(packageName, targetDisplayId)
+        DiagDumper.snapshot("repin_after", "pkg=$packageName display=$targetDisplayId ok=$ok")
+        return ok
     }
 
     /** @return [com.march7th.hkrpg.constant.WakeUnlockResult] */

@@ -29,6 +29,15 @@ object ActivityUtils {
     // 拉回操作后等系统完成 reparent 的时间
     private const val REPIN_SETTLE_MS = 1_000L
 
+    /**
+     * `am` 子进程的等待上限。
+     *
+     * bug #7：原来直接 `waitFor()` —— `am` 卡在 system_server 上（搬屏/启动
+     * 高峰期并不罕见）就会**永久阻塞**调用线程。这个调用发生在看门狗协程里，
+     * 一旦阻塞，「游戏不在虚拟屏就拉回来」的自愈逻辑整个停摆。
+     */
+    private const val AM_CMD_TIMEOUT_SEC = 15L
+
     @Volatile
     var forceFullscreenOnVirtualDisplay: Boolean = false
 
@@ -267,7 +276,12 @@ object ActivityUtils {
                 arrayOf("am", "display", "move-stack", taskId.toString(), displayId.toString())
             Ln.i("moveTaskViaAmCommand: exec: ${args.joinToString(" ")}")
             val process = Runtime.getRuntime().exec(args)
-            val exitCode = process.waitFor()
+            if (!process.waitFor(AM_CMD_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS)) {
+                Ln.w("moveTaskViaAmCommand: am 超过 ${AM_CMD_TIMEOUT_SEC}s 未返回，强杀（task=$taskId -> display=$displayId）")
+                process.destroyForcibly()
+                return false
+            }
+            val exitCode = process.exitValue()
             val stderr = process.errorStream.bufferedReader().use { it.readText() }.trim()
             if (stderr.isNotEmpty()) Ln.w("moveTaskViaAmCommand: am stderr: $stderr")
             if (exitCode != 0) {
@@ -306,7 +320,15 @@ object ActivityUtils {
             }
             Ln.i("startViaAmCommand: displayId=$displayId, exec: ${args.joinToString(" ")}")
             val process = Runtime.getRuntime().exec(args)
-            val exitCode = process.waitFor()
+            // bug #7：先 waitFor 再读流的前提是「它一定会退出」。
+            // am 卡住时这个前提不成立，所以必须给等待加上限，
+            // 超时就强杀并当作启动失败（由上层重试），绝不允许线程被钉死。
+            if (!process.waitFor(AM_CMD_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS)) {
+                Ln.w("startViaAmCommand: am 超过 ${AM_CMD_TIMEOUT_SEC}s 未返回，强杀（displayId=$displayId）")
+                process.destroyForcibly()
+                return false
+            }
+            val exitCode = process.exitValue()
             // am start 输出量极小（远小于管道缓冲），先 waitFor 再读不会死锁
             val stdout = process.inputStream.bufferedReader().use { it.readText() }.trim()
             val stderr = process.errorStream.bufferedReader().use { it.readText() }.trim()

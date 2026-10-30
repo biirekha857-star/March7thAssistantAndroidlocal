@@ -1472,9 +1472,15 @@ class ScreenNavigator(
                     val nh = (region.h * fh).toInt().coerceIn(1, fh - ny)
 
                     val roi = org.opencv.core.Mat(fullNorm, org.opencv.core.Rect(nx, ny, nw, nh))
-                    val hit = findOn(roi, path, threshold) ?: return null
-                    // 命中坐标是 ROI 内坐标，加回偏移即可
-                    hit.copy(x = hit.x + nx, y = hit.y + ny)
+                    try {
+                        val hit = findOn(roi, path, threshold) ?: return null
+                        // 命中坐标是 ROI 内坐标，加回偏移即可
+                        hit.copy(x = hit.x + nx, y = hit.y + ny)
+                    } finally {
+                        // bug #5：ROI 是共享 fullNorm 底层数据的头，不释放会一直
+                        // 拽住整帧；`isAt(region)` 每调一次漏一次，gotoMail 一次要调 6~9 次
+                        roi.release()
+                    }
                 } finally {
                     if (fullNorm !== full) fullNorm.release()
                 }

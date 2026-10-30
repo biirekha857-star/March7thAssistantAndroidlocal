@@ -69,7 +69,7 @@
     <string name="dialog_core_dir_inaccessible_message">This system restricts access to the app directory. Switch to the separate directory and restart to continue.</string>
     <!-- settings: monet theme color (system Material You toggle, Android 12+) -->
     <string name="settings_monet_color_title">Monet Theme Color</string>
-    <string name="settings_monet_color_desc">Generate colors from your wallpaper; off uses the built-in blue theme.</string>
+    <string name="settings_monet_color_desc">Generate colors from your wallpaper; when off, the built-in gold theme is used.</string>
 
     <string name="settings_achievement_title">Achievements</string>
     <string name="settings_achievement_desc">View M7A milestones and hidden easter eggs</string>
@@ -233,7 +233,7 @@
     <string name="achievement_debug_clear_all">Delete All Achievement Records</string>
     <string name="achievement_debug_clear_done">All achievement records deleted</string>
     <!-- home: top bar & app title -->
-    <string name="home_app_title">M7A</string>
+    <string name="home_app_title">March7thAssistant</string>
 
     <!-- home: screen info card -->
     <string name="home_screen_resolution">Screen Resolution</string>
@@ -290,8 +290,8 @@
     <string name="home_status_task_running">Running</string>
     <string name="home_status_ready">Ready</string>
     <string name="remote_backend_permission_label">%1$s Permission</string>
-    <string name="resource_loader_loading_message">Loading MAA resources. Please wait…</string>
-    <string name="resource_loader_reloading_message">Reloading MAA resources. Please wait…</string>
+    <string name="resource_loader_loading_message">Loading resources. Please wait…</string>
+    <string name="resource_loader_reloading_message">Reloading resources. Please wait…</string>
 
     <!-- home: toast messages -->
     <string name="home_toast_backend_unavailable">%1$s is unavailable. Please check that the corresponding service is running</string>
@@ -1625,6 +1625,10 @@ MAA will not end an in-progress exploration early because this option is uncheck
     <string name="notification_event_recruit_special_tag">Rare tag found: %1$s</string>
     <string name="notification_event_recruit_robot_tag">Robot tag found: %1$s</string>
     <string name="notification_event_recruit_high_rarity">Found a %1$d-star combination</string>
+    <string name="notification_event_screen_anomaly">Display issue fixed</string>
+    <string name="notification_event_screen_anomaly_text">The game canvas was scaled up and cropped (waited %1$d s without the \"Tap to enter\" button). It has been restored by re-layout automatically. If this keeps happening, please export logs and report it.</string>
+    <string name="notification_event_screen_anomaly_failed">Display fix failed</string>
+    <string name="notification_event_screen_anomaly_failed_text">The game canvas was scaled up and cropped, and the automatic re-layout did not recover it (waited %1$d s). This launch may fail. Please export logs and report it.</string>
     <string name="notification_event_subtask_failure">Subtask Error</string>
     <string name="notification_test_title">Test Notification</string>
     <string name="notification_test_message_full">This is a test notification from M7A</string>
