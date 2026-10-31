@@ -86,6 +86,157 @@ class StarRailTasks(
         private const val NOTICE_CLICK_X = 960
         private const val NOTICE_CLICK_Y = 1020
 
+        /**
+         * 月卡（列车补给凭证）领取按钮可能出现的文案。
+         *
+         * ## 为什么要认文字，而不是只靠坐标
+         *
+         * 之前只按 (960,1020) 硬点。但那个坐标是从素材图的
+         * "点击领取今日补给" 一行量出来的，手机版排版一变就点空 ——
+         * 点空不会报错，只会静默地什么都没领到。
+         *
+         * OCR 认到这行字就点它自己的中心，位置随界面走，换设备也不用改。
+         * 认不到才退回坐标。
+         * ⚠️ 这几个词**必须都带「补给」**。
+         *
+         * 它们同时充当"这里是不是月卡界面"的判据，要是写成裸的「领取」，
+         * 邮件页的「全部领取」（x≈540,y≈984）正好落在底部搜索区里，
+         * 会被误判成月卡弹窗 —— 那个弹窗一点都不像月卡。
+         */
+        private val MONTH_CARD_CLAIM_TEXTS = listOf(
+            "点击领取今日补给",
+            "领取今日补给",
+            "今日补给",
+        )
+
+        /** 领取按钮的搜索区（屏幕下沿那一带）。 */
+        private val CROP_BOTTOM_AREA = ScreenNavigator.NormRect(
+            0.00f, 0.78f, 1.00f, 0.22f,
+        )
+
+        /**
+         * 月卡领取按钮最多点几次。
+         *
+         * ## 完整时序（真实链路，别再猜）
+         *
+         * ```
+         * 加载界面
+         *   → 月卡领取界面   「列车补给凭证」+「点击领取今日补给」
+         *   → 月卡奖励确认界面   点完领取后弹出，星穹到账提示
+         *   → 大厅           角色头像在这一步才可识别
+         * ```
+         *
+         * 也就是说：**头像出现 = 前面三步全走完了**。
+         *
+         * ## ⚠️ 原来为什么领不到
+         *
+         * 旧代码点完领取后发现「点击领取今日补给」这行字消失，
+         * 就直接判定"领取界面已消失 → 成功"并返回。
+         * 但那时画面正停在**奖励确认界面**，离大厅还差一步。
+         * 于是 `waitForMain` 立刻放行、后续任务开始跑，
+         * 而屏幕上还盖着一层奖励确认框、头像根本不可见 ——
+         * 后面的任务全部错乱，玩家看到的就是"月卡没领成"。
+         *
+         * 所以现在的判据只有一个：**角色头像可见**。
+         * 点多少次领取不重要（正常一次就够），次数是"点空了"的保险。
+         */
+        private const val MONTH_CARD_MAX_ROUNDS = 6
+
+        /**
+         * 奖励确认界面最多关几次。
+         *
+         * 这一层是「点完领取」和「回到大厅」之间的必经界面。
+         * 不关掉它，`isMainUi()` 永远是 false，
+         * `waitForMain` 会一直空转到 180 秒超时。
+         */
+        private const val MONTH_CARD_CONFIRM_TRIES = 5
+
+        /** 关奖励确认时每步之间的等待（收奖励动画 + 界面淡出）。 */
+        private const val MONTH_CARD_CONFIRM_STEP_MS = 1_500L
+
+        /**
+         * 奖励确认界面上的确认类文字。
+         *
+         * 崩铁这类全屏奖励提示，通常有「确认 / 我知道了」按钮，
+         * 或者写着「点击空白处继续」。
+         */
+        private val MONTH_CARD_CONFIRM_TEXTS = listOf(
+            "点击空白处继续",
+            "点击任意处继续",
+            "我知道了",
+            "确认",
+            "确定",
+        )
+
+        /** 奖励确认界面的识别区（画面中央，避开顶部标题与底部按钮）。 */
+        private val CROP_REWARD_CONFIRM = ScreenNavigator.NormRect(
+            0.10f, 0.25f, 0.80f, 0.50f,
+        )
+        private const val MONTH_CARD_STEP_MS = 2_500L
+
+        /**
+         * 兜底点击用的「安全空白区」—— 画面水平居中、纵向 24%。
+         *
+         * ## ⚠️ 这个坐标是经过排查的，别随手改
+         *
+         * 崩铁各界面在这个位置都**没有绑定任何功能**：
+         *
+         * | 界面 | 这个位置是什么 | 点了会怎样 |
+         * |---|---|---|
+         * | 加载界面 | 背景 | 无反应 |
+         * | 月卡/公告页 | 标题下方的插图空白 | 无反应（公告页不吃空白点击） |
+         * | 奖励确认页 | 奖励标题上方的空白 | 多数情况会"点空白继续" |
+         * | 大厅 | 天空/远景 | 无反应 |
+         *
+         * ## 屏幕上这些地方**绝对不能**当兜底点
+         *
+         * - **左上角**：绝大多数子界面的返回/✕ 就在这，一点就退出去
+         * - **右上角**：大厅是角色头像和菜单，点开菜单会挡住一切
+         * - **右侧一列**：大厅的跃迁/角色/背包/编队按钮
+         * - **底部中央**：大厅的任务追踪、聊天，还有各页面的主操作按钮
+         *
+         * 之前想过用底部 (960,1020) 去"盲点领取按钮"，这是错的 ——
+         * 那个位置只在月卡页是领取按钮，在大厅可能是别的 UI。
+         * 认不出按钮就该认，不能拿别的界面去赌。
+         */
+        private const val SAFE_BLANK_X = 960
+        private const val SAFE_BLANK_Y = 260
+
+        /**
+         * 看到角色头像之后，还要再探几次月卡才敢放行。
+         *
+         * ## 正常时序下用不到，这是异常兜底
+         *
+         * 正常链路是「加载 → 领取 → 奖励确认 → 大厅」，
+         * 头像出现时月卡早就该处理完了，守门纯属保险。
+         *
+         * 但如果哪天公告比大厅晚一拍（弱网、广告位异步加载、
+         * 或者游戏版本改成了"进大厅后再弹"），头像会先出现。
+         * 一旦放行，后面就没人再管这个弹窗了 ——
+         * 当天的补给直接丢掉，而且**不会有任何报错**。
+         *
+         * 所以宁可多等 2 × 1s，也不赌。确认过没有弹窗就立刻放行。
+         */
+        private const val MONTH_CARD_GUARD_PROBES = 2
+
+        /** 守门窗口内的探测间隔。比主循环的 5 秒密得多。 */
+        private const val MONTH_CARD_GUARD_INTERVAL_MS = 1_200L
+
+        /**
+         * 点了「点击进入」多久还没进大厅、又认不到月卡界面，就认为卡住了。
+         *
+         * 实测正常进入大厅只要 14~21 秒。给到 45 秒已经很宽了。
+         *
+         * 到这个点还卡着，只有两种可能：
+         * ① 月卡界面在，但 OCR 认不到那两行字（区域/字体/分辨率问题）；
+         * ② 停在某个我们没处理过的弹窗上。
+         *
+         * 两种情况都先打一份全屏 OCR 到日志（下次不用再猜），
+         * 再按坐标盲点一次领取兜底 —— 因为月卡**一天只有一次机会**，
+         * 宁可盲点一下（最坏是点空），也不能整天不领。
+         */
+        private const val MONTH_CARD_BLIND_AFTER_SEC = 45L
+
         /** 自救时最多点几次 X。 */
         private const val MAX_SELF_HEAL_CLICKS = 14
 
@@ -406,21 +557,19 @@ class StarRailTasks(
             )
         }
 
-        // ---- 「列车补给」公告 ----
+        // ---- 月卡（列车补给凭证） ----
         //
-        // 点了「点击进入」之后，游戏有时会弹一个「列车补给」的开屏公告，
-        // 挡住主界面 —— 此时角色头像根本不在，[waitForMain] 会一直等到超时。
+        // 点了「点击进入」之后，如果今天还没领月卡，游戏会在**加载完成后**
+        // 依次弹出「月卡领取界面」→「月卡奖励确认界面」，然后才进大厅。
+        // 这几层都会挡住角色头像，[waitForMain] 认不到头像就会一直等到超时。
         //
-        // 实测这个公告：
-        // - 标题文字在**顶部 25%** 区域；
-        // - 点屏幕靠下的位置能翻页 / 关闭；
-        // - 需要**点两次**（中间隔 3 秒）才能完全过掉。
+        // 每天只弹一次，领完当天不再出现，所以**没有第二次机会**。
         //
-        // 所以这里先探一次：认到「列车补给」就点两下，然后继续走主界面验证。
-        // 没认到就什么都不做（绝大多数正常启动没有这个公告）。
-        // 处理完公告后如果已经确认在大厅，就跳过 waitForMain 的 9 秒等待
+        // 这里先探一次（此刻通常还在加载界面，探不到就立刻返回）；
+        // 真正可靠的探测在 [waitForMain] 的轮询里 —— 那边会一直等到它出现。
+        // 如果这里就领完并确认在大厅，可以直接跳过 waitForMain 开头的 9 秒等待。
         if (handleTrainSupplyNotice(nav)) {
-            return TaskResult("StartUp", true, "已进入主界面（已过列车补给公告）${auto.width}x${auto.height}")
+            return TaskResult("StartUp", true, "已进入主界面（已领取月卡补给）${auto.width}x${auto.height}")
         }
 
         if (waitForMain(nav)) {
@@ -772,98 +921,350 @@ class StarRailTasks(
     }
 
     /**
-     * 处理开屏的「列车补给」公告。
+     * 处理开屏的「列车补给」月卡。
      *
-     * ## 完整时序
+     * 薄封装：真正的逻辑都在 [claimTrainSupplyIfAny]。
+     *
+     * ## ⚠️ 这里曾经有两个致命的时序错误
+     *
+     * **错误一：只探一次就放弃。**
+     *
+     * 旧实现在 `waitAndClickEnter` 返回后**立刻**探一次公告，探不到就永久放弃：
      *
      * ```
-     * 点「点击进入」→ 等 9 秒（见 waitForMain 的开头）
-     *      ↓
-     * 识别「列车补给」（顶部 25%）
-     *      ├─ 没识别到 → 直接走角色头像验证
-     *      └─ 识别到 → 【第 1 轮】
-     *             点「点击领取今日补给」(960, 1020)
-     *                  ↓ 等 4 秒（奖励动画 + 星穹领取明细弹出）
-     *             再点一次同样的位置 (960, 1020)      ← 关掉明细
-     *                  ↓ 等 4 秒
-     *             识别角色头像
-     *                  ├─ 成功 → 完成
-     *                  └─ 失败 → 【第 2 轮】重复上面三件事
-     *                            └─ 仍失败 → 交给 waitForMain 继续等
+     * 08:47:51.275  点「点击进入」
+     * 08:47:51.590  没有「列车补给」公告，直接走主界面验证   ← 只隔了 315ms
+     * 08:48:10.875  已进入主界面（点击进入后 19s）
      * ```
      *
-     * ## 为什么点两次同一个位置
+     * 点完「点击进入」到大厅加载出来要 **19 秒**，300 毫秒后去探
+     * 画面还停在加载，当然什么都认不到。
      *
-     * 第一次点「点击领取今日补给」是**领取**；
-     * 点完会弹「星穹领取明细」窗口，**它盖在画面中央偏下**，
-     * 正好挡住领取文字那一带 —— 再点同一位置就是点在明细窗口上，
-     * 相当于"点击空白关闭"。
+     * **错误二：把「按钮消失」当成「领完了」。**
      *
-     * ## ⚠️ 不要改成点屏幕中心
+     * 真实链路是「加载 → 领取 → 奖励确认 → 大厅」。
+     * 点完领取后「点击领取今日补给」就消失了，但那一刻停在奖励确认界面，
+     * 离大厅还差一层。旧代码在这里直接返回成功，于是后续任务
+     * 全被这层界面挡住 —— 玩家看到的就是"月卡没领成"。
      *
-     * 明细窗口就在屏幕中心区域，点中心可能触发窗口里的按钮。
-     *
-     * @return true 表示已确认在大厅
+     * 现在改成 [waitForMain] 每轮都调用，并且只有**角色头像可见**才算完成。
      */
-    private fun handleTrainSupplyNotice(nav: ScreenNavigator): Boolean {
-        val hit = nav.withFrameOcrRegion(CROP_TOP_QUARTER) { mat, region ->
+    private fun handleTrainSupplyNotice(nav: ScreenNavigator): Boolean = claimTrainSupplyIfAny(nav)
+
+    /**
+     * 认到「列车补给凭证」的领取界面就领掉，否则什么都不做。
+     *
+     * ## 判据（两个都要留）
+     *
+     * | 判据 | 位置 | 作用 |
+     * |---|---|---|
+     * | 「列车补给」标题 | 顶部 25% | 开屏公告 |
+     * | 「…补给」领取文字 | 底部 22% | 按钮还在、标题已经滚走的中间态 |
+     *
+     * 两个都是**含「补给」**的词，所以不会和邮件页的「全部领取」撞车。
+     *
+     * ## 点击策略
+     *
+     * 每一轮都**重新 OCR 找位置**再点，而不是复用上一轮的坐标 ——
+     * 每点一下界面都会变（弹星穹明细、页面下移），旧坐标必然点偏。
+     * 认不到文字才退回 [NOTICE_CLICK_X] / [NOTICE_CLICK_Y]。
+     *
+     * @return true = 已经确认回到大厅（角色头像可见）
+     */
+    private fun claimTrainSupplyIfAny(nav: ScreenNavigator): Boolean {
+        val titleHit = nav.withFrameOcrRegion(CROP_TOP_QUARTER) { mat, region ->
             OcrEngine.findText(mat, TEXT_TRAIN_SUPPLY, region)
         }
+        val claimHit = findClaimText(nav)
+        if (titleHit == null && claimHit == null) return false
 
-        if (hit == null) {
-            Ln.i("$TAG: 没有「$TEXT_TRAIN_SUPPLY」公告，直接走主界面验证")
+        Ln.w(
+            "$TAG: 检测到月卡领取界面（标题=${titleHit?.text ?: "未识别"}" +
+                "，领取=${claimHit?.text ?: "未识别"}），开始领取",
+        )
+
+        // ---------- 阶段 1：点「点击领取今日补给」 ----------
+        // 第一轮无论如何要点一次（认不到文字就用兜底坐标）；
+        // 之后文字一消失就说明已经进入奖励确认界面，跳出。
+        for (round in 0 until MONTH_CARD_MAX_ROUNDS) {
+            val hit = findClaimText(nav)
+            if (hit == null && round > 0) break
+
+            val x = hit?.cx ?: NOTICE_CLICK_X
+            val y = hit?.cy ?: NOTICE_CLICK_Y
+            Ln.i(
+                "$TAG: 月卡第 ${round + 1}/$MONTH_CARD_MAX_ROUNDS 次点击领取 @($x,$y)" +
+                    if (hit != null) "（OCR 命中「${hit.text}」）" else "（坐标兜底）",
+            )
+            if (!auto.tap(x, y, durationMs = 100L)) {
+                Ln.w("$TAG: 月卡点击注入失败 —— ${auto.lastInputFailure}")
+            }
+            Thread.sleep(MONTH_CARD_STEP_MS)
+
+            if (isMainUi(nav)) {
+                Ln.i("$TAG: 月卡领取完成，已回到大厅（共点 ${round + 1} 次）")
+                return true
+            }
+        }
+
+        // ⚠️ 点了这么多次，领取按钮居然还在 —— 说明还停在领取界面，
+        // 点击全部落空了。这种状态下任何"关闭"动作都可能把当天的月卡弄丢，
+        // 所以直接交回上层，让主循环下一轮重新识别、重新点。
+        if (findClaimText(nav) != null) {
+            Ln.w("$TAG: 点了 $MONTH_CARD_MAX_ROUNDS 次，领取按钮仍在 —— 点击可能全部落空，交回上层重试")
             return false
         }
 
-        Ln.w("$TAG: 检测到「${hit.text}」公告，开始处理")
-
-        repeat(NOTICE_MAX_ROUNDS) { round ->
-            // ① 点「点击领取今日补给」
-            Ln.i("$TAG: 第 ${round + 1} 轮 —— 点「点击领取今日补给」@($NOTICE_CLICK_X,$NOTICE_CLICK_Y)")
-            auto.tap(NOTICE_CLICK_X, NOTICE_CLICK_Y, durationMs = 100L)
-            Thread.sleep(NOTICE_STEP_MS)
-
-            // ② 再点一次同一位置（关掉星穹领取明细）
-            Ln.i("$TAG: 第 ${round + 1} 轮 —— 再点一次同一位置关明细")
-            auto.tap(NOTICE_CLICK_X, NOTICE_CLICK_Y, durationMs = 100L)
-            Thread.sleep(NOTICE_STEP_MS)
-
-            // ③ 识别角色头像
-            if (isMainUi(nav)) {
-                Ln.i("$TAG: 第 ${round + 1} 轮后已回到大厅")
-                return true
-            }
-            Ln.w("$TAG: 第 ${round + 1} 轮后仍未回到大厅")
-        }
-
-        Ln.w("$TAG: $NOTICE_MAX_ROUNDS 轮处理完毕仍未回到大厅，交给 waitForMain 继续等")
-        return false
+        // ---------- 阶段 2：关掉奖励确认界面 ----------
+        return dismissMonthCardReward(nav)
     }
 
     /**
-     * 确认已经进入主界面（只比**角色头像**）。
+     * 关掉月卡的**奖励确认界面**，直到回到大厅。
      *
-     * 点完「点击进入」后先等 9 秒（加载存档），
-     * 然后每 5 秒查一次，直到累计 110 秒。
+     * ## 这一层为什么必须单独处理
+     *
+     * 真实时序是：
+     *
+     * ```
+     * 加载界面 → 月卡领取界面 → 月卡奖励确认界面 → 大厅
+     * ```
+     *
+     * 点完领取后「点击领取今日补给」就消失了，但画面并没有到大厅，
+     * 而是停在奖励确认界面。旧代码把这行字消失当成"领完了"直接返回，
+     * 于是 `waitForMain` 放行、后续任务开跑，可屏幕上还盖着这一层 ——
+     * 角色头像根本不可见，后面的每个任务都会错乱。
+     *
+     * ## 关闭顺序（全部避开敏感区）
+     *
+     * 1. 认「确认 / 我知道了 / 点击空白处继续」→ 点**文字自己的坐标**（最准）
+     * 2. 认不到 → 点 [SAFE_BLANK_X] / [SAFE_BLANK_Y] 的安全空白
+     *
+     * ## ⚠️ 这里**不点**右上角 ✕
+     *
+     * 奖励页的 ✕ 确实在右上角，但大厅的角色头像/菜单也在右上角。
+     * 一旦判态出错（比如奖励页已经自己关了、画面回到大厅），
+     * 这一点会直接打开菜单，把后面所有任务全带乱 ——
+     * 收益远小于风险，所以干脆不碰。
+     *
+     * 同理也不点左上角：崩铁几乎所有子界面的返回键都在那儿。
+     *
+     * @return true = 已回到大厅
+     */
+    private fun dismissMonthCardReward(nav: ScreenNavigator): Boolean {
+        repeat(MONTH_CARD_CONFIRM_TRIES) { i ->
+            if (isMainUi(nav)) {
+                Ln.i("$TAG: 奖励确认界面已关闭，回到大厅")
+                return true
+            }
+
+            val confirmHit = nav.withFrameOcrRegion(CROP_REWARD_CONFIRM) { mat, region ->
+                MONTH_CARD_CONFIRM_TEXTS.firstNotNullOfOrNull { t ->
+                    OcrEngine.findText(mat, t, region)
+                }
+            }
+
+            when {
+                confirmHit != null -> {
+                    Ln.i(
+                        "$TAG: 第 ${i + 1}/$MONTH_CARD_CONFIRM_TRIES 次关奖励界面 —— " +
+                            "点「${confirmHit.text}」@(${confirmHit.cx},${confirmHit.cy})",
+                    )
+                    auto.tap(confirmHit.cx, confirmHit.cy, durationMs = 100L)
+                }
+
+                else -> {
+                    Ln.i(
+                        "$TAG: 第 ${i + 1}/$MONTH_CARD_CONFIRM_TRIES 次关奖励界面 —— " +
+                            "认不到确认词，点安全空白 @($SAFE_BLANK_X,$SAFE_BLANK_Y)",
+                    )
+                    auto.tap(SAFE_BLANK_X, SAFE_BLANK_Y, durationMs = 100L)
+                }
+            }
+            Thread.sleep(MONTH_CARD_CONFIRM_STEP_MS)
+        }
+
+        val ok = isMainUi(nav)
+        if (!ok) {
+            Ln.w("$TAG: 奖励确认界面关了 $MONTH_CARD_CONFIRM_TRIES 次仍没回到大厅，交给上层继续等")
+        }
+        return ok
+    }
+
+    /** 在屏幕下沿找「…补给」领取文字。 */
+    private fun findClaimText(nav: ScreenNavigator): OcrEngine.OcrResult? =
+        nav.withFrameOcrRegion(CROP_BOTTOM_AREA) { mat, region ->
+            MONTH_CARD_CLAIM_TEXTS.firstNotNullOfOrNull { t ->
+                OcrEngine.findText(mat, t, region)
+            }
+        }
+
+    /**
+     * 等到**真正**进入主界面，期间顺手把月卡领掉。
+     *
+     * ## 真实时序
+     *
+     * ```
+     * 点「点击进入」
+     *   → 加载界面            约 19 秒
+     *   → 月卡领取界面        「列车补给凭证」+「点击领取今日补给」
+     *   → 月卡奖励确认界面    点完领取后弹出，星穹到账
+     *   → 大厅                角色头像在这步才可识别
+     * ```
+     *
+     * ## 为什么每轮都先探月卡、再判大厅
+     *
+     * 月卡这三层界面全程盖住角色头像，正常情况下 `isMainUi()`
+     * 不可能提前返回。但万一某次弹窗比大厅晚一拍（弱网、
+     * 广告位异步加载），头像先出现就会被放行 —— 之后再没人管它，
+     * 当天的补给直接丢，而且**不会有任何报错**。
+     *
+     * 先探一次月卡只多一次区域 OCR，换的是不会漏。
+     *
+     * ## 头像出现后还要守一小段
+     *
+     * 见 [MONTH_CARD_GUARD_PROBES]。确认确实没有待领的弹窗就立刻放行，
+     * 正常情况只多花 1~2 秒。
      */
     private fun waitForMain(nav: ScreenNavigator): Boolean {
         val startAt = SystemClock.uptimeMillis()
+        var blindTried = false
         Thread.sleep(AFTER_ENTER_MS)
 
         while (SystemClock.uptimeMillis() - startAt < TOTAL_LIMIT_MS) {
             if (nav.isCancelled()) return false
-            if (isMainUi(nav)) {
-                val waited = (SystemClock.uptimeMillis() - startAt) / 1000
-                Ln.i("$TAG: 已进入主界面（点击进入后 ${waited}s）")
+            val waited = (SystemClock.uptimeMillis() - startAt) / 1000
+
+            // ① 先探月卡 —— 它出现在大厅之前，且全程盖着头像
+            if (claimTrainSupplyIfAny(nav)) {
+                Ln.i("$TAG: 月卡已领取并回到大厅（点击进入后 ${waited}s）")
                 return true
             }
-            val waited = (SystemClock.uptimeMillis() - startAt) / 1000
+
+            // ② 再判大厅；命中后先守一小段，防止弹窗晚到
+            if (isMainUi(nav)) {
+                if (confirmNoPendingMonthCard(nav)) {
+                    Ln.i("$TAG: 已进入主界面（点击进入后 ${waited}s）")
+                    return true
+                }
+                // 守门时发现画面又变了，让主循环重来一轮
+                continue
+            }
+
+            // ③ 卡住兜底：太久没进大厅、也没认到月卡 → 留证据 + 安全试探
+            if (!blindTried && waited >= MONTH_CARD_BLIND_AFTER_SEC) {
+                blindTried = true
+                if (blindMonthCardAttempt(nav)) {
+                    Ln.i("$TAG: 兜底成功，已回到大厅（点击进入后 ${waited}s）")
+                    return true
+                }
+                continue
+            }
+
             Ln.i("$TAG: 还没进主界面（${waited}s），${RETRY_INTERVAL_MS / 1000}s 后重试")
             Thread.sleep(RETRY_INTERVAL_MS)
         }
 
         Ln.e("$TAG: 进主界面超时（${TOTAL_LIMIT_MS / 1000}s）")
         return false
+    }
+
+    /**
+     * 卡住时的兜底。**只在有依据的地方点，绝不满屏乱点。**
+     *
+     * ## 分两种情形
+     *
+     * **情形一：全屏 OCR 能找到"补给/领取"字样。**
+     * 说明文字其实认得到，只是固定区域没覆盖到。那就点**文字自己的中心**，
+     * 属于有依据的点击，和正常领取流程一样安全。
+     *
+     * **情形二：一个字都找不到。**
+     * 此时我们根本不知道按钮在哪，任何坐标都是猜。所以只点一次
+     * [SAFE_BLANK_X] / [SAFE_BLANK_Y] —— 那是各界面都没有绑定功能的空白区，
+     * 唯一作用是"如果有个遮罩，试着把它点掉"。
+     * **不指望这一下能领到月卡**，领不到就承认领不到，等下次日志再修。
+     *
+     * ## ⚠️ 为什么不用底部 (960,1020) 去"盲点领取按钮"
+     *
+     * 那个坐标只在月卡页是领取按钮。可一旦判错界面，
+     * 它在别的页面可能是主操作按钮、任务追踪、聊天入口 ——
+     * 月卡一天只有一次机会，但把界点点乱是一整天都恢复不了。
+     * 这笔账不划算。
+     *
+     * @return true = 已回到大厅
+     */
+    private fun blindMonthCardAttempt(nav: ScreenNavigator): Boolean {
+        Ln.w("$TAG: ${MONTH_CARD_BLIND_AFTER_SEC}s 未进大厅且固定区域没认到月卡 —— 启动安全兜底")
+
+        // ---- 情形一：全屏找"补给"文字，找到就点文字中心 ----
+        val allText = runCatching { nav.readAllText() }.getOrDefault(emptyList())
+        dumpScreenText(allText)
+
+        val hint = allText.firstOrNull {
+            val t = it.normalized()
+            (t.contains("补给") || t.contains("列车")) && it.cy > auto.height * 0.5
+        }
+
+        if (hint != null) {
+            Ln.i("$TAG: 全屏 OCR 找到「${hint.text}」@(${hint.cx},${hint.cy})，按文字位置点击")
+            if (!auto.tap(hint.cx, hint.cy, durationMs = 100L)) {
+                Ln.w("$TAG: 兜底点击注入失败 —— ${auto.lastInputFailure}")
+                return false
+            }
+            Thread.sleep(MONTH_CARD_STEP_MS)
+            if (isMainUi(nav)) return true
+            return dismissMonthCardReward(nav)
+        }
+
+        // ---- 情形二：认不到任何线索，只点一次安全空白 ----
+        Ln.w(
+            "$TAG: 全屏也认不到「补给/列车」字样 —— " +
+                "只点一次安全空白 ($SAFE_BLANK_X,$SAFE_BLANK_Y) 试探遮罩，不猜按钮位置",
+        )
+        auto.tap(SAFE_BLANK_X, SAFE_BLANK_Y, durationMs = 100L)
+        Thread.sleep(MONTH_CARD_CONFIRM_STEP_MS)
+        if (isMainUi(nav)) return true
+
+        // 点空白之后如果画面变了（遮罩被点掉、露出奖励页），再把奖励页关掉
+        return dismissMonthCardReward(nav)
+    }
+
+    /**
+     * 把当前画面上的全部文字打进日志。
+     *
+     * 只在"卡住"时调用一次。之前排查月卡问题时，
+     * 日志里只有一句"没有「列车补给」公告"，完全看不出画面上到底是什么，
+     * 只能靠猜。有了这份 dump，下次直接对着文字调区域和关键词。
+     */
+    private fun dumpScreenText(texts: List<OcrEngine.OcrResult>) {
+        if (texts.isEmpty()) {
+            Ln.w("$TAG: 卡住现场 —— 全屏 OCR 一条文字都没认出来（画面应该是纯加载动画）")
+            return
+        }
+        val detail = texts.joinToString(" | ") { "${it.normalized()}@(${it.cx},${it.cy})" }
+        Ln.w("$TAG: 卡住现场 —— 全屏 OCR 共 ${texts.size} 条：$detail")
+    }
+
+    /**
+     * 头像已经可见，再确认一下有没有晚到的月卡弹窗。
+     *
+     * 正常时序下这里什么都探不到，直接放行；
+     * 真探到了就当场领掉，领完它自己会回大厅。
+     *
+     * @return true = 确认没有待领的月卡，可以放行
+     */
+    private fun confirmNoPendingMonthCard(nav: ScreenNavigator): Boolean {
+        repeat(MONTH_CARD_GUARD_PROBES) { i ->
+            // 弹出来了 → 就地领掉，领完就算完成
+            if (claimTrainSupplyIfAny(nav)) return true
+            // 画面变了（比如又退回加载）→ 交给主循环
+            if (!isMainUi(nav)) return false
+            if (i < MONTH_CARD_GUARD_PROBES - 1) {
+                Thread.sleep(MONTH_CARD_GUARD_INTERVAL_MS)
+            }
+        }
+        Ln.i("$TAG: 守门 $MONTH_CARD_GUARD_PROBES 次没有月卡弹窗，放行")
+        return true
     }
 
     /**
@@ -905,6 +1306,16 @@ class StarRailTasks(
         repeat(2) { i ->
             if (isMainUi(nav)) return true
             if (i == 0) Thread.sleep(400)
+        }
+
+        // ## 不在大厅时，先看看是不是月卡弹窗挡着
+        //
+        // 下面的自救逻辑是"点右上角 X"。月卡领取界面的 X 一旦被点到，
+        // 弹窗就关掉了 —— 当天那份补给也就没了，而且不会有任何提示。
+        // 所以先认一次月卡界面，能领就领，领完它自己会回大厅。
+        if (claimTrainSupplyIfAny(nav)) {
+            Ln.i("$TAG: 不在大厅是因为月卡弹窗，已领完并回到大厅")
+            return true
         }
 
         Ln.w("$TAG: 连续 2 次没识别到角色头像，开始自救（点 X 关弹窗）")

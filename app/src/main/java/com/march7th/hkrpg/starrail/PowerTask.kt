@@ -604,7 +604,12 @@ internal class PowerTask(
         // 我之前自己发明的"多轮循环"是错的 —— 打完 24 次后还会傻乎乎
         // 开第 2 轮，而那时体力根本不够。
         var completed = 0
-        var instanceName = ""
+        // 副本名兜底顺序：用户配置的具体副本 → 副本类型名（侵蚀隧洞/拟造花萼…）
+        //
+        // 旧实现初始化为空串，只有"真正进本成功"才会被 outcome.instanceName 填上。
+        // 于是最常见的失败路径（连导航都失败、根本没进本）反而报出
+        // 「副本「」连续失败 3 次」—— 副本名是空的，读日志的人一脸问号。
+        var instanceName = config.instanceName.ifBlank { def.wireName }
         var stopReason: String? = null
         var failedRounds = 0
         var lastReadPower: Int? = null
@@ -1627,10 +1632,50 @@ internal class PowerTask(
         return auto.tap(x, y)
     }
 
-    /** 关闭补充弹窗（BACK 键，手游没有 ESC）。 */
+    /**
+     * 关闭「补充开拓力」弹窗。
+     *
+     * ## 为什么不能无条件按 BACK
+     *
+     * 旧实现直接 `pressKey(KEYCODE_BACK)`，不看画面。三个调用点都发生在
+     * "补充流程中途失败"的时候：
+     *
+     * | 调用点 | 当时画面 |
+     * |---|---|
+     * | 等了 8 秒没等到弹窗 | 可能**还在副本准备页**，甚至已经回到主界面 |
+     * | 后备体力/燃料都点不到 | 弹窗开着 |
+     * | 点确认失败 | 弹窗开着 |
+     *
+     * 第一种情况最危险：如果此时其实已经在主界面，这一下 BACK 就会
+     * 弹出「是否退出游戏」，而旧代码按完就走、没人处理这个框 ——
+     * 后续任何一次 BACK 都可能落到「确定」上，直接把游戏退掉。
+     *
+     * 所以改成：**先找弹窗自己的取消按钮，找不到再 BACK，按完必须回查退出框**。
+     */
     private fun closePopup() {
+        // ① 弹窗自带「取消」→ 点了就没有副作用
+        when (nav.dismissPopup("补充弹窗", force = true)) {
+            ScreenNavigator.PopupProbe.CANCELED -> {
+                note("已点「取消」关闭补充弹窗")
+                return
+            }
+            ScreenNavigator.PopupProbe.EXIT_CONFIRM -> {
+                // 补充流程里冒出退出框，说明早就离开副本页了 —— 已点取消，不再按 BACK
+                note("发现退出确认框，已点取消（不再按 BACK）")
+                return
+            }
+            ScreenNavigator.PopupProbe.NONE -> Unit
+        }
+
+        // ② 找不到取消按钮，才用 BACK 兜底
+        Ln.i("$TAG: 补充弹窗未找到取消按钮，改用 BACK")
         runCatching { auto.pressKey(android.view.KeyEvent.KEYCODE_BACK) }
         sleepInterruptible(500)
+
+        // ③ 立刻回查 —— BACK 在主界面会弹退出框
+        if (nav.dismissPopup("补充弹窗-BACK后", force = true) == ScreenNavigator.PopupProbe.EXIT_CONFIRM) {
+            Ln.w("$TAG: BACK 触发了退出确认框，已点取消保住游戏进程")
+        }
     }
 
     /**

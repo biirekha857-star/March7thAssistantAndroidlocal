@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.os.SystemClock
 import com.march7th.hkrpg.bridge.NativeBridgeLib
 import com.march7th.hkrpg.core.InputControlUtils
+import com.march7th.hkrpg.remote.internal.DiagDumper
 import com.march7th.hkrpg.third.Ln
 import java.io.ByteArrayOutputStream
 
@@ -32,6 +33,15 @@ class ShellAutomation {
         private const val TAG = "ShellAutomation"
         private const val DEFAULT_WIDTH = 1920
         private const val DEFAULT_HEIGHT = 1080
+
+        /**
+         * 两次"触控失败现场快照"之间的最小间隔。
+         *
+         * 快照是异步线程跑 `dumpsys`（几条命令合计几百毫秒~数秒），
+         * 一旦进入失败重试循环，每次都 dump 只会拖慢恢复。
+         * 30 秒一顿足够——同一次卡死期间采到的现场本来就一样。
+         */
+        private const val INPUT_DIAG_MIN_GAP_MS = 30_000L
     }
 
     /** 最近一次采集到的帧。 */
@@ -179,23 +189,187 @@ class ShellAutomation {
 
     // ---- 触控 ----
 
-    /** 单击（带按下时长，模拟真实触摸）。 */
+    /**
+     * 最近一次注入失败的原因。
+     *
+     * 以前失败只写一句 `down(53,100) 失败`，看不出是"权限被拒"、
+     * "通道异常"还是"残留手势导致 touchstream 脏了"。这三个的处理方式
+     * 完全不同，所以必须把原因一路记下来。
+     */
+    @Volatile
+    var lastInputFailure: String = ""
+        private set
+
+    /** 连续注入失败次数（供上层判断"通道是不是瘸了"）。 */
+    @Volatile
+    var consecutiveInputFailures: Int = 0
+        private set
+
+    /** 上一次输入现场快照的时间（限流，避免在重试循环里反复 dump）。 */
+    @Volatile
+    private var lastInputDiagAt = 0L
+
+    /**
+     * 单击（带按下时长，模拟真实触摸）。
+     *
+     * ## 失败自愈：先清槽再重试一次
+     *
+     * `InputControlUtils` 用一份 `slots` 记录"系统侧认为还在屏幕上的手指"。
+     * 只要有一次 UP/CANCEL 没送达（异步模式不保证送达），系统侧就会留下
+     * 一根幽灵手指 —— 之后所有 DOWN 都会被 InputDispatcher 判成
+     * "指针状态不一致"而**直接丢弃**，表现就是：画面正常、坐标正确、
+     * 就是点不动，而且不会自己恢复。
+     *
+     * 唯一的解法是注入一次 `ACTION_CANCEL` 把系统侧的手指全部抬掉。
+     * 所以这里失败后固定走一遍：记原因 → CANCEL 清槽 → 重试一次。
+     * 重试成功说明确实是这个原因，日志里也能看出"自愈"痕迹。
+     */
     fun tap(x: Int, y: Int, contact: Int = InputControlUtils.SINGLE_CONTACT, durationMs: Long = 60L): Boolean {
         if (displayId < 0) {
             Ln.w("$TAG: tap 时 displayId 未设置")
             return false
         }
-        val down = runCatching { InputControlUtils.down(x, y, contact, displayId) }.getOrDefault(false)
-        if (!down) {
-            Ln.w("$TAG: down($x,$y) 失败")
+        if (performTap(x, y, contact, durationMs)) {
+            consecutiveInputFailures = 0
+            return true
+        }
+
+        val reason = lastInputFailure
+        val pending = runCatching { InputControlUtils.pendingContacts() }.getOrDefault(-1)
+        Ln.w("$TAG: tap($x,$y) 失败 —— $reason（残留触点=$pending），清槽后重试")
+
+        // 把系统侧的幽灵手指全部 CANCEL 掉
+        runCatching { InputControlUtils.cancel(displayId) }
+        SystemClock.sleep(120)
+
+        if (performTap(x, y, contact, durationMs)) {
+            consecutiveInputFailures = 0
+            Ln.i("$TAG: tap($x,$y) 重试成功 —— 前一次是残留手势，已自愈")
+            return true
+        }
+
+        // ② 最后一招：DOWN 降级成"只等入队，不等消费"
+        //
+        // WAIT_FOR_FINISH 会一直等到目标窗口处理完才返回；游戏主线程在
+        // 转场/加载/GC 时会超时 —— 事件其实送到了，只是没等上。
+        // 这种失败换模式就能过，而"权限被拒/指针状态错乱"换什么都没用，
+        // 正好可以借它区分两类原因。
+        if (performTapQueued(x, y, contact, durationMs)) {
+            consecutiveInputFailures = 0
+            Ln.i("$TAG: tap($x,$y) 降级注入成功 —— 前两次是「等待界面消费」超时，不是权限问题")
+            return true
+        }
+
+        consecutiveInputFailures++
+        Ln.e("$TAG: tap($x,$y) 三种方式均失败 —— $reason（累计 $consecutiveInputFailures 次）")
+        dumpInputDiag(x, y, reason)
+        return false
+    }
+
+    /**
+     * 真正执行一次按下-抬起。异常不再被 `runCatching{}.getOrDefault(false)` 吞掉，
+     * 而是记进 [lastInputFailure]。
+     */
+    private fun performTap(x: Int, y: Int, contact: Int, durationMs: Long): Boolean {
+        val downOk = try {
+            InputControlUtils.down(x, y, contact, displayId)
+        } catch (t: Throwable) {
+            lastInputFailure = "DOWN 抛 ${t.javaClass.simpleName}: ${t.message}"
             return false
         }
-        SystemClock.sleep(durationMs)
-        val up = runCatching { InputControlUtils.up(x, y, contact, displayId) }.getOrDefault(false)
-        if (!up) {
-            Ln.w("$TAG: up($x,$y) 失败")
+        if (!downOk) {
+            lastInputFailure = "DOWN 返回 false（事件未被 InputDispatcher 接受）"
+            return false
         }
-        return up
+
+        SystemClock.sleep(durationMs)
+
+        val upOk = try {
+            InputControlUtils.up(x, y, contact, displayId)
+        } catch (t: Throwable) {
+            lastInputFailure = "UP 抛 ${t.javaClass.simpleName}: ${t.message}"
+            // 手指已经按下去了，抬不起来必须 CANCEL，否则这根手指永远留在系统侧
+            runCatching { InputControlUtils.cancel(displayId) }
+            return false
+        }
+        if (!upOk) {
+            lastInputFailure = "UP 返回 false（手指可能卡在屏幕上了）"
+            runCatching { InputControlUtils.cancel(displayId) }
+            return false
+        }
+        lastInputFailure = ""
+        return true
+    }
+
+    /**
+     * 降级版按下-抬起：DOWN 只等入队（不等界面消费完）。
+     *
+     * 与 [performTap] 的唯一差别是 DOWN 的注入模式。命中说明"游戏当时很忙、
+     * 但通道本身是通的"。
+     */
+    private fun performTapQueued(x: Int, y: Int, contact: Int, durationMs: Long): Boolean {
+        val downOk = try {
+            InputControlUtils.downQueued(x, y, contact, displayId)
+        } catch (t: Throwable) {
+            lastInputFailure = "DOWN(queued) 抛 ${t.javaClass.simpleName}: ${t.message}"
+            return false
+        }
+        if (!downOk) {
+            lastInputFailure = "DOWN(queued) 也被拒绝 —— 通道级问题（权限/displayId/指针状态）"
+            return false
+        }
+
+        SystemClock.sleep(durationMs)
+
+        val upOk = try {
+            InputControlUtils.up(x, y, contact, displayId)
+        } catch (t: Throwable) {
+            lastInputFailure = "UP(queued) 抛 ${t.javaClass.simpleName}: ${t.message}"
+            runCatching { InputControlUtils.cancel(displayId) }
+            return false
+        }
+        if (!upOk) {
+            lastInputFailure = "UP(queued) 返回 false"
+            runCatching { InputControlUtils.cancel(displayId) }
+            return false
+        }
+        lastInputFailure = ""
+        return true
+    }
+
+    /**
+     * 注入失败时采一份现场快照。
+     *
+     * 单靠 engine.log 里的"down 失败"没法区分：
+     * - 权限/通道问题（`injectInputEvent` 直接拒绝）
+     * - 目标窗口不接受输入（虚拟屏的 focused window 换了）
+     * - 输入映射错位（`Viewport` 和窗口 frame 对不上）
+     *
+     * 这三类只有 `dumpsys input` / `dumpsys window` 能看出来，所以借
+     * 现成的 [DiagDumper] 打一份全量快照进日志包。
+     */
+    private fun dumpInputDiag(x: Int, y: Int, reason: String) {
+        val now = SystemClock.uptimeMillis()
+        if (now - lastInputDiagAt < INPUT_DIAG_MIN_GAP_MS) return
+        lastInputDiagAt = now
+
+        Ln.w("$TAG: 采集触控链路现场 —— display=$displayId 帧=${width}x$height 采集就绪=$capturerReady")
+
+        // 焦点窗口：能一句话区分"事件被拒"和"窗口不接受输入"
+        //
+        // 后者在画面上极其迷惑 —— 游戏画面仍然可见、模板照样命中，
+        // 只是所有触摸都被丢弃，过一阵子又会自己好。
+        val focus = runCatching { DiagDumper.currentFocus() }.getOrDefault("")
+        if (focus.isNotEmpty()) {
+            Ln.w("$TAG: 各屏焦点窗口 ——\n$focus")
+        }
+
+        runCatching {
+            DiagDumper.snapshot(
+                "touch-fail",
+                "tap($x,$y) display=$displayId size=${width}x$height reason=$reason",
+            )
+        }.onFailure { Ln.w("$TAG: 现场快照失败: ${it.message}") }
     }
 
     /** 长按。 */
@@ -213,7 +387,13 @@ class ShellAutomation {
             return false
         }
         if (!runCatching { InputControlUtils.down(fromX, fromY, contact, displayId) }.getOrDefault(false)) {
-            return false
+            Ln.w("$TAG: swipe 起点 down($fromX,$fromY) 失败，清槽后重试")
+            runCatching { InputControlUtils.cancel(displayId) }
+            SystemClock.sleep(120)
+            if (!runCatching { InputControlUtils.down(fromX, fromY, contact, displayId) }.getOrDefault(false)) {
+                Ln.e("$TAG: swipe 起点连续两次注入失败")
+                return false
+            }
         }
         val stepDelay = (durationMs / steps).coerceAtLeast(1L)
         for (i in 1..steps) {
@@ -223,7 +403,12 @@ class ShellAutomation {
             runCatching { InputControlUtils.move(x, y, contact, displayId) }
             SystemClock.sleep(stepDelay)
         }
-        return runCatching { InputControlUtils.up(toX, toY, contact, displayId) }.getOrDefault(false)
+        val ok = runCatching { InputControlUtils.up(toX, toY, contact, displayId) }.getOrDefault(false)
+        if (!ok) {
+            Ln.w("$TAG: swipe 终点 up($toX,$toY) 失败，取消手势")
+            runCatching { InputControlUtils.cancel(displayId) }
+        }
+        return ok
     }
 
     /** 按键。 */
@@ -232,6 +417,11 @@ class ShellAutomation {
         val d = runCatching { InputControlUtils.keyDown(keyCode, displayId) }.getOrDefault(false)
         SystemClock.sleep(holdMs)
         val u = runCatching { InputControlUtils.keyUp(keyCode, displayId) }.getOrDefault(false)
+        if (!d || !u) {
+            Ln.w("$TAG: pressKey($keyCode) 注入失败（down=$d up=$u）")
+            // 按键 DOWN 成功 UP 失败时，系统侧会认为这个键一直按着
+            runCatching { InputControlUtils.cancel(displayId) }
+        }
         return d && u
     }
 

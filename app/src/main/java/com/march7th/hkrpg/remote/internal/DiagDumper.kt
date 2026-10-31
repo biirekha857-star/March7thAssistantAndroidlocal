@@ -247,6 +247,32 @@ object DiagDumper {
      * ⚠️ 必须**先读流再 waitFor**：`dumpsys` 输出动辄几百 KB，超过管道缓冲区
      * 就会阻塞子进程，`waitFor` 永久等待 —— 同 `isAppAlive` 踩过的坑。
      */
+    /**
+     * 同步读一次「当前焦点窗口」。
+     *
+     * ## 只用在一个地方：触控注入失败
+     *
+     * 注入返回 false 有两种完全不同的原因：
+     * 1. **事件被拒**（权限 / 指针状态错乱 / displayId 不对）；
+     * 2. **目标窗口不接受输入** —— 虚拟屏里游戏的窗口丢了焦点，
+     *    被别的窗口（系统弹窗、断线重连框、另一个 Activity）顶掉。
+     *
+     * 第 2 种在画面上表现得极其迷惑：游戏画面**仍然可见可识别**，
+     * 只是所有触摸都被丢弃，而且过一阵子自己会好。
+     * 只有 `mCurrentFocus` 能一句话说清楚它。
+     *
+     * 只跑一条带 grep 的 dumpsys（几百毫秒），调用方务必只在失败路径上调。
+     */
+    fun currentFocus(): String = runCatching {
+        exec(
+            // 必须带 displays —— 虚拟屏的 focus 和各 display 的 mDisplayId 绑在一起，
+            // 光看全局 mCurrentFocus 会误判成"游戏不在前台"，而其实只是不在主屏。
+            "dumpsys window displays 2>/dev/null | " +
+                "grep -E 'Display: mDisplayId=|mCurrentFocus|mFocusedApp' | head -20",
+            limit = 8192,
+        ).trim()
+    }.getOrDefault("")
+
     private fun exec(cmd: String, limit: Int = MAX_BYTES_PER_CMD): String {
         val process = ProcessBuilder("sh", "-c", cmd)
             .redirectErrorStream(true)

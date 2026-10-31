@@ -75,6 +75,37 @@ class ScreenNavigator(
         "导航", "教学目录",
     )
 
+    /**
+     * 弹窗 OCR 搜索区（屏幕正中偏上）。
+     *
+     * 崩铁的确认弹窗都居中，宽度约占 40%~50%、高度约 30%，
+     * 这里取一个稍大的包围盒，留出动画过程中的位移余量。
+     */
+    private val POPUP_REGION = NormRect(0.22f, 0.24f, 0.56f, 0.50f)
+
+    /**
+     * 危险弹窗的特征文字。
+     *
+     * 命中任一 ⇒ 这是「要不要退出游戏」的确认框。
+     * ⚠️ 这类框**绝不能点确定**，只能点取消 —— 点错就是游戏进程被关，
+     * 整条任务链报废，而且虚拟屏里的游戏要重新冷启动（几分钟）。
+     */
+    private val EXIT_CONFIRM_KEYWORDS = listOf(
+        "退出游戏", "是否退出", "离开游戏", "确定要退出", "退出当前账号",
+    )
+
+    /** 上一次弹窗探测的时间戳（节流用）。 */
+    private var lastPopupProbeAt = 0L
+
+    /**
+     * 只在大厅出现的文案。
+     *
+     * 用来把「主界面」和「星际和平指南-生存索引」区分开：
+     * 两个界面都可能出现「生存索引」四个字（任务追踪栏 vs 副本列表），
+     * 但大厅一定还挂着跃迁/星琼/开拓等级这些常驻元素。
+     */
+    private val MAIN_ONLY_WORDS = listOf("跃迁", "星琼", "开拓等级", "星轨通票", "专票")
+
     private const val MENU_OPEN_TIMEOUT_MS = 2_000L
 
     /** 菜单轮询间隔。 */
@@ -95,6 +126,45 @@ class ScreenNavigator(
 
         /** 全量记录上限（一次校准通常几十张就够）。 */
         private const val MAX_CAPTURES = 300
+
+        /**
+         * 弹窗探测的节流间隔。
+         *
+         * 弹窗探测要跑一次区域 OCR（100~300ms）。`closeCurrent` 每轮都会问
+         * 一次，紧挨着问两次没有意义，所以设一个下限；取 800ms 与
+         * [SETTLE_MS] 对齐 —— 转场等待时长本身就超过了节流窗口。
+         */
+        private const val POPUP_PROBE_THROTTLE_MS = 800L
+
+        /**
+         * 连续多少次注入失败就判定"触控通道瘸了"。
+         *
+         * 取 3 —— [ShellAutomation.tap] 内部已经重试过两种模式，
+         * 一次 `tap` 失败意味着三种注入方式全被拒；连续 3 次就是 9 次全败，
+         * 已经远超偶发抖动的范围，再重试只是浪费时间。
+         */
+        private const val INPUT_DEAD_THRESHOLD = 3
+    }
+
+    /**
+     * 弹窗探测结果。
+     *
+     * ## 为什么要把「退出确认框」单独列出来
+     *
+     * 手游上 BACK 键在主界面会弹出「是否退出游戏」。这个框一旦出现，
+     * 反而是**一个可靠的位置证据**：只有主界面才会问「要不要退出」。
+     * 所以调用方可以拿 [EXIT_CONFIRM] 当"我已经在主界面了"用，
+     * 比模板判态更硬。
+     */
+    enum class PopupProbe {
+        /** 没有弹窗（或者没认出来）。 */
+        NONE,
+
+        /** 普通弹窗，已点「取消」/「关闭」。 */
+        CANCELED,
+
+        /** 「是否退出游戏」确认框，已点「取消」（游戏没退）。 */
+        EXIT_CONFIRM,
     }
 
     /**
@@ -865,7 +935,21 @@ class ScreenNavigator(
         val all = texts.joinToString("|")
         // 「星际和平指南」是整页标题，必须出现，否则不是这一页
         if (!all.contains("星际和平指南") && !all.contains("每日实训")) {
-            // 生存索引页也可能不显示大标题，用它的特征词兜底
+            // ## 兜底之前先排除主界面
+            //
+            // 生存索引页确实可能不显示大标题，所以留了"靠特征词兜底"这条路。
+            // 但主界面的任务追踪栏上**也会**出现「生存索引」四个字，
+            // 于是这个兜底会把主界面判成生存索引页 ——
+            // 实测日志里就有一次：引擎在主界面上直接去点 (434,172) 的
+            // "子标签"，什么都没有，接着整条链路就乱了。
+            //
+            // 主界面有它自己的独有文案（跃迁 / 星琼 / 开拓等级），
+            // 命中任一条就说明这是大厅，不是指南页。
+            val looksLikeMain = MAIN_ONLY_WORDS.any { all.contains(it) }
+            if (looksLikeMain) {
+                Ln.i("$TAG: 指南判态 —— 出现大厅文案，排除（$all）")
+                return null
+            }
             if (all.contains("生存索引") || all.contains("凝滞虚影") || all.contains("拟造花萼")) {
                 return GuideTab.SURVIVAL
             }
@@ -999,6 +1083,71 @@ class ScreenNavigator(
     }
 
     /**
+     * 探测并关掉居中弹窗（识别 + 点「取消」，只需要一次 OCR）。
+     *
+     * ## 存在的意义：拦住"点确定就退游戏"这一类误操作
+     *
+     * 手机上 BACK 键在主界面会弹出「是否退出游戏」。以前的代码在
+     * `closeCurrent` 里**第一手段就是按 BACK**，一旦判态把主界面漏判成
+     * "还在子界面"，就会连按几下 —— 退出框弹出来后没人处理，
+     * 下一次 BACK 可能直接落到「确定」上，游戏进程被干掉，
+     * 虚拟屏里的游戏得重新冷启动。
+     *
+     * 所以这里把「认弹窗」和「点取消」合成一个动作，任何会按 BACK
+     * 的地方都先过一遍它、按完再过一遍。
+     *
+     * ## 为什么只点「取消」
+     *
+     * 这里的弹窗可能是"补充体力""是否退出游戏""确认放弃挑战"。
+     * 无论哪一种，**取消都是安全方向** —— 关掉弹窗等于回到原状态，
+     * 调用方随后重新判态即可。「确定」则各有各的后果，绝不能由兜底逻辑代按。
+     *
+     * @param label 日志标签，方便在 engine.log 里对齐调用点
+     * @param force true = 跳过节流，立刻探测（BACK 之后必须用 true）
+     */
+    fun dismissPopup(label: String = "弹窗", force: Boolean = false): PopupProbe {
+        val now = SystemClock.uptimeMillis()
+        if (!force && now - lastPopupProbeAt < POPUP_PROBE_THROTTLE_MS) return PopupProbe.NONE
+        lastPopupProbeAt = now
+
+        val texts = withFrameOcrRegion(POPUP_REGION) { mat, region ->
+            OcrEngine.run(mat, region)
+        } ?: return PopupProbe.NONE
+        if (texts.isEmpty()) return PopupProbe.NONE
+
+        val joined = texts.joinToString("|") { it.normalized() }
+        val isExit = EXIT_CONFIRM_KEYWORDS.any { joined.contains(it) }
+
+        // 「取消 / 关闭 / 不了 / 稍后」都算安全出口
+        val cancel = texts.firstOrNull { r ->
+            val t = r.normalized()
+            t == "取消" || t == "关闭" || t.contains("取消")
+        }
+
+        if (isExit) {
+            Ln.w("$TAG: ⚠️ $label —— 出现「是否退出游戏」确认框，必须点取消！识别：$joined")
+        }
+
+        if (cancel == null) {
+            if (isExit) {
+                // 认出了危险框却没找到取消按钮 —— 绝不能按 BACK（可能落到确定上）
+                Ln.e("$TAG: $label —— 危险确认框里没找到「取消」按钮，放弃自动处理。识别：$joined")
+                return PopupProbe.EXIT_CONFIRM
+            }
+            return PopupProbe.NONE
+        }
+
+        // 点之前再确认一次：按钮中心必须落在弹窗区域内，避免误点背景
+        if (!auto.tap(cancel.cx, cancel.cy)) {
+            Ln.w("$TAG: $label —— 点「取消」注入失败（${cancel.cx},${cancel.cy}）")
+            return PopupProbe.NONE
+        }
+        sleepInterruptible(400)
+        Ln.i("$TAG: $label —— 已点「${cancel.text}」@(${cancel.cx},${cancel.cy})")
+        return if (isExit) PopupProbe.EXIT_CONFIRM else PopupProbe.CANCELED
+    }
+
+    /**
      * 关掉当前弹出的界面，回到主界面。
      *
      * 手游没有 ESC，只能点界面自带的 ✕。
@@ -1006,36 +1155,63 @@ class ScreenNavigator(
      * ⚠️ **手机菜单必须走专用坐标**：M7A 的两个通用关闭模板
      * （`zh_CN/base/click_close.png` 0.30、`share/plot/close_phone.png` 0.54）
      * 在手游菜单上都**匹配不到**，只靠它们会一直关不掉。
+     *
+     * ## BACK 的顺序被改过（重要）
+     *
+     * 旧实现把 BACK 放在**第一步**，理由是"邮件页/菜单页的 ✕ 匹配不到"。
+     * 但代价是：判态一旦把主界面漏判，第一下 BACK 就会弹出「是否退出游戏」，
+     * 而且没人处理它。
+     *
+     * 现在改成：
+     * 1. 先点界面自己的 ✕（菜单专用坐标 + 两个通用模板）—— 无副作用；
+     * 2. 都不行才按 BACK；
+     * 3. **BACK 前后各探测一次弹窗**，认出退出框就点取消，
+     *    并且借这个框反证"其实已经在主界面"，直接判定成功。
+     *
+     * 代价是每轮多一两次区域 OCR（各 100~300ms），但这条路本来只在
+     * 收尾/自救时才走，多几百毫秒换"不会误退游戏"是值得的。
      */
     fun closeCurrent(maxAttempts: Int = 4): Boolean {
         if (isAt(Screen.MAIN)) return true
         repeat(maxAttempts) { i ->
-            // ① 先按 BACK —— 最通用的返回方式
-            //    手游上绝大多数面板/子界面都响应系统返回键。
-            //    实测邮件页、菜单页的 ✕ 都匹配不到 M7A 的关闭模板
-            //    （click_close 0.35 / close_phone 0.54），所以 BACK 是主力。
-            Ln.i("$TAG: 尝试 BACK 键返回（第 ${i + 1} 次）")
-            auto.pressKey(android.view.KeyEvent.KEYCODE_BACK)
-            sleepInterruptible(SETTLE_MS)
-            if (isAt(Screen.MAIN)) return true
+            // ⓪ 任何时刻冒出确认框，先点取消再说
+            if (dismissPopup("closeCurrent#${i + 1}") == PopupProbe.EXIT_CONFIRM) {
+                Ln.w("$TAG: 退出确认框出现 ⇒ 反证已在主界面，本轮判定成功")
+                return true
+            }
 
-            // ② 手机菜单 → 点它自己的右上角 ✕
+            // ① 手机菜单 → 点它自己的右上角 ✕
             if (isAt(Screen.MENU)) {
                 Ln.i("$TAG: 在手机菜单，点右上角 ✕ 关闭")
                 clickCrop(Hotspot.MENU_CLOSE, "菜单关闭")
                 sleepInterruptible(SETTLE_MS)
                 if (isAt(Screen.MAIN)) return true
             }
-            // ③ 通用 ✕（多数弹窗/子界面右上角）
+            // ② 通用 ✕（多数弹窗/子界面右上角）
             if (clickImage("zh_CN/base/click_close.png", 0.80, maxRetries = 1)) {
                 sleepInterruptible(SETTLE_MS)
                 if (isAt(Screen.MAIN)) return true
             }
-            // ④ 手机界面的 ✕（M7A 模板，手游上不一定命中，作为兜底）
+            // ③ 手机界面的 ✕（M7A 模板，手游上不一定命中，作为兜底）
             if (clickImage("share/plot/close_phone.png", 0.80, maxRetries = 1)) {
                 sleepInterruptible(SETTLE_MS)
                 if (isAt(Screen.MAIN)) return true
             }
+
+            // ④ 前三步都无效，才动用 BACK
+            //
+            //    邮件页这类界面确实只有 BACK 能退，所以不能删掉它，
+            //    只能把它降级成最后手段。
+            Ln.i("$TAG: 未见可点的 ✕，尝试 BACK 键返回（第 ${i + 1} 次）")
+            auto.pressKey(android.view.KeyEvent.KEYCODE_BACK)
+            sleepInterruptible(SETTLE_MS)
+
+            // ⑤ BACK 之后**立刻**查退出框 —— 这是唯一能拦住"误退游戏"的位置
+            if (dismissPopup("closeCurrent-back#${i + 1}", force = true) == PopupProbe.EXIT_CONFIRM) {
+                Ln.w("$TAG: BACK 触发了退出确认框，已点取消 —— 说明本来就在主界面，结束")
+                return true
+            }
+            if (isAt(Screen.MAIN)) return true
             trace("close_attempt${i + 1}")
         }
         return isAt(Screen.MAIN)
@@ -1216,7 +1392,15 @@ class ScreenNavigator(
                     ((iconHit.y + iconHit.templateHeight * iconHit.scale / 2) / sf).toInt()
             }
             Ln.i("$TAG: 手机图标命中 ${"%.3f".format(iconHit.score)} -> ($ix,$iy)")
-            auto.tap(ix, iy)
+            if (!auto.tap(ix, iy)) {
+                // ⚠️ 注入失败 ≠ 菜单没打开，这两件事必须分开报
+                //
+                // 旧代码忽略了 tap 的返回值，于是"事件根本没发出去"
+                // 也被写成"点了手机图标但未进入菜单"，日志读起来像是
+                // 识别问题或游戏卡顿，实际是输入通道的问题。
+                Ln.e("$TAG: 手机图标注入失败 —— ${auto.lastInputFailure}")
+                return false
+            }
         } else if (!clickImage(Screen.MAIN.marker, ELEMENT_THRESHOLD, maxRetries = 1)) {
             Ln.w("$TAG: 手机图标未找到，放弃（不盲点，避免误触菜单里的按钮）")
             return false
@@ -1251,7 +1435,36 @@ class ScreenNavigator(
             }
             sleepInterruptible(MENU_POLL_MS)
         }
-        Ln.w("$TAG: 点了手机图标但未进入菜单")
+
+        // ## 注入成功但菜单没出现 —— 先怀疑"有东西在吃输入"
+        //
+        // 这时的事件确实送达了（tap 返回 true），但界面毫无反应。
+        // 常见原因是有一层看不见的模态在拦：断线重连框、资源更新提示、
+        // 系统弹窗。它们在画面上未必明显，主界面在它下面仍然可见、可识别，
+        // 于是引擎会一次又一次地"点手机图标但未进入菜单"。
+        //
+        // 处理办法：探一次居中弹窗，命中就点「取消」把它掀掉，再点一次图标。
+        // 只重试一次 —— 连续失败说明不是遮罩问题，早点返回让上层重试整条链路。
+        Ln.w("$TAG: 点了手机图标但未进入菜单，检查是否有遮挡弹窗")
+        if (dismissPopup("openPhoneMenu", force = true) != PopupProbe.NONE) {
+            Ln.i("$TAG: 掀掉了一个遮挡弹窗，重试打开菜单")
+            val again = findInRegion(Screen.MAIN.marker, ELEMENT_THRESHOLD, CROP_MENU_ICON)
+            if (again != null) {
+                val sf = ImageUtils.BASE_HEIGHT.toDouble() / auto.height
+                val ax = ((again.x + again.templateWidth * again.scale / 2) / sf).toInt()
+                val ay = ((again.y + again.templateHeight * again.scale / 2) / sf).toInt()
+                auto.tap(ax, ay)
+                val retryDeadline = SystemClock.uptimeMillis() + MENU_OPEN_TIMEOUT_MS
+                while (SystemClock.uptimeMillis() < retryDeadline) {
+                    if (isAt(Screen.MENU)) {
+                        Ln.i("$TAG: 掀掉遮罩后菜单打开了")
+                        sleepInterruptible(MENU_SETTLE_MS)
+                        return true
+                    }
+                    sleepInterruptible(MENU_POLL_MS)
+                }
+            }
+        }
         return false
     }
 
@@ -1726,6 +1939,18 @@ class ScreenNavigator(
         }
 
         repeat(3) { i ->
+            // 熔断：触控通道已经确认瘸了就别再空转
+            //
+            // 输入注入连续失败说明问题不在界面识别上，重试只会在原地
+            // 耗掉几分钟（日志里那次整整卡了 7 分钟才报错）。
+            // 早点返回 false，让上层把准确原因交给用户。
+            if (auto.consecutiveInputFailures >= INPUT_DEAD_THRESHOLD) {
+                Ln.e(
+                    "$TAG: 触控通道连续 ${auto.consecutiveInputFailures} 次注入失败" +
+                        "（${auto.lastInputFailure}），放弃导航 —— 重试无意义，先排查输入链路",
+                )
+                return false
+            }
             if (!openPhoneMenu()) {
                 Ln.w("$TAG: 打开手机菜单失败（第 ${i + 1} 次）")
                 return false
@@ -1762,7 +1987,13 @@ class ScreenNavigator(
                 return false
             }
         }
-        Ln.w("$TAG: 导航到生存索引失败（3 轮）")
+        // 把"点不出去"和"点了没反应"分开报 —— 这两种失败的上层处置完全不同
+        val verdict = if (auto.lastInputFailure.isNotEmpty()) {
+            "注入失败：${auto.lastInputFailure}"
+        } else {
+            "注入均成功，界面无响应（疑似被遮挡窗口吞掉输入）"
+        }
+        Ln.w("$TAG: 导航到生存索引失败（3 轮）—— $verdict；连续注入失败 ${auto.consecutiveInputFailures} 次")
         return false
     }
 

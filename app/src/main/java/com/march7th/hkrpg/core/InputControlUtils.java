@@ -146,6 +146,14 @@ public final class InputControlUtils {
     }
 
     private static boolean injectStep(TouchPointerSequence.Step step, int displayId) {
+        return injectStep(step, displayId, -1);
+    }
+
+    /**
+     * @param forcedMode 强制指定注入模式；-1 = 按动作类型自动选
+     *                   （DOWN 用 WAIT_FOR_FINISH，其余 ASYNC）
+     */
+    private static boolean injectStep(TouchPointerSequence.Step step, int displayId, int forcedMode) {
         if (!step.getOk()) {
             return false;
         }
@@ -168,26 +176,59 @@ public final class InputControlUtils {
                 : masked == TouchPointerSequence.ACTION_POINTER_UP ? without(pointers, index) : pointers;
 
         // DOWN 必须 WAIT_FOR_FINISH，确保起始状态被系统接收
+        int mode = forcedMode >= 0 ? forcedMode
+                : (isDown ? InputManager.INJECT_INPUT_EVENT_MODE_WAIT_FOR_FINISH
+                        : InputManager.INJECT_INPUT_EVENT_MODE_ASYNC);
         boolean ok = inject(
                 obtainEvent(pointers, now, encodeAction(masked, index), isUp ? index : -1),
                 displayId,
-                isDown ? InputManager.INJECT_INPUT_EVENT_MODE_WAIT_FOR_FINISH
-                        : InputManager.INJECT_INPUT_EVENT_MODE_ASYNC,
+                mode,
                 index);
         // 未送达则槽位不动；之后同 contact 再按下会先整体 CANCEL 自愈
         if (ok) {
             slots = next;
+        } else {
+            Ln.w(TAG + ": 注入失败 action=" + Integer.toHexString(masked)
+                    + " x=" + (pointers.isEmpty() ? -1 : pointers.get(0).getX())
+                    + " y=" + (pointers.isEmpty() ? -1 : pointers.get(0).getY())
+                    + " displayId=" + displayId
+                    + " mode=" + mode
+                    + " pending=" + slots.size());
         }
         return ok;
     }
 
     private static synchronized boolean apply(TouchPointerSequence.Kind kind, int x, int y, int contact,
                                               int displayId) {
-        return injectStep(TouchPointerSequence.INSTANCE.plan(kind, slots, contact, x, y), displayId);
+        return apply(kind, x, y, contact, displayId, -1);
+    }
+
+    private static synchronized boolean apply(TouchPointerSequence.Kind kind, int x, int y, int contact,
+                                              int displayId, int forcedMode) {
+        return injectStep(TouchPointerSequence.INSTANCE.plan(kind, slots, contact, x, y), displayId, forcedMode);
     }
 
     public static boolean down(int x, int y, int contact, int displayId) {
         return apply(TouchPointerSequence.Kind.Down, x, y, contact, displayId);
+    }
+
+    /**
+     * DOWN 的降级版本：只等事件**入队**，不等目标界面消费完。
+     *
+     * ## 为什么需要它
+     *
+     * [InputManager.INJECT_INPUT_EVENT_MODE_WAIT_FOR_FINISH] 会一直等到
+     * 目标窗口把事件**处理完**才返回。如果游戏主线程这一刻正忙
+     * （转场、加载、GC），等待就会超时并返回 false ——
+     * 但事件其实已经送达了。
+     *
+     * 这种"其实是送达到了、只是没等上"的失败，和"权限被拒 / 指针状态错乱"
+     * 完全是两回事。前者换个模式就能成，后者换什么都没用。
+     * 所以正常 DOWN 失败后用它再试一次，既能自愈，也能在日志里区分两类原因。
+     */
+    public static boolean downQueued(int x, int y, int contact, int displayId) {
+        return apply(TouchPointerSequence.Kind.Down, x, y, contact, displayId,
+                InputManager.INJECT_INPUT_EVENT_MODE_WAIT_FOR_RESULT);
     }
 
     public static boolean move(int x, int y, int contact, int displayId) {
@@ -203,6 +244,18 @@ public final class InputControlUtils {
      */
     public static synchronized void cancel(int displayId) {
         cancelGesture(displayId);
+    }
+
+    /**
+     * 当前**系统侧仍认为按着**的手指数量。
+     *
+     * 只读诊断用。这个值本该在每次 tap 结束后回到 0；
+     * 如果它长期大于 0，就说明有 UP/CANCEL 没送达 ——
+     * 此时 InputDispatcher 会判定指针状态不一致，**后续所有 DOWN 都被丢弃**，
+     * 外在表现就是"画面正常、坐标正确、就是点不动"。
+     */
+    public static int pendingContacts() {
+        return slots.size();
     }
 
     public static boolean keyDown(int keyCode, int displayId) {

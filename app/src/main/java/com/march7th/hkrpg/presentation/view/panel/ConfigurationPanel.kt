@@ -18,9 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
@@ -283,10 +281,19 @@ private fun PowerConfigPanel(
     }
 
     Column(
+        // ⚠️ 这里不能再套 verticalScroll / fillMaxSize
+        //
+        // 这个面板现在挂在「任务卡片」的展开区里，而卡片本身在
+        // ReorderableColumn（可滚动的 Column）中测量 —— 子项拿到的是
+        // 无限最大高度。内层再加一个竖向滚动容器会抛：
+        //   IllegalStateException: Vertically scrollable component was
+        //   measured with an infinity maximum height constraints
+        // 实测表现就是「一进主界面 / 展开卡片直接闪退」。
+        //
+        // 高度交给内容自然撑开，滚动交给外层列表。
         modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
+            .fillMaxWidth()
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         // ---- 顶部提示：当前版本的能力边界 ----
@@ -496,10 +503,19 @@ private fun DailyConfigPanel(
     }
 
     Column(
+        // ⚠️ 这里不能再套 verticalScroll / fillMaxSize
+        //
+        // 这个面板现在挂在「任务卡片」的展开区里，而卡片本身在
+        // ReorderableColumn（可滚动的 Column）中测量 —— 子项拿到的是
+        // 无限最大高度。内层再加一个竖向滚动容器会抛：
+        //   IllegalStateException: Vertically scrollable component was
+        //   measured with an infinity maximum height constraints
+        // 实测表现就是「一进主界面 / 展开卡片直接闪退」。
+        //
+        // 高度交给内容自然撑开，滚动交给外层列表。
         modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
+            .fillMaxWidth()
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Surface(
@@ -736,10 +752,19 @@ private fun StartUpConfigPanel(
     onConfigChange: (TaskParamProvider) -> Unit,
 ) {
     Column(
+        // ⚠️ 这里不能再套 verticalScroll / fillMaxSize
+        //
+        // 这个面板现在挂在「任务卡片」的展开区里，而卡片本身在
+        // ReorderableColumn（可滚动的 Column）中测量 —— 子项拿到的是
+        // 无限最大高度。内层再加一个竖向滚动容器会抛：
+        //   IllegalStateException: Vertically scrollable component was
+        //   measured with an infinity maximum height constraints
+        // 实测表现就是「一进主界面 / 展开卡片直接闪退」。
+        //
+        // 高度交给内容自然撑开，滚动交给外层列表。
         modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-            .verticalScroll(rememberScrollState()),
+            .fillMaxWidth()
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Surface(
