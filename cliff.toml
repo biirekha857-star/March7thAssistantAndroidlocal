@@ -4,7 +4,7 @@ header = """
 """
 body = """
 {%- macro remote_url() -%}
-  https://github.com/Aliothmoon/MAA-Meow
+  https://github.com/biirekha857-star/March7thAssistantAndroidlocal
 {%- endmacro -%}
 {#- 主作者 GitHub 用户名；无 remote 时退回 git author 名 -#}
 {%- macro primary_author(commit) -%}
@@ -78,5 +78,5 @@ sort_commits = "newest"
 # 启用 GitHub remote 解析 commit → GitHub username（供 @ 引用）
 # CI 需提供 GITHUB_TOKEN；本地可用 `gh auth token` / 环境变量
 [remote.github]
-owner = "Aliothmoon"
-repo = "MAA-Meow"
+owner = "biirekha857-star"
+repo = "March7thAssistantAndroidlocal"
