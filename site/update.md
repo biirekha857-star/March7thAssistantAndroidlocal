@@ -1,18 +1,24 @@
 ---
-versionCode: 8
-versionName: 0.5.7beta
-apkUrl: https://github.com/biirekha857-star/March7thAssistantAndroidlocal/releases/download/v0.5.7beta/March7thAssistant-0.5.7beta.apk
+versionCode: 9
+versionName: 0.6.0beta
+apkUrl: https://github.com/biirekha857-star/March7thAssistantAndroidlocal/releases/download/v0.6.0beta/March7thAssistant-0.6.0beta.apk
 forceUpdate: false
 minSupportedVersionCode: 1
-publishedAt: 2026-10-31
+publishedAt: 2026-11-01
 ---
 
-**界面重构**：首页与任务页合并，底部导航精简为 首页 / 定时 / 设置；任务改为卡片流，点开就地调参；日志改为时间线；设置改为分类式
+**兑换码**：新增「兑换码」任务，一键批量兑换站点上的码，分组展示、限时倒计时、可加自定义码
 
-- 移除无障碍服务，运行态改用「边框 + 悬浮球」
-- 新增触控自愈：注入失败自动清理残留手势并降级重试
-- 新增退出确认兜底：按过返回键后自动检测「是否退出游戏」并点取消
-- 修复进入主界面必然崩溃的问题
-- 修复每日首次上线领不到列车补给（月卡）的问题
-- 修复清体力点击无效、导航到生存索引失败的问题
-- 修复指南页误判，以及失败时副本名显示为空
+- 兑换码清单不再写死在 APK 里，改从站点 `codes.md` 拉取，站点加码后下次执行自动生效
+- 流程：识别大厅头像 → 手机 → 「…」→ 兑换码；写剪贴板后点粘贴，自动处理游戏的「请求从剪切板粘贴」提示
+- 无效 / 已使用的码自动跳过并记录，同一个码不会重复输入；限时码过期后客户端自动忽略
+
+**日志瘦身**：调试截图由 PNG 改为 JPEG，单次任务最多保留最近 60 帧，导出上限 80 张
+
+- 之前一轮任务能写出 300 MB 以上的日志包，现在通常只有几十 MB
+
+**修复**
+
+- 修复任务参数拼装少一个右括号，导致兑换码清单读不到、任务直接跳过的问题
+- 修复关闭界面时返回键点击位置偏移，部分机型关不掉弹窗
+- 关闭界面、打开手机菜单不再固定等待，命中特征就继续，整轮任务更快
