@@ -33,11 +33,12 @@ val gitVersionCode: Int by lazy {
     //   5  → 0.5.0beta   每日实训 + 全部副本导航可用
     //   6  → 0.5.5beta   云游戏启动 + 长屏采集修复 + 公告弹窗
     //   7  → 0.5.6beta   画面异常自愈提醒 + 首页/引导/主题文案调整
-    7
+    //   8  → 0.5.7beta   界面重构（首页合并/卡片流/时间线/设置分类）+ 应用内更新提示
+    8
 }
 
 val gitVersionName: String by lazy {
-    "0.5.6beta"
+    "0.5.7beta"
 }
 
 // 本机默认只编 arm64、关 LTO；CI=true 保持双 ABI + LTO
