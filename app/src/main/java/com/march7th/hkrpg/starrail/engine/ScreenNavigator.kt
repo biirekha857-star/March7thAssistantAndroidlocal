@@ -86,6 +86,26 @@ class ScreenNavigator(
     /** 等大厅时重新判态的间隔。 */
     private const val MAIN_POLL_MS = 120L
 
+    /**
+     * 按完 BACK 后、探测退出确认框前的等待。
+     *
+     * 退出框是带淡入动画的居中对话框（约 250~300ms 才画完）。按完立刻截图
+     * 很容易抓到「背景已压暗、按钮还没出来」的中间帧，OCR 结果为空 →
+     * 判定"没有弹窗" → 下一轮 BACK 落到「确定」上，游戏进程直接没了。
+     *
+     * 这个等待只在 BACK 这条路上付出，而 BACK 是收尾手段，频率不高。
+     */
+    private const val BACK_POPUP_GRACE_MS = 350L
+
+    /**
+     * 一次 `closeCurrent` 里最多按几次 BACK。
+     *
+     * 正常子界面一下就能退掉；连着两下还回不到大厅，说明画面并不是
+     * "普通子界面"（多半已经是主界面，只是模板没认出来）。这时候继续按
+     * 只会把「是否退出游戏」叠上来，越按越接近「确定」。
+     */
+    private const val MAX_BACK_PRESSES = 2
+
     /** 菜单网格里的关键词，命中 2 个即判定在菜单。 */
     private val MENU_KEYWORDS = listOf(
         "商店", "好友", "委托", "旅情事记", "合成", "成就",
@@ -1111,8 +1131,13 @@ class ScreenNavigator(
      * 下一次 BACK 可能直接落到「确定」上，游戏进程被干掉，
      * 虚拟屏里的游戏得重新冷启动。
      *
-     * 所以这里把「认弹窗」和「点取消」合成一个动作，任何会按 BACK
-     * 的地方都先过一遍它、按完再过一遍。
+     * 所以这里把「认弹窗」和「点取消」合成一个动作，**按完 BACK 立刻过一遍**。
+     *
+     * ## 只在 BACK 之后调用（性能）
+     *
+     * 退出框只可能由 BACK 触发，不会自己冒出来，所以调用点一律放在
+     * 「刚按过 BACK」的位置。之前 `closeCurrent` 每轮开头也探一次，
+     * 等于每关一个界面白付 100~300ms 的 OCR，已经去掉了。
      *
      * ## 为什么只点「取消」
      *
@@ -1183,34 +1208,21 @@ class ScreenNavigator(
      * 现在改成：
      * 1. 先点界面自己的 ✕（菜单专用坐标 + 两个通用模板）—— 无副作用；
      * 2. 都不行才按 BACK；
-     * 3. **BACK 前后各探测一次弹窗**，认出退出框就点取消，
-     *    并且借这个框反证"其实已经在主界面"，直接判定成功。
+     * 3. **只在 BACK 之后**探测一次弹窗，认出退出框就点取消，
+     *    并且借这个框反证「其实已经在主界面」，直接判定成功。
      *
-     * 代价是每轮多一两次区域 OCR（各 100~300ms），但这条路本来只在
-     * 收尾/自救时才走，多几百毫秒换"不会误退游戏"是值得的。
-     */
-    /**
-     * 关掉当前弹出的界面，回到主界面。
+     * ## 为什么弹窗只在 BACK 之后探
      *
-     * 手游没有 ESC，只能点界面自带的 ✕。
+     * 退出框**只可能由 BACK 触发**（游戏内没有别的入口会用系统返回键），
+     * 而 BACK 只在本函数第 ③ 步发出、第 ④ 步紧接着就探。
+     * 所以每轮开头再探一次纯属重复：多一次区域 OCR（100~300ms），
+     * 换来的信息第 ④ 步已经拿过了。
      *
-     * ⚠️ **手机菜单必须走专用坐标**：M7A 的两个通用关闭模板
-     * （`zh_CN/base/click_close.png` 0.30、`share/plot/close_phone.png` 0.54）
-     * 在手游菜单上都**匹配不到**，只靠它们会一直关不掉。
+     * 唯一被省掉的是「进入函数时画面已经停在确认框上」这一种情形 ——
+     * 它只可能由 `PowerTask.closePopup` 或上一次 BACK 留下，而这两处
+     * 都自己会探、会点取消，不会把退出框遗留给这里。
      *
-     * ## BACK 的顺序被改过（重要）
-     *
-     * 旧实现把 BACK 放在**第一步**，理由是"邮件页/菜单页的 ✕ 匹配不到"。
-     * 但代价是：判态一旦把主界面漏判，第一下 BACK 就会弹出「是否退出游戏」，
-     * 而且没人处理它。
-     *
-     * 现在改成：
-     * 1. 先点界面自己的 ✕（菜单专用坐标 + 通用模板）—— 无副作用；
-     * 2. 都不行才按 BACK；
-     * 3. **BACK 前后各探测一次弹窗**，认出退出框就点取消，
-     *    并且借这个框反证"其实已经在主界面"，直接判定成功。
-     *
-     * ## 性能（0.5.7 之后重做过一次）
+     * ## 性能（0.5.8 之后重做过一次）
      *
      * 上一版把 BACK 挪到后面时，顺手让每一步都踩满了固定等待，实测一次
      * 关闭要 2~3 秒，一套日常要关十几个界面，白白多花二三十秒。
@@ -1219,7 +1231,8 @@ class ScreenNavigator(
      * | 步骤 | 旧 | 新 |
      * |---|---|---|
      * | 判是不是菜单 | 模板 + 区域 OCR（~1s） | **只查模板**（几十毫秒） |
-     * | 找 ✕ | 全屏多尺度匹配 ×2（几百 ms） | 右上角小块 ×2（几十毫秒） |
+     * | 找 ✕ | 全屏多尺度匹配 ×2（几百 ms） | 第 1 轮只扫右上角，**下一轮才退全屏** |
+     * | 弹窗探测 | 每轮开头 + BACK 之后 | **只在 BACK 之后** |
      * | 等画面回大厅 | 固定 sleep 800ms | **120ms 轮询，命中即返回** |
      *
      * 菜单那个 OCR 判态放在这里几乎没有收益：万一模板漏判，后面按 BACK
@@ -1228,14 +1241,9 @@ class ScreenNavigator(
     fun closeCurrent(maxAttempts: Int = 4): Boolean {
         if (isAt(Screen.MAIN)) return true
         val startedAt = SystemClock.uptimeMillis()
+        var backPresses = 0
 
         repeat(maxAttempts) { i ->
-            // ⓪ 任何时刻冒出确认框，先点取消再说
-            if (dismissPopup("closeCurrent#${i + 1}") == PopupProbe.EXIT_CONFIRM) {
-                Ln.w("$TAG: 退出确认框出现 ⇒ 反证已在主界面，本轮判定成功")
-                return true
-            }
-
             // ① 手机菜单 → 点它自己的右上角 ✕
             //
             // 这里只看电源键模板（几十毫秒）。真在菜单里就一定命中；
@@ -1246,20 +1254,40 @@ class ScreenNavigator(
                 if (awaitMain(SETTLE_MS)) return true
             }
 
-            // ② 右上角的通用 ✕ —— 只扫那一小块
-            if (clickCloseInCorner()) {
+            // ② 通用 ✕
+            //
+            // 第 1 轮只扫右上角那一小块（几十毫秒），**没关掉才退全屏**。
+            // 游戏里绝大多数界面的 ✕ 都在右上角，但也有少数页面把它放在
+            // 别处（活动页、结算页），只查角落会漏 —— 所以第二轮起回到
+            // 老做法：整帧多尺度匹配。
+            if (clickCloseButton(fullScreen = i > 0)) {
                 if (awaitMain(SETTLE_MS)) return true
             }
 
-            // ③ 前三步都无效，才动用 BACK
+            // ③ 前两步都无效，才动用 BACK
             //
             //    邮件页这类界面确实只有 BACK 能退，所以不能删掉它，
             //    只能把它降级成最后手段。
-            Ln.i("$TAG: 未见可点的 ✕，尝试 BACK 键返回（第 ${i + 1} 次）")
+            //
+            //    ⚠️ 但 BACK 有次数上限：正常的子界面一下就能退掉，连着按
+            //    两次还回不去，说明画面不是"普通子界面"（很可能已经是主界面，
+            //    只是模板没认出来）。继续按只会把「是否退出游戏」叠上来，
+            //    第四次一定落在「确定」附近。宁可认输返回 false，让上层重试整条链路。
+            if (backPresses >= MAX_BACK_PRESSES) {
+                Ln.w("$TAG: 已按过 $backPresses 次 BACK 仍未回大厅，停止继续按（防止误退游戏）")
+                return isAt(Screen.MAIN)
+            }
+            backPresses++
+            Ln.i("$TAG: 未见可点的 ✕，尝试 BACK 键返回（第 $backPresses 次）")
             auto.pressKey(android.view.KeyEvent.KEYCODE_BACK)
 
             // ④ BACK 之后**立刻**查退出框 —— 这是唯一能拦住"误退游戏"的位置
-            if (dismissPopup("closeCurrent-back#${i + 1}", force = true) == PopupProbe.EXIT_CONFIRM) {
+            //
+            //    先等一小段：退出框是带淡入动画的居中对话框，按完就截图很容易
+            //    抓到"背景已压暗、按钮还没画出来"的中间帧，OCR 空空如也，
+            //    于是被当成"没有弹窗"，下一轮 BACK 就可能落到「确定」上。
+            SystemClock.sleep(BACK_POPUP_GRACE_MS)
+            if (dismissPopup("closeCurrent-back#$backPresses", force = true) == PopupProbe.EXIT_CONFIRM) {
                 Ln.w("$TAG: BACK 触发了退出确认框，已点取消 —— 说明本来就在主界面，结束")
                 return true
             }
@@ -1302,18 +1330,29 @@ class ScreenNavigator(
     }
 
     /**
-     * 只在**右上角**找关闭按钮并点它。
+     * 找关闭按钮（✕）并点它。
      *
-     * 返回 false 有两种情况：两个模板都没命中；或者命中了但注入失败
+     * @param fullScreen false = 只扫右上角 [CROP_CLOSE_CORNER]（几十毫秒）；
+     *   true = 整帧多尺度匹配（几百毫秒，就是 0.5.6 及以前的 `clickImage` 做法）。
+     *
+     * 为什么要有两档：游戏里绝大多数界面的 ✕ 确实在右上角，限制区域能把
+     * 一次查找从几百毫秒压到几十毫秒；但活动页、结算页这类页面会把按钮放在
+     * 别处，只查角落必然漏 —— 所以 [closeCurrent] 第一轮用快档、没关掉就退全屏。
+     *
+     * 返回 false 有三种情况：两个模板都没命中；命中了但注入失败
      * （这种情况 [ShellAutomation.tap] 自己已经自愈过一次并打了日志）。
      */
-    private fun clickCloseInCorner(): Boolean {
+    private fun clickCloseButton(fullScreen: Boolean): Boolean {
         val sf = ImageUtils.BASE_HEIGHT.toDouble() / auto.height
+        val region = if (fullScreen) null else CROP_CLOSE_CORNER
         for (tpl in CLOSE_TEMPLATES) {
-            val hit = findInRegion(tpl, 0.80, CROP_CLOSE_CORNER) ?: continue
+            val hit = findInRegion(tpl, 0.80, region) ?: continue
             val cx = ((hit.x + hit.templateWidth * hit.scale / 2) / sf).toInt()
             val cy = ((hit.y + hit.templateHeight * hit.scale / 2) / sf).toInt()
-            Ln.i("$TAG: 命中关闭按钮 $tpl (${"%.3f".format(hit.score)}) -> ($cx,$cy)")
+            Ln.i(
+                "$TAG: 命中关闭按钮 $tpl (${"%.3f".format(hit.score)}" +
+                    (if (fullScreen) "，全屏" else "，右上角") + ") -> ($cx,$cy)",
+            )
             return auto.tap(cx, cy)
         }
         return false

@@ -449,7 +449,10 @@ internal class DailyTask(
         if (nav.isAt(ScreenNavigator.Screen.MAIN)) {
             return true
         }
-        repeat(3) { i ->
+        // closeCurrent 内部已经有 4 轮尝试（✕ 与 BACK 两种手段都覆盖），
+        // 外层再叠 3 次等于 12 轮、BACK 次数还会被放大 —— 只补一次，
+        // 应付"第一次碰上转场没结束"这类偶发情况就够了。
+        repeat(2) { i ->
             if (nav.closeCurrent()) {
                 Ln.i("$TAG: 已回大厅（第 ${i + 1} 次尝试）")
                 return true
