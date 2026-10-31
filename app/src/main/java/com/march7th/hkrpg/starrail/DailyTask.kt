@@ -288,42 +288,15 @@ internal class DailyTask(
     /**
      * 执行每日实训。
      *
-     * ## 完整流程（对齐原项目 `daily.py:220-316`）
-     *
-     * ```
-     * ① 打开每日实训页
-     * ② **扫描任务列表** —— 滑动前扫一次，滑动后扫一次，合并去重
-     * ③ 把**已完成**的任务分数加起来 → 得到"白拿"的分数
-     * ④ 按优先级遍历任务表：
-     *      分数 ≥ 500 → 停
-     *      该任务不在今天的列表里 → 跳过
-     *      该任务已完成          → 跳过
-     *      能主动做              → 去做，成功就加分
-     *      只检测不能做          → 跳过
-     * ⑤ 领奖 + 领里程碑
-     * ```
-     *
-     * ## 为什么必须扫描而不是全做一遍
-     *
-     * 崩铁**每个号每天的实训任务是不同的**（从大池子里随机抽 5 个）。
-     *
-     * 不扫描的话：
-     * - 今天没有「拍照」任务，却去拍了一张 —— 白操作
-     * - 今天没有副本任务，却去刷了副本 —— 白花体力
-     * - 已经 500 分了还在继续做 —— 纯浪费
-     */
-    /**
-     * 执行每日实训。
-     *
      * # 流程（用户勾选式，不做任务识别）
      *
      * ```
-     * ① 进每日实训页，确认页面可用
+     * ① 确认在大厅（不做任何扫描）
      * ② 按固定顺序执行勾选的子项：
      *      委托 → 拍照 → 万能合成机 → 秘技 → [刷副本]
      *    **每项做完都回大厅确认**，避免上一个动作把界面带歪后
      *    下一个动作直接失败
-     * ③ 最后回实训页：领取活跃度奖励 + 领里程碑
+     * ③ 最后才进一次每日实训页：领取活跃度奖励 + 领里程碑
      * ```
      *
      * # 为什么不自动识别任务列表
@@ -331,6 +304,13 @@ internal class DailyTask(
      * 早期版本想 OCR 扫描卡片、算分补齐到 500，但手游下极不可靠
      * （OCR 拆字跨卡片、「宇宙」认成「字画」、布局随文字长度浮动）。
      * 现在把「今天做哪几项」交给用户勾选，程序只负责**可靠地执行**。
+     *
+     * # 为什么不在开头先打开每日实训页
+     *
+     * 勾选项一旦确定，"今天做什么"就已经有答案了，再进手册扫一遍纯属
+     * 多走一趟 —— 进页、截图、OCR、再退出来，一项任务还没做就先花掉
+     * 十几秒，中途任何一次误判还会把后面动作的起点带偏。
+     * 所以手册只在**最后领奖**时进一次。
      *
      * # 为什么每项之间要回大厅
      *
@@ -341,15 +321,15 @@ internal class DailyTask(
      * 后续所有点击都会落在错误的位置上。
      */
     fun run(): Result {
-        // ① 进每日实训页（既能确认导航通，也顺便看看当前活跃度）
-        if (!openDailyPage()) {
-            return Result(false, "打不开每日实训页面")
+        // ① 确认起点在大厅。
+        //
+        // 这里只做一次「是不是大厅」的判断，**不进每日实训页**：
+        // 进页扫一遍再退出来既费时又容易把起点带偏。
+        if (!nav.isAt(ScreenNavigator.Screen.MAIN)) {
+            note("开始前先回大厅")
+            returnToMain()
         }
-        val startScore = readActivityScore()
-        note("当前活跃度 = ${startScore ?: "未读到"}/500")
 
-        // 如果有未领取的奖励，先记一下（但**不在这里领**，
-        // 因为领了之后分数不会涨，做完任务还得再领一次）
         val doneActions = mutableListOf<String>()
         val failedActions = mutableListOf<String>()
 
@@ -404,8 +384,9 @@ internal class DailyTask(
             returnToMain()
         }
 
-        // ③ 最后领奖
+        // ③ 最后才进每日实训页领奖（整套流程里唯一一次进手册）
         var claimed = 0
+        var finalScore: Int? = null
         if (params.doClaim) {
             note("—— 领取活跃度奖励 ——")
             if (openDailyPage()) {
@@ -413,12 +394,14 @@ internal class DailyTask(
                 // 里程碑也一起收
                 val milestone = claimMilestones()
                 if (milestone > 0) note("领取 $milestone 个活跃度里程碑奖励")
+                // 领完顺手记一下活跃度（此时页面还开着，读一次最准）
+                finalScore = readActivityScore()
+                note("活跃度 = ${finalScore ?: "未读到"}/500")
             } else {
                 note("回不到每日实训页，领奖跳过")
             }
         }
 
-        val finalScore = readActivityScore()
         val actionText = buildString {
             if (doneActions.isEmpty()) {
                 append("没有执行任何项")
@@ -437,12 +420,12 @@ internal class DailyTask(
         } else {
             "领取 $claimed 个奖励"
         }
+        val scoreText = if (finalScore != null) "活跃度 $finalScore/500" else "活跃度未读取"
 
         return Result(
             // 只有一项都没成功才算失败；部分成功仍算通过（用户能看到哪项失败）
             ok = failedActions.size < doneActions.size || failedActions.isEmpty(),
-            detail = "每日实训：活跃度 ${finalScore ?: startScore ?: "?"}/500，" +
-                "$actionText，$claimText$powerInfo",
+            detail = "每日实训：$scoreText，$actionText，$claimText$powerInfo",
         )
     }
 
