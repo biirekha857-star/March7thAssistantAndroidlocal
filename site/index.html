@@ -1,191 +1,1169 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" class="no-js">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>March7thAssistant Android Local</title>
-<meta name="description" content="崩坏：星穹铁道 Android 全自动日常助手">
+<meta name="theme-color" content="#07080d">
+<title>March7thAssistant Android Local · 崩坏：星穹铁道全自动日常助手</title>
+<meta name="description" content="崩坏：星穹铁道 Android 全自动日常助手：虚拟屏后台运行、清体力、每日实训、一键日常。开源免费，基于 Shizuku / Root。">
+<link rel="icon" href="icon.png">
 <style>
   :root {
-    --gold: #e2b24a;
-    --dark: #0e1018;
-    --card: #1a1e2c;
-    --text: #f5f5f8;
-    --muted: #969aad;
+    --gold: #e8c06a;
+    --gold-soft: #f2d79b;
+    --gold-deep: #c99b3f;
+    --bg: #07080d;
+    --card: rgba(255, 255, 255, .035);
+    --card-hi: rgba(255, 255, 255, .06);
+    --line: rgba(255, 255, 255, .08);
+    --line-hi: rgba(232, 192, 106, .32);
+    --text: #eef0f7;
+    --dim: #9aa1b6;
+    --body: #d3d8e6;
+    --radius: 20px;
+    --ease: cubic-bezier(.22, .8, .24, 1);
   }
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
   body {
-    background: radial-gradient(ellipse at 50% 0%, #232a40 0%, var(--dark) 60%);
+    background: var(--bg);
     color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
-                 "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
     line-height: 1.7;
-    min-height: 100vh;
-    padding: 48px 20px 80px;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
   }
-  .wrap { max-width: 760px; margin: 0 auto; }
 
-  header { text-align: center; margin-bottom: 48px; }
+  ::selection { background: rgba(232, 192, 106, .28); color: #fff; }
+
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-track { background: #0a0b12; }
+  ::-webkit-scrollbar-thumb {
+    background: linear-gradient(#2a2c3a, #1a1c26);
+    border-radius: 99px;
+    border: 2px solid #0a0b12;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: linear-gradient(#3a3d4f, #22242f); }
+
+  /* ==================== 背景层 ==================== */
+  .bg {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+  }
+
+  .bg::before {
+    /* 星点：两层重复径向渐变，缓慢漂移 */
+    content: '';
+    position: absolute;
+    inset: -20%;
+    background-image:
+      radial-gradient(1.2px 1.2px at 20% 30%, rgba(255, 255, 255, .55), transparent),
+      radial-gradient(1px 1px at 68% 12%, rgba(255, 255, 255, .4), transparent),
+      radial-gradient(1.4px 1.4px at 82% 62%, rgba(232, 192, 106, .5), transparent),
+      radial-gradient(1px 1px at 38% 78%, rgba(255, 255, 255, .35), transparent),
+      radial-gradient(1.1px 1.1px at 12% 62%, rgba(255, 255, 255, .3), transparent),
+      radial-gradient(1.3px 1.3px at 52% 44%, rgba(255, 255, 255, .28), transparent);
+    background-size: 420px 420px, 560px 560px, 700px 700px, 480px 480px, 640px 640px, 380px 380px;
+    opacity: .7;
+    animation: starDrift 90s linear infinite;
+  }
+
+  .grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, .028) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, .028) 1px, transparent 1px);
+    background-size: 64px 64px;
+    -webkit-mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, #000 20%, transparent 75%);
+    mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, #000 20%, transparent 75%);
+    animation: gridFade 3s var(--ease) both;
+  }
+
+  .blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(90px);
+    opacity: .5;
+    will-change: transform;
+  }
+  .b1 {
+    width: 520px; height: 520px; left: -8%; top: -14%;
+    background: radial-gradient(circle, rgba(232, 192, 106, .38), transparent 65%);
+    animation: drift1 22s ease-in-out infinite alternate;
+  }
+  .b2 {
+    width: 460px; height: 460px; right: -10%; top: 4%;
+    background: radial-gradient(circle, rgba(240, 140, 180, .22), transparent 65%);
+    animation: drift2 26s ease-in-out infinite alternate;
+  }
+  .b3 {
+    width: 620px; height: 620px; left: 22%; top: 46%;
+    background: radial-gradient(circle, rgba(90, 140, 255, .16), transparent 65%);
+    animation: drift3 30s ease-in-out infinite alternate;
+  }
+
+  /* 鼠标跟随光斑 */
+  .glow {
+    position: absolute;
+    width: 620px; height: 620px;
+    left: 0; top: 0;
+    margin: -310px 0 0 -310px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(232, 192, 106, .10), transparent 62%);
+    transform: translate3d(var(--mx, 50vw), var(--my, 40vh), 0);
+    transition: transform .5s var(--ease);
+    will-change: transform;
+  }
+
+  /* ==================== 顶栏 ==================== */
+  .topbar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 50;
+    transition: background .4s var(--ease), backdrop-filter .4s, border-color .4s;
+    border-bottom: 1px solid transparent;
+  }
+  .topbar.scrolled {
+    background: rgba(7, 8, 13, .72);
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    border-bottom-color: var(--line);
+  }
+  .tb-inner {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 14px 24px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 14.5px;
+    font-weight: 600;
+    letter-spacing: -.2px;
+    white-space: nowrap;
+  }
+  .brand img {
+    width: 26px; height: 26px;
+    border-radius: 8px;
+    box-shadow: 0 4px 14px rgba(232, 192, 106, .22);
+  }
+  .brand span em { color: var(--gold); font-style: normal; font-weight: 500; }
+
+  nav {
+    margin-left: auto;
+    display: flex;
+    gap: 4px;
+  }
+  nav a {
+    position: relative;
+    color: var(--dim);
+    text-decoration: none;
+    font-size: 14px;
+    padding: 8px 12px;
+    border-radius: 10px;
+    transition: color .25s, background .25s;
+  }
+  nav a::after {
+    content: '';
+    position: absolute;
+    left: 12px; right: 12px; bottom: 4px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    transform: scaleX(0);
+    transition: transform .35s var(--ease);
+  }
+  nav a:hover { color: var(--text); background: rgba(255, 255, 255, .04); }
+  nav a:hover::after { transform: scaleX(1); }
+
+  .tb-btn {
+    flex-shrink: 0;
+    padding: 9px 18px;
+    border-radius: 11px;
+    background: linear-gradient(135deg, var(--gold-soft), var(--gold-deep));
+    color: #17120a;
+    font-size: 13.5px;
+    font-weight: 600;
+    text-decoration: none;
+    transition: transform .25s var(--ease), box-shadow .25s;
+    box-shadow: 0 6px 20px -8px rgba(232, 192, 106, .7);
+  }
+  .tb-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 26px -8px rgba(232, 192, 106, .85);
+  }
+
+  /* ==================== 布局 ==================== */
+  main { position: relative; z-index: 1; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+  /* ==================== Hero ==================== */
+  .hero {
+    min-height: 100svh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 108px 24px 64px;
+  }
+
+  .logo-wrap {
+    position: relative;
+    margin-bottom: 30px;
+    animation: popIn .9s var(--ease) both;
+  }
+  .logo-wrap::before {
+    content: '';
+    position: absolute;
+    inset: -26px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(232, 192, 106, .22), transparent 62%);
+    animation: breathe 4.5s ease-in-out infinite;
+  }
   .logo {
-    width: 96px; height: 96px; border-radius: 24px;
-    background: linear-gradient(135deg, #fff 0%, #ffe8f0 100%);
-    display: inline-flex; align-items: center; justify-content: center;
-    font-size: 44px; margin-bottom: 20px;
-    box-shadow: 0 8px 40px rgba(226, 178, 74, .25);
+    position: relative;
+    display: block;
+    width: 108px; height: 108px;
+    border-radius: 27px;
+    box-shadow: 0 24px 60px -20px rgba(0, 0, 0, .9), 0 0 0 1px rgba(255, 255, 255, .08);
+    transition: transform .6s var(--ease), box-shadow .6s;
   }
-  h1 {
-    font-size: clamp(24px, 5vw, 34px);
-    letter-spacing: -.5px;
-    margin-bottom: 10px;
-  }
-  h1 span { color: var(--gold); }
-  .tagline { color: var(--muted); font-size: 15px; }
-  .badge {
-    display: inline-block; margin-top: 16px;
-    padding: 6px 16px; border-radius: 99px;
-    border: 1px solid var(--gold);
-    color: var(--gold); font-size: 13px;
+  .logo:hover {
+    transform: translateY(-4px) rotate(-2deg) scale(1.03);
+    box-shadow: 0 30px 70px -20px rgba(232, 192, 106, .45), 0 0 0 1px rgba(232, 192, 106, .35);
   }
 
-  .card {
-    background: var(--card);
-    border: 1px solid rgba(255,255,255,.07);
-    border-radius: 16px;
-    padding: 28px;
-    margin-bottom: 20px;
+  h1 {
+    font-size: clamp(30px, 6.6vw, 60px);
+    line-height: 1.1;
+    letter-spacing: -1.6px;
+    font-weight: 700;
+    margin-bottom: 16px;
+    animation: riseIn .9s .08s var(--ease) both;
   }
-  h2 {
-    font-size: 18px; margin-bottom: 16px;
-    display: flex; align-items: center; gap: 8px;
+  h1 .grad {
+    display: inline-block;
+    background: linear-gradient(100deg, var(--gold-deep) 0%, var(--gold-soft) 28%,
+                #fff6dd 46%, var(--gold-soft) 66%, var(--gold-deep) 100%);
+    background-size: 260% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: shine 7s linear infinite;
   }
-  h2::before {
-    content: ''; width: 4px; height: 18px;
-    background: var(--gold); border-radius: 2px;
+
+  .tagline {
+    font-size: clamp(14.5px, 2.4vw, 17px);
+    color: var(--dim);
+    letter-spacing: .3px;
+    animation: riseIn .9s .16s var(--ease) both;
+  }
+
+  .pills {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 9px;
+    margin-top: 26px;
+    animation: riseIn .9s .24s var(--ease) both;
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 15px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, .03);
+    color: #c3c9da;
+    font-size: 13px;
+    backdrop-filter: blur(8px);
+    transition: border-color .3s, transform .3s var(--ease), background .3s;
+  }
+  .pill:hover { transform: translateY(-2px); border-color: rgba(255, 255, 255, .18); }
+  .pill.live {
+    border-color: rgba(232, 192, 106, .38);
+    background: linear-gradient(180deg, rgba(232, 192, 106, .13), rgba(232, 192, 106, .05));
+    color: var(--gold-soft);
+    font-weight: 500;
+  }
+  .pill.live i {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #7ee2a6;
+    box-shadow: 0 0 0 0 rgba(126, 226, 166, .7);
+    animation: pulse 2.6s ease-out infinite;
+  }
+
+  .cta {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 34px;
+    animation: riseIn .9s .32s var(--ease) both;
   }
 
   .btn {
-    display: block; text-align: center;
-    background: var(--gold); color: #111;
-    font-weight: 600; font-size: 16px;
-    padding: 15px; border-radius: 12px;
-    text-decoration: none; margin-bottom: 12px;
-    transition: transform .15s, box-shadow .15s;
-  }
-  .btn:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(226,178,74,.3);
-  }
-  .btn.secondary {
-    background: transparent; color: var(--gold);
-    border: 1px solid rgba(226,178,74,.4);
-    font-weight: 500; font-size: 14px;
-  }
-
-  ul { list-style: none; }
-  ul li {
-    padding: 9px 0 9px 24px;
     position: relative;
-    font-size: 14.5px;
-    color: #d8dae4;
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    padding: 15px 30px;
+    border-radius: 14px;
+    font-size: 15px;
+    font-weight: 600;
+    text-decoration: none;
+    overflow: hidden;
+    transition: transform .3s var(--ease), box-shadow .3s, border-color .3s, background .3s;
   }
-  ul li::before {
-    content: '·'; position: absolute; left: 8px;
-    color: var(--gold); font-weight: bold;
+  .btn svg { width: 17px; height: 17px; }
+  .btn.primary {
+    color: #16110a;
+    background: linear-gradient(135deg, #f6ddb0, var(--gold) 45%, var(--gold-deep));
+    box-shadow: 0 18px 40px -18px rgba(232, 192, 106, .85);
+  }
+  .btn.primary::after {
+    content: '';
+    position: absolute;
+    top: -20%; left: -60%;
+    width: 42%; height: 140%;
+    background: linear-gradient(100deg, transparent, rgba(255, 255, 255, .62), transparent);
+    transform: skewX(-18deg);
+    animation: sweep 4.2s ease-in-out infinite;
+  }
+  .btn.primary:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 24px 52px -18px rgba(232, 192, 106, 1);
+  }
+  .btn.ghost {
+    color: var(--text);
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, .03);
+    backdrop-filter: blur(8px);
+  }
+  .btn.ghost:hover {
+    transform: translateY(-3px);
+    border-color: rgba(255, 255, 255, .22);
+    background: rgba(255, 255, 255, .07);
   }
 
-  .warn {
-    background: rgba(226,178,74,.08);
-    border-left: 3px solid var(--gold);
-    padding: 14px 18px; border-radius: 8px;
-    font-size: 14px; color: #e6dcc4;
-    margin-top: 16px;
+  .micro {
+    margin-top: 22px;
+    font-size: 13px;
+    color: #6d7488;
+    letter-spacing: .2px;
+    animation: riseIn .9s .4s var(--ease) both;
   }
 
-  .links { display: flex; gap: 12px; flex-wrap: wrap; }
-  .links a {
-    flex: 1; min-width: 140px;
-    text-align: center; padding: 12px;
-    background: rgba(255,255,255,.04);
-    border-radius: 10px;
-    color: var(--text); text-decoration: none;
+  .scroll-hint {
+    margin-top: 54px;
+    width: 22px; height: 36px;
+    border: 1px solid rgba(255, 255, 255, .16);
+    border-radius: 99px;
+    position: relative;
+    animation: riseIn .9s .5s var(--ease) both;
+  }
+  .scroll-hint::after {
+    content: '';
+    position: absolute;
+    left: 50%; top: 7px;
+    width: 4px; height: 7px;
+    margin-left: -2px;
+    border-radius: 99px;
+    background: var(--gold);
+    animation: wheel 1.9s ease-in-out infinite;
+  }
+
+  /* ==================== 通用区块 ==================== */
+  .section { padding: 78px 0; }
+  .section + .section { padding-top: 0; }
+
+  .sec-head {
+    max-width: 640px;
+    margin-bottom: 44px;
+  }
+  .kicker {
+    display: inline-block;
+    font-size: 11.5px;
+    letter-spacing: 2.4px;
+    color: var(--gold-deep);
+    text-transform: uppercase;
+    margin-bottom: 14px;
+    font-weight: 600;
+  }
+  .sec-head h2 {
+    font-size: clamp(24px, 4vw, 34px);
+    letter-spacing: -.8px;
+    line-height: 1.25;
+    margin-bottom: 12px;
+  }
+  .sec-head h2 em {
+    font-style: normal;
+    color: var(--gold);
+  }
+  .sec-head p { color: var(--dim); font-size: 15px; }
+
+  /* 进场动画 */
+  .reveal {
+    opacity: 1;
+    transform: none;
+  }
+  html.js .reveal {
+    opacity: 0;
+    transform: translateY(22px);
+    transition: opacity .8s var(--ease), transform .8s var(--ease);
+    transition-delay: var(--d, 0s);
+  }
+  html.js .reveal.in { opacity: 1; transform: none; }
+
+  /* ==================== 功能卡片 ==================== */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(272px, 1fr));
+    gap: 16px;
+  }
+
+  .card {
+    position: relative;
+    padding: 26px 24px 24px;
+    border-radius: var(--radius);
+    border: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(255, 255, 255, .048), rgba(255, 255, 255, .014));
+    overflow: hidden;
+    transition: transform .45s var(--ease), border-color .45s, box-shadow .45s;
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(340px circle at var(--cx, 50%) var(--cy, 0%),
+                rgba(232, 192, 106, .13), transparent 62%);
+    opacity: 0;
+    transition: opacity .45s;
+    pointer-events: none;
+  }
+  .card:hover {
+    transform: translateY(-7px);
+    border-color: var(--line-hi);
+    box-shadow: 0 26px 54px -26px rgba(0, 0, 0, .95), 0 0 0 1px rgba(232, 192, 106, .07) inset;
+  }
+  .card:hover::before { opacity: 1; }
+
+  .ico {
+    width: 44px; height: 44px;
+    display: grid;
+    place-items: center;
+    border-radius: 13px;
+    border: 1px solid rgba(232, 192, 106, .22);
+    background: linear-gradient(160deg, rgba(232, 192, 106, .16), rgba(232, 192, 106, .03));
+    color: var(--gold);
+    margin-bottom: 18px;
+    transition: transform .45s var(--ease), box-shadow .45s;
+  }
+  .card:hover .ico {
+    transform: translateY(-2px) scale(1.06);
+    box-shadow: 0 10px 26px -12px rgba(232, 192, 106, .8);
+  }
+  .ico svg { width: 21px; height: 21px; }
+
+  .card h3 {
+    font-size: 16.5px;
+    letter-spacing: -.2px;
+    margin-bottom: 8px;
+  }
+  .card p {
+    color: var(--dim);
     font-size: 14px;
-    transition: background .15s;
+    line-height: 1.65;
   }
-  .links a:hover { background: rgba(255,255,255,.09); }
+  .card .tagline-sm {
+    display: inline-block;
+    margin-top: 14px;
+    font-size: 12px;
+    color: #d8b264;
+    letter-spacing: .6px;
+  }
 
-  footer {
-    text-align: center; color: var(--muted);
-    font-size: 13px; margin-top: 48px;
-    padding-top: 24px;
-    border-top: 1px solid rgba(255,255,255,.06);
+  /* ==================== 更新日志 ==================== */
+  .release {
+    border-radius: var(--radius);
+    border: 1px solid var(--line);
+    background:
+      radial-gradient(600px 200px at 12% -10%, rgba(232, 192, 106, .10), transparent 60%),
+      linear-gradient(180deg, rgba(255, 255, 255, .045), rgba(255, 255, 255, .012));
+    padding: 30px clamp(22px, 4vw, 38px) 34px;
   }
-  footer a { color: var(--gold); text-decoration: none; }
+  .release-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    padding-bottom: 20px;
+    margin-bottom: 22px;
+    border-bottom: 1px solid rgba(255, 255, 255, .07);
+  }
+  .tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 5px 13px;
+    border-radius: 999px;
+    background: rgba(232, 192, 106, .13);
+    border: 1px solid rgba(232, 192, 106, .3);
+    color: var(--gold-soft);
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .release-head .ver {
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -.4px;
+  }
+  .release-head .date {
+    margin-left: auto;
+    color: #6d7488;
+    font-size: 13px;
+  }
+
+  .md p {
+    color: var(--body);
+    font-size: 14.8px;
+    margin-bottom: 14px;
+  }
+  .md strong { color: #fff; font-weight: 600; }
+  .md h3 {
+    font-size: 15px;
+    color: var(--gold-soft);
+    margin: 20px 0 10px;
+  }
+  .md ul { list-style: none; margin: 6px 0 4px; }
+  .md li {
+    position: relative;
+    padding-left: 22px;
+    margin: 9px 0;
+    color: var(--body);
+    font-size: 14.5px;
+    line-height: 1.65;
+  }
+  .md li::before {
+    content: '';
+    position: absolute;
+    left: 5px; top: .74em;
+    width: 5px; height: 5px;
+    border-radius: 50%;
+    background: var(--gold);
+    box-shadow: 0 0 10px rgba(232, 192, 106, .8);
+  }
+  .md a { color: var(--gold); text-decoration: none; border-bottom: 1px solid rgba(232, 192, 106, .4); }
+  .md code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+    background: rgba(255, 255, 255, .07);
+    padding: 1px 6px;
+    border-radius: 5px;
+    color: var(--gold-soft);
+  }
+
+  /* 更新条目逐条浮现 */
+  html.js .release.in .md li { animation: riseIn .6s var(--ease) both; }
+  html.js .release.in .md li:nth-child(1) { animation-delay: .05s; }
+  html.js .release.in .md li:nth-child(2) { animation-delay: .1s; }
+  html.js .release.in .md li:nth-child(3) { animation-delay: .15s; }
+  html.js .release.in .md li:nth-child(4) { animation-delay: .2s; }
+  html.js .release.in .md li:nth-child(5) { animation-delay: .25s; }
+  html.js .release.in .md li:nth-child(6) { animation-delay: .3s; }
+  html.js .release.in .md li:nth-child(7) { animation-delay: .35s; }
+  html.js .release.in .md li:nth-child(n+8) { animation-delay: .4s; }
+
+  /* ==================== 三步上手 ==================== */
+  .steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+    counter-reset: step;
+  }
+  .step {
+    position: relative;
+    padding: 26px 24px;
+    border-radius: var(--radius);
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, .025);
+    overflow: hidden;
+    transition: border-color .4s, transform .4s var(--ease), background .4s;
+  }
+  .step:hover {
+    transform: translateY(-4px);
+    border-color: rgba(255, 255, 255, .16);
+    background: rgba(255, 255, 255, .045);
+  }
+  .step .num {
+    font-size: 42px;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: -2px;
+    background: linear-gradient(180deg, rgba(232, 192, 106, .55), rgba(232, 192, 106, .08));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-bottom: 14px;
+  }
+  .step h3 { font-size: 16px; margin-bottom: 8px; }
+  .step p { color: var(--dim); font-size: 14px; }
+  .step p b { color: #d9ddea; font-weight: 600; }
+
+  /* ==================== 提示 / 链接 ==================== */
+  .notice {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    padding: 20px 22px;
+    border-radius: 16px;
+    border: 1px solid rgba(232, 192, 106, .22);
+    border-left: 3px solid var(--gold);
+    background: linear-gradient(90deg, rgba(232, 192, 106, .09), rgba(232, 192, 106, .02));
+    font-size: 14px;
+    color: #ddd6c4;
+  }
+  .notice svg { width: 18px; height: 18px; flex-shrink: 0; margin-top: 3px; color: var(--gold); }
+  .notice b { color: #fff2d4; }
+
+  .links {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin-top: 18px;
+  }
+  .link-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 18px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, .028);
+    color: var(--text);
+    text-decoration: none;
+    font-size: 14px;
+    transition: transform .35s var(--ease), border-color .35s, background .35s;
+  }
+  .link-card:hover {
+    transform: translateY(-3px);
+    border-color: rgba(232, 192, 106, .3);
+    background: rgba(232, 192, 106, .06);
+  }
+  .link-card svg { width: 18px; height: 18px; color: var(--gold); flex-shrink: 0; }
+  .link-card span { display: block; }
+  .link-card small {
+    display: block;
+    color: var(--dim);
+    font-size: 12.5px;
+    margin-top: 1px;
+  }
+
+  /* ==================== 页脚 ==================== */
+  footer {
+    position: relative;
+    z-index: 1;
+    margin-top: 40px;
+    padding: 40px 0 56px;
+    border-top: 1px solid rgba(255, 255, 255, .06);
+    text-align: center;
+    color: #6d7488;
+    font-size: 13px;
+  }
+  footer a { color: var(--gold-deep); text-decoration: none; transition: color .25s; }
+  footer a:hover { color: var(--gold); }
+  footer .dot { margin: 0 8px; opacity: .5; }
+
+  /* ==================== 动画 ==================== */
+  @keyframes riseIn {
+    from { opacity: 0; transform: translateY(24px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes popIn {
+    from { opacity: 0; transform: scale(.82); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes breathe {
+    0%, 100% { transform: scale(1); opacity: .85; }
+    50% { transform: scale(1.14); opacity: .45; }
+  }
+  @keyframes shine {
+    from { background-position: 0% 50%; }
+    to { background-position: 200% 50%; }
+  }
+  @keyframes sweep {
+    0%, 55% { left: -60%; }
+    100% { left: 130%; }
+  }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(126, 226, 166, .6); }
+    70% { box-shadow: 0 0 0 7px rgba(126, 226, 166, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(126, 226, 166, 0); }
+  }
+  @keyframes wheel {
+    0% { opacity: 0; transform: translateY(0); }
+    30% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(14px); }
+  }
+  @keyframes drift1 {
+    from { transform: translate3d(0, 0, 0) scale(1); }
+    to { transform: translate3d(90px, 60px, 0) scale(1.12); }
+  }
+  @keyframes drift2 {
+    from { transform: translate3d(0, 0, 0) scale(1.05); }
+    to { transform: translate3d(-70px, 80px, 0) scale(.95); }
+  }
+  @keyframes drift3 {
+    from { transform: translate3d(0, 0, 0) scale(1); }
+    to { transform: translate3d(60px, -70px, 0) scale(1.1); }
+  }
+  @keyframes starDrift {
+    from { transform: translate3d(0, 0, 0); }
+    to { transform: translate3d(-120px, 90px, 0); }
+  }
+  @keyframes gridFade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  /* ==================== 响应式 ==================== */
+  @media (max-width: 720px) {
+    .tb-inner { padding: 12px 16px; gap: 12px; }
+    nav { display: none; }
+    .brand span { font-size: 13.5px; }
+    .section { padding: 72px 0; }
+    .hero { padding-top: 96px; }
+    .logo { width: 88px; height: 88px; border-radius: 22px; }
+    .btn { padding: 14px 24px; font-size: 14.5px; }
+    .release-head .date { margin-left: 0; }
+    .scroll-hint { display: none; }
+    /* 手机 GPU 弱一些，光斑缩小、模糊减半 */
+    .blob { filter: blur(62px); opacity: .4; }
+    .glow { display: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .001ms !important;
+    }
+    html.js .reveal { opacity: 1; transform: none; }
+    html { scroll-behavior: auto; }
+  }
 </style>
 </head>
 <body>
-<div class="wrap">
 
-  <header>
-    <div class="logo">🌸</div>
-    <h1>March7thAssistant <span>Android Local</span></h1>
+<div class="bg" aria-hidden="true">
+  <div class="blob b1"></div>
+  <div class="blob b2"></div>
+  <div class="blob b3"></div>
+  <div class="grid"></div>
+  <div class="glow" id="glow"></div>
+</div>
+
+<header class="topbar" id="topbar">
+  <div class="tb-inner">
+    <a class="brand" href="#top">
+      <img src="icon.png" alt="March7thAssistant 图标">
+      <span>March7th<em>Assistant</em></span>
+    </a>
+    <nav>
+      <a href="#features">功能</a>
+      <a href="#changelog">更新</a>
+      <a href="#start">上手</a>
+      <a href="#links">反馈</a>
+    </nav>
+    <a class="tb-btn" id="dl-top" href="https://github.com/biirekha857-star/March7thAssistantAndroidlocal/releases/latest">下载</a>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ==================== Hero ==================== -->
+  <section class="hero">
+    <div class="logo-wrap">
+      <img class="logo" src="icon.png" alt="March7thAssistant 图标">
+    </div>
+
+    <h1>March7thAssistant <span class="grad">Android Local</span></h1>
     <p class="tagline">崩坏：星穹铁道 · 全自动日常助手</p>
-    <div class="badge">0.5.6beta</div>
-  </header>
 
-  <div class="card">
-    <h2>下载</h2>
-    <a class="btn" href="https://github.com/biirekha857-star/March7thAssistantAndroidlocal/releases/latest">
-      前往 GitHub 下载
-    </a>
-    <a class="btn secondary" href="https://github.com/biirekha857-star/March7thAssistantAndroidlocal">
-      查看源码
-    </a>
-  </div>
-
-  <div class="card">
-    <h2>核心功能</h2>
-    <ul>
-      <li><b>虚拟屏后台运行</b> —— 游戏跑在独立显示器上，手机照常使用</li>
-      <li><b>清体力</b> —— 拟造花萼、凝滞虚影、侵蚀隧洞、饰品提取、历战余响</li>
-      <li><b>每日实训</b> —— 勾选式执行，按需完成</li>
-      <li><b>启动游戏 / 邮件 / 关闭游戏</b> —— 全流程无人工干预</li>
-    </ul>
-  </div>
-
-  <div class="card">
-    <h2>使用前</h2>
-    <ul>
-      <li>授予 <b>Shizuku</b> 或 <b>Root</b> 权限</li>
-      <li>关闭本应用的省电优化</li>
-      <li>游戏已登录并停在大厅</li>
-    </ul>
-    <div class="warn">
-      ⚠️ 自动化操作存在账号风险，请自行评估。<br>
-      请勿在米游社等官方社区讨论或宣传本项目。
+    <div class="pills">
+      <span class="pill live"><i></i>最新 <b id="ver">0.5.7beta</b></span>
+      <span class="pill">Shizuku / Root</span>
+      <span class="pill">Android 8.0+</span>
+      <span class="pill">开源免费</span>
     </div>
-  </div>
 
-  <div class="card">
-    <h2>遇到问题</h2>
-    <p style="font-size:14.5px;color:#d8dae4;margin-bottom:14px">
-      请先导出日志：<b>设置 → 日志 → 导出日志压缩包</b>。
-      日志包含引擎日志、超时截图和设备信息，是定位问题的关键。
-    </p>
-    <div class="links">
-      <a href="https://github.com/biirekha857-star/March7thAssistantAndroidlocal/issues">GitHub Issues</a>
-      <a href="https://qm.qq.com/q/xG9yvDYFgc">QQ 群</a>
-      <a href="https://t.me/+1NJAK_tgLU81NmFl">Telegram</a>
+    <div class="cta">
+      <a class="btn primary" id="dl-main" href="https://github.com/biirekha857-star/March7thAssistantAndroidlocal/releases/latest">
+        下载最新版
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 11 5 5 5-5"/><path d="M4 20h16"/></svg>
+      </a>
+      <a class="btn ghost" href="https://github.com/biirekha857-star/March7thAssistantAndroidlocal">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-1.05-.01-1.9-2.78.62-3.37-1.22-3.37-1.22-.45-1.18-1.11-1.5-1.11-1.5-.91-.63.07-.62.07-.62 1 .07 1.53 1.05 1.53 1.05.89 1.57 2.34 1.12 2.91.85.09-.66.35-1.12.63-1.38-2.22-.26-4.56-1.14-4.56-5.06 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.7 0 0 .84-.28 2.75 1.05a9.3 9.3 0 0 1 2.5-.35c.85 0 1.7.12 2.5.35 1.91-1.33 2.75-1.05 2.75-1.05.55 1.4.2 2.44.1 2.7.64.72 1.03 1.63 1.03 2.75 0 3.93-2.35 4.8-4.58 5.05.36.32.68.94.68 1.9 0 1.37-.01 2.47-.01 2.81 0 .27.18.6.69.49A10.06 10.06 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z"/></svg>
+        查看源码
+      </a>
     </div>
+
+    <p class="micro">界面重构 · 触控自愈 · 每日补给修复 · 无需无障碍</p>
+    <div class="scroll-hint" aria-hidden="true"></div>
+  </section>
+
+  <div class="wrap">
+
+    <!-- ==================== 功能 ==================== -->
+    <section class="section" id="features">
+      <div class="sec-head reveal">
+        <span class="kicker">Features</span>
+        <h2>它能把每天的<em>重复劳动</em>全接过去</h2>
+        <p>从启动游戏到关掉游戏，中间那些「每天都要点一遍」的流程，交给它跑完就行。</p>
+      </div>
+
+      <div class="cards">
+
+        <article class="card reveal" style="--d:.02s">
+          <div class="ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18M9 21V9"/></svg>
+          </div>
+          <h3>界面重构</h3>
+          <p>首页与任务页合并，底部导航精简为 首页 / 定时 / 设置。任务改成卡片流，点开就地调参。</p>
+          <span class="tagline-sm">0.5.7beta 全新排版</span>
+        </article>
+
+        <article class="card reveal" style="--d:.06s">
+          <div class="ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2.5"/><path d="M8 21h8M12 17v4"/></svg>
+          </div>
+          <h3>虚拟屏后台运行</h3>
+          <p>游戏跑在独立虚拟显示器上，手机照常刷视频、回消息，任务在后台自己跑完。</p>
+          <span class="tagline-sm">不影响日常使用</span>
+        </article>
+
+        <article class="card reveal" style="--d:.1s">
+          <div class="ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z"/></svg>
+          </div>
+          <h3>清体力</h3>
+          <p>拟造花萼（金 / 赤）、凝滞虚影、侵蚀隧洞、饰品提取、历战余响，按预设次数刷完为止。</p>
+          <span class="tagline-sm">支持 6 类副本</span>
+        </article>
+
+        <article class="card reveal" style="--d:.14s">
+          <div class="ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3.5 6 1.6 1.6L8 4.7"/><path d="m3.5 12 1.6 1.6L8 10.7"/><path d="m3.5 18 1.6 1.6L8 16.7"/></svg>
+          </div>
+          <h3>每日实训</h3>
+          <p>委托、拍照、合成机、秘技、消耗体力、领取奖励，勾选哪项跑哪项。</p>
+          <span class="tagline-sm">勾选式执行</span>
+        </article>
+
+        <article class="card reveal" style="--d:.18s">
+          <div class="ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m3.5 7.5 8.5 6 8.5-6"/></svg>
+          </div>
+          <h3>一键日常</h3>
+          <p>启动游戏 → 跳过公告 → 领邮件 → 清体力 → 每日实训 → 关闭游戏，全流程无人工干预。</p>
+          <span class="tagline-sm">可定时执行</span>
+        </article>
+
+        <article class="card reveal" style="--d:.22s">
+          <div class="ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5 20 6v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V6l8-3.5Z"/><path d="m8.6 12 2.4 2.4 4.4-4.8"/></svg>
+          </div>
+          <h3>触控自愈</h3>
+          <p>注入失败会自动清理残留手势并降级重试；按过返回键后检测「是否退出游戏」并点取消，不会卡死。</p>
+          <span class="tagline-sm">不用无障碍服务</span>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ==================== 更新日志 ==================== -->
+    <section class="section" id="changelog">
+      <div class="sec-head reveal">
+        <span class="kicker">Changelog</span>
+        <h2>本次更新 <em id="ver-title">0.5.7beta</em></h2>
+        <p>内容直接读站点上的 <code style="font-size:13.5px;color:#c99b3f">update.md</code>，和 App 里弹窗显示的是同一份。</p>
+      </div>
+
+      <div class="release reveal">
+        <div class="release-head">
+          <span class="tag"><i style="width:6px;height:6px;border-radius:50%;background:#7ee2a6;display:inline-block"></i>最新版本</span>
+          <span class="ver" id="ver-big">0.5.7beta</span>
+          <span class="date" id="release-date">2026-10-31</span>
+        </div>
+
+        <!-- 静态兜底：update.md 拉取失败时显示这段，不会空白 -->
+        <div class="md" id="changelog-body">
+          <p><strong>界面重构</strong>：首页与任务页合并，底部导航精简为 首页 / 定时 / 设置；任务改为卡片流，点开就地调参；日志改为时间线；设置改为分类式</p>
+          <ul>
+            <li>移除无障碍服务，运行态改用「边框 + 悬浮球」</li>
+            <li>新增触控自愈：注入失败自动清理残留手势并降级重试</li>
+            <li>新增退出确认兜底：按过返回键后自动检测「是否退出游戏」并点取消</li>
+            <li>修复进入主界面必然崩溃的问题</li>
+            <li>修复每日首次上线领不到列车补给（月卡）的问题</li>
+            <li>修复清体力点击无效、导航到生存索引失败的问题</li>
+            <li>修复指南页误判，以及失败时副本名显示为空</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 上手指南 ==================== -->
+    <section class="section" id="start">
+      <div class="sec-head reveal">
+        <span class="kicker">Get Started</span>
+        <h2>三步开始</h2>
+        <p>不需要刷机，也不需要写配置。装好、给权限、点一下。</p>
+      </div>
+
+      <div class="steps">
+        <div class="step reveal" style="--d:.04s">
+          <div class="num">01</div>
+          <h3>安装并授予权限</h3>
+          <p>安装 APK 后，按引导授予 <b>Shizuku</b> 或 <b>Root</b> 权限。</p>
+        </div>
+        <div class="step reveal" style="--d:.1s">
+          <div class="num">02</div>
+          <h3>关掉省电限制</h3>
+          <p>在系统设置里关闭本应用的省电优化，否则后台任务会被系统掐断。</p>
+        </div>
+        <div class="step reveal" style="--d:.16s">
+          <div class="num">03</div>
+          <h3>游戏停在大厅</h3>
+          <p>确认游戏已登录并停在<b>大厅</b>，回到 App 选好任务点开始即可。</p>
+        </div>
+      </div>
+
+      <div class="notice reveal" style="margin-top:22px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 2.5 20h19L12 3Z"/><path d="M12 9v5M12 17.2v.1"/></svg>
+        <div>
+          <b>自动化操作存在账号风险，请自行评估。</b>请勿在米游社等官方社区讨论或宣传本项目。
+          遇到问题先导出日志：<b>设置 → 日志 → 导出日志压缩包</b>，日志里有引擎日志、超时截图和设备信息。
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 反馈 ==================== -->
+    <section class="section" id="links">
+      <div class="sec-head reveal">
+        <span class="kicker">Support</span>
+        <h2>遇到问题</h2>
+        <p>带上日志来问，比描述「它不动了」有用得多。</p>
+      </div>
+
+      <div class="links reveal">
+        <a class="link-card" href="https://github.com/biirekha857-star/March7thAssistantAndroidlocal/issues">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16.2v.1"/></svg>
+          <span>GitHub Issues<small>推荐：能贴日志和截图</small></span>
+        </a>
+        <a class="link-card" href="https://qm.qq.com/q/xG9yvDYFgc">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.5 9.5 0 0 1-3.6-.7L3 21l1.8-4.8A8.2 8.2 0 0 1 3.6 11.5a8.4 8.4 0 0 1 9-8.4 8.4 8.4 0 0 1 8.4 8.4Z"/></svg>
+          <span>QQ 群<small>扫码加入，问题集中处理</small></span>
+        </a>
+        <a class="link-card" href="https://t.me/+1NJAK_tgLU81NmFl">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m21 4-3 16-6.5-4.5L8 19l-.6-5.4L21 4Z"/><path d="M7.4 13.6 21 4"/></svg>
+          <span>Telegram<small>海外用户走这边</small></span>
+        </a>
+      </div>
+    </section>
+
   </div>
 
   <footer>
-    <p>
-      基于 <a href="https://github.com/Aliothmoon/MAA-Meow">MAA-Meow</a> 二次开发 ·
-      AGPL-3.0 开源
-    </p>
-    <p style="margin-top:8px">仅供学习交流，请勿用于商业用途</p>
+    <p>基于 <a href="https://github.com/Aliothmoon/MAA-Meow">MAA-Meow</a> 二次开发<span class="dot">·</span>AGPL-3.0 开源<span class="dot">·</span>仅供学习交流</p>
+    <p style="margin-top:8px;opacity:.65">Honkai: Star Rail 相关素材版权归米哈游所有，本项目与官方无关</p>
   </footer>
 
-</div>
+</main>
+
+<script>
+(function () {
+  document.documentElement.classList.remove('no-js');
+  document.documentElement.classList.add('js');
+
+  /* ==================== 滚动进场 ==================== */
+  var revealEls = Array.prototype.slice.call(document.querySelectorAll('.reveal'));
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('in');
+          io.unobserve(entry.target);
+        }
+      });
+    }, { rootMargin: '0px 0px -12% 0px', threshold: 0.12 });
+    revealEls.forEach(function (el) { io.observe(el); });
+  } else {
+    revealEls.forEach(function (el) { el.classList.add('in'); });
+  }
+
+  // 兜底：万一观察器没回调（老 WebView / 页面被内嵌），别让内容一直隐形
+  setTimeout(function () {
+    if (!document.querySelector('.reveal.in')) {
+      revealEls.forEach(function (el) { el.classList.add('in'); });
+    }
+  }, 3000);
+
+  /* ==================== 顶栏变色 ==================== */
+  var topbar = document.getElementById('topbar');
+  function onScroll() {
+    if (window.scrollY > 24) topbar.classList.add('scrolled');
+    else topbar.classList.remove('scrolled');
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+
+  /* ==================== 鼠标光斑 + 卡片高光 ==================== */
+  var glow = document.getElementById('glow');
+  var fine = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
+  if (fine) {
+    window.addEventListener('mousemove', function (e) {
+      glow.style.setProperty('--mx', e.clientX + 'px');
+      glow.style.setProperty('--my', e.clientY + 'px');
+    }, { passive: true });
+
+    document.querySelectorAll('.card').forEach(function (card) {
+      card.addEventListener('mousemove', function (e) {
+        var r = card.getBoundingClientRect();
+        card.style.setProperty('--cx', (e.clientX - r.left) + 'px');
+        card.style.setProperty('--cy', (e.clientY - r.top) + 'px');
+      });
+    });
+  }
+
+  /* ==================== 读站点 update.md ==================== */
+  var DEFAULT_DOWNLOAD = 'https://github.com/biirekha857-star/March7thAssistantAndroidlocal/releases/latest';
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+    });
+  }
+
+  // 行内：**粗体** / `代码` / [文字](链接)
+  function inline(s) {
+    return escapeHtml(s)
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+  }
+
+  // 极简 Markdown：段落、无序列表、## / ### 标题
+  function renderMarkdown(src) {
+    var lines = src.replace(/\r\n?/g, '\n').split('\n');
+    var out = [];
+    var inList = false;
+    function closeList() { if (inList) { out.push('</ul>'); inList = false; } }
+    lines.forEach(function (raw) {
+      var line = raw.trim();
+      if (!line) { closeList(); return; }
+      if (/^[-*]\s+/.test(line)) {
+        if (!inList) { out.push('<ul>'); inList = true; }
+        out.push('<li>' + inline(line.replace(/^[-*]\s+/, '')) + '</li>');
+        return;
+      }
+      closeList();
+      if (/^###\s+/.test(line)) { out.push('<h3>' + inline(line.replace(/^###\s+/, '')) + '</h3>'); return; }
+      if (/^##\s+/.test(line)) { out.push('<h3>' + inline(line.replace(/^##\s+/, '')) + '</h3>'); return; }
+      out.push('<p>' + inline(line) + '</p>');
+    });
+    closeList();
+    return out.join('');
+  }
+
+  // 拆 front matter：--- 之间是 key: value，下面全是正文
+  function parseManifest(text) {
+    var clean = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+    var lines = clean.split('\n');
+    var start = -1;
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].trim()) { start = i; break; }
+    }
+    if (start < 0 || lines[start].trim() !== '---') return null;
+
+    var end = -1;
+    for (var j = start + 1; j < lines.length; j++) {
+      if (lines[j].trim() === '---') { end = j; break; }
+    }
+    if (end < 0) return null;
+
+    var meta = {};
+    for (var k = start + 1; k < end; k++) {
+      var line = lines[k].trim();
+      if (!line || line.charAt(0) === '#') continue;
+      var idx = line.indexOf(':');
+      if (idx <= 0) continue;
+      var key = line.slice(0, idx).trim().toLowerCase();
+      var val = line.slice(idx + 1).trim().replace(/^"|"$/g, '');
+      if (val) meta[key] = val;
+    }
+    if (!meta.versioncode || !meta.versionname) return null;
+
+    return {
+      meta: meta,
+      body: lines.slice(end + 1).join('\n').trim()
+    };
+  }
+
+  fetch('update.md', { cache: 'no-cache' })
+    .then(function (res) {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.text();
+    })
+    .then(function (text) {
+      var m = parseManifest(text);
+      if (!m) return;
+      var version = m.meta.versionname;
+      var download = m.meta.apkurl;
+      var date = m.meta.publishedat;
+
+      ['ver', 'ver-title', 'ver-big'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el && version) el.textContent = version;
+      });
+      if (version) {
+        document.title = 'March7thAssistant ' + version + ' · 崩坏：星穹铁道全自动日常助手';
+      }
+      if (download) {
+        ['dl-main', 'dl-top'].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) el.href = download;
+        });
+      }
+      if (date) {
+        var d = document.getElementById('release-date');
+        if (d) d.textContent = date;
+      }
+      if (m.body) {
+        var body = document.getElementById('changelog-body');
+        if (body) body.innerHTML = renderMarkdown(m.body);
+      }
+    })
+    .catch(function () {
+      /* 拉不到就保留静态兜底内容，页面不会空白 */
+    });
+})();
+</script>
 </body>
 </html>
