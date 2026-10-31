@@ -1,0 +1,18 @@
+---
+versionCode: 8
+versionName: 0.5.7beta
+apkUrl: https://github.com/biirekha857-star/March7thAssistantAndroidlocal/releases/download/v0.5.7beta/March7thAssistant-0.5.7beta.apk
+forceUpdate: false
+minSupportedVersionCode: 1
+publishedAt: 2026-10-31
+---
+
+**界面重构**：首页与任务页合并，底部导航精简为 首页 / 定时 / 设置；任务改为卡片流，点开就地调参；日志改为时间线；设置改为分类式
+
+- 移除无障碍服务，运行态改用「边框 + 悬浮球」
+- 新增触控自愈：注入失败自动清理残留手势并降级重试
+- 新增退出确认兜底：按过返回键后自动检测「是否退出游戏」并点取消
+- 修复进入主界面必然崩溃的问题
+- 修复每日首次上线领不到列车补给（月卡）的问题
+- 修复清体力点击无效、导航到生存索引失败的问题
+- 修复指南页误判，以及失败时副本名显示为空

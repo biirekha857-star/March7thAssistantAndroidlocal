@@ -186,6 +186,27 @@ class AppSettingsManager internal constructor(
         }
     }
 
+    /**
+     * 强制更新下限（versionCode）。0 表示没有强制要求。
+     *
+     * 由 [UpdateViewModel] 在服务端下发 `forceUpdate` 时写入，
+     * 之后每次启动都会先和它比一次 —— 断网关开关都绕不过去。
+     */
+    val forcedUpdateFloor: StateFlow<Int> = setting { it.forcedUpdateFloor.toIntOrNull() ?: 0 }
+
+    suspend fun setForcedUpdateFloor(versionCode: Int) {
+        with(AppSettingsSchema) {
+            context.dataStore.edit { it[forcedUpdateFloor] = versionCode.toString() }
+        }
+    }
+
+    /** 已经升到不低于下限时清掉锁，避免"升级后还在拦"。 */
+    suspend fun clearForcedUpdateFloor() {
+        with(AppSettingsSchema) {
+            context.dataStore.edit { it[forcedUpdateFloor] = "" }
+        }
+    }
+
     // IPC服务启动模式
     val startupBackend: StateFlow<RemoteBackend> = setting {
         runCatching { RemoteBackend.valueOf(it.startupBackend) }

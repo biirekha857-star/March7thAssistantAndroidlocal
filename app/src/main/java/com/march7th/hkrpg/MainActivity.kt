@@ -9,8 +9,12 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
@@ -28,12 +32,14 @@ import com.march7th.hkrpg.domain.service.TaskCompositionService
 import com.march7th.hkrpg.domain.state.TaskExecutionState
 import com.march7th.hkrpg.overlay.screensaver.ScreenSaverOverlayManager
 import com.march7th.hkrpg.presentation.ProvideInputFocusManager
+import com.march7th.hkrpg.presentation.components.AppUpdateDialog
 import com.march7th.hkrpg.presentation.navigation.AppNavigation
 import com.march7th.hkrpg.presentation.pip.LocalIsInPip
 import com.march7th.hkrpg.presentation.pip.PipController
 import com.march7th.hkrpg.presentation.pip.PipHost
 import com.march7th.hkrpg.presentation.pip.PipRequest
 import com.march7th.hkrpg.presentation.viewmodel.BackgroundTaskViewModel
+import com.march7th.hkrpg.presentation.viewmodel.UpdateViewModel
 import com.march7th.hkrpg.schedule.LaunchIntentMapper
 import com.march7th.hkrpg.theme.AppTheme
 import com.march7th.hkrpg.utils.EyeProtectionDetector
@@ -44,6 +50,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
+import org.koin.androidx.compose.koinViewModel
 import org.koin.androidx.viewmodel.ext.android.viewModel
 import timber.log.Timber
 
@@ -124,7 +131,24 @@ class MainActivity : AppCompatActivity(), PipHost {
                     )
                 ) {
                     ProvideInputFocusManager {
-                        AppNavigation(backgroundTaskViewModel = backgroundTaskViewModel)
+                        val updateViewModel: UpdateViewModel = koinViewModel()
+                        val updatePrompt by
+                            updateViewModel.appUpdatePrompt.collectAsStateWithLifecycle()
+                        // 启动即检查一次；视图模型里有一次性守卫，重组不会重复请求
+                        LaunchedEffect(updateViewModel) {
+                            updateViewModel.checkAppUpdateOnStartup()
+                        }
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            AppNavigation(backgroundTaskViewModel = backgroundTaskViewModel)
+                            // 更新弹窗挂在导航之上：激活向导、主界面、设置页都盖得住
+                            updatePrompt?.let { prompt ->
+                                AppUpdateDialog(
+                                    prompt = prompt,
+                                    onUpdate = updateViewModel::openAppUpdateDownload,
+                                    onLater = updateViewModel::dismissAppUpdatePrompt,
+                                )
+                            }
+                        }
                     }
                 }
             }

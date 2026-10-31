@@ -6,10 +6,12 @@ import androidx.lifecycle.viewModelScope
 import com.alibaba.fastjson2.JSON
 import com.march7th.hkrpg.BuildConfig
 import com.march7th.hkrpg.R
+import com.march7th.hkrpg.constant.M7aApi
 import com.march7th.hkrpg.constant.M7aFiles.VERSION_FILE
+import com.march7th.hkrpg.data.api.UpdateChecker
 import com.march7th.hkrpg.data.config.CorePathConfig
 import com.march7th.hkrpg.data.datasource.ResourceDownloader
-import com.march7th.hkrpg.data.model.update.StartupUpdateResult
+import com.march7th.hkrpg.data.model.update.AppUpdatePrompt
 import com.march7th.hkrpg.data.model.update.UpdateChannel
 import com.march7th.hkrpg.data.model.update.UpdateCheckResult
 import com.march7th.hkrpg.data.model.update.UpdateInfo
@@ -18,9 +20,9 @@ import com.march7th.hkrpg.data.model.update.UpdateSource
 import com.march7th.hkrpg.data.preferences.AppSettingsManager
 import com.march7th.hkrpg.domain.service.CoreResourceLoader
 import com.march7th.hkrpg.domain.service.update.UpdateService
+import com.march7th.hkrpg.utils.Misc
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -46,6 +48,7 @@ class UpdateViewModel(
     private val appSettingsManager: AppSettingsManager,
     private val maaResourceLoader: CoreResourceLoader,
     private val pathConfig: CorePathConfig,
+    private val updateChecker: UpdateChecker,
 ) : ViewModel() {
 
     // ==================== 资源更新 ====================
@@ -164,87 +167,114 @@ class UpdateViewModel(
 
     private var hasCheckedOnStartup = false
 
-    private val _startupUpdateDialog = MutableStateFlow<StartupUpdateResult?>(null)
-    val startupUpdateDialog: StateFlow<StartupUpdateResult?> = _startupUpdateDialog.asStateFlow()
+    private val _appUpdatePrompt = MutableStateFlow<AppUpdatePrompt?>(null)
 
-    fun checkUpdatesOnStartup() {
+    /** 启动时的更新弹窗；`forced = true` 时不允许关闭。 */
+    val appUpdatePrompt: StateFlow<AppUpdatePrompt?> = _appUpdatePrompt.asStateFlow()
+
+    /**
+     * 启动时检查更新，结果写进 [appUpdatePrompt]。
+     *
+     * # 数据源
+     *
+     * 用自有站点的更新清单（[UpdateChecker] 先读 `update.md`，失败回退 `update.json`），
+     * **不是** MirrorChyan ——
+     * 那条链路要 CDK，没订阅的用户永远收不到更新提示。清单里同时带
+     * 更新要点、下载地址和强制标记，正好是弹窗需要的三样东西。
+     *
+     * # 强制更新（"死更新"）
+     *
+     * 两道闸：
+     *
+     * 1. **服务端**：`update.md` 里 `forceUpdate: true`，或者本机
+     *    versionCode 低于 `minSupportedVersionCode`；
+     * 2. **本地**：一旦见过强制标记就写进 [AppSettingsManager.forcedUpdateFloor]。
+     *    之后每次启动**先看本地锁**，断网、关掉「自动检查更新」都拦得住。
+     *
+     * 升级到不低于下限后自动解锁，不会把用户永久挡在门外。
+     */
+    fun checkAppUpdateOnStartup() {
         if (hasCheckedOnStartup) return
         hasCheckedOnStartup = true
 
         viewModelScope.launch {
-            if (!appSettingsManager.autoCheckUpdate.value) return@launch
+            val current = BuildConfig.VERSION_CODE
+            val floor = appSettingsManager.forcedUpdateFloor.value
+            val lockedLocally = floor > current
 
-            val currentVersion = loadResourceVersion()
-
-            // 并行检查
-            val appDeferred = async {
-                updateService.checkAppUpdate(channel = updateChannel.value)
-            }
-            val resDeferred = async {
-                updateService.checkResourceUpdate(currentVersion)
+            // 已经升过，解锁 —— 否则升级完还会一直被拦
+            if (floor != 0 && !lockedLocally) {
+                appSettingsManager.clearForcedUpdateFloor()
             }
 
-            val appResult = appDeferred.await()
-            val resResult = resDeferred.await()
+            val autoCheck = appSettingsManager.autoCheckUpdate.value
+            // 本地锁优先：即便用户关了自动检查，也要去问一次
+            if (!autoCheck && !lockedLocally) {
+                Timber.d("启动更新检查已关闭，跳过")
+                return@launch
+            }
 
-            // 聚合结果
-            val appAvailable = (appResult as? UpdateCheckResult.Available)?.info
-            val resAvailable = (resResult as? UpdateCheckResult.Available)?.info
+            val result = runCatching { updateChecker.check() }
+                .getOrElse { UpdateChecker.Result.NONE }
+            val manifest = result.manifest
 
-            if (appAvailable == null && resAvailable == null) return@launch
+            // 服务端要求强制 → 记住下限（只升不降，避免清单回滚时把锁抹掉）
+            val forcedByServer = manifest != null &&
+                (manifest.forceUpdate || current < manifest.minSupportedVersionCode)
+            if (forcedByServer && manifest.versionCode > floor) {
+                appSettingsManager.setForcedUpdateFloor(manifest.versionCode)
+                Timber.w("收到强制更新要求，本地锁定 versionCode >= ${manifest.versionCode}")
+            }
 
-            saveAppChangelog(appAvailable)
+            val prompt = when {
+                manifest != null -> AppUpdatePrompt(
+                    versionName = manifest.versionName,
+                    currentVersion = BuildConfig.VERSION_NAME,
+                    changelog = manifest.changelog,
+                    downloadUrl = manifest.apkUrl,
+                    forced = forcedByServer,
+                )
 
-            if (appSettingsManager.autoDownloadUpdate.value) {
-                // 自动下载模式
-                autoDownload(appAvailable, resAvailable)
-            } else {
-                // 手动确认模式（现有行为）
-                _startupUpdateDialog.value = StartupUpdateResult(
-                    appUpdate = appAvailable,
-                    resourceUpdate = resAvailable
+                // 在线清单拿不到，但本地锁还在 —— 不显示就等于放行，必须拦
+                lockedLocally -> AppUpdatePrompt.forcedOffline(
+                    currentVersion = BuildConfig.VERSION_NAME,
+                    downloadUrl = M7aApi.APP_GITHUB_RELEASES_LATEST,
+                )
+
+                else -> null
+            }
+
+            if (prompt != null) {
+                Timber.i(
+                    "启动更新提示：${prompt.versionName.ifEmpty { "未知版本" }}" +
+                        if (prompt.forced) " [强制，不可跳过]" else "",
                 )
             }
+            _appUpdatePrompt.value = prompt
         }
     }
 
-    private fun autoDownload(appAvailable: UpdateInfo?, resAvailable: UpdateInfo?) {
-        viewModelScope.launch {
-            when {
-                // 两者同时存在 → 仅下载 App,资源等下次启动
-                appAvailable != null -> {
-                    lastAppDownloadVersion = appAvailable.version
-                    val result = updateService.downloadApp(
-                        source = updateSource.value,
-                        version = appAvailable.version,
-                        channel = updateChannel.value
-                    )
-                    if (result.isFailure) {
-                        _toastMessage.tryEmit(appContext.getString(R.string.update_toast_auto_download_app_failed))
-                    }
-                }
-                // 仅资源更新
-                resAvailable != null -> {
-                    val file = File(pathConfig.resourceDir)
-                    val currentVersion = loadResourceVersion()
-                    val result = updateService.downloadResource(
-                        source = updateSource.value,
-                        currentVersion = currentVersion,
-                        target = file
-                    )
-                    if (result.isSuccess) {
-                        refreshResourceVersion()
-                        maaResourceLoader.load()
-                    } else {
-                        _toastMessage.tryEmit(appContext.getString(R.string.update_toast_auto_download_resource_failed))
-                    }
-                }
-            }
+    /**
+     * 关闭更新弹窗。
+     *
+     * 强制更新时**直接忽略** —— 这是"死更新"的最后一环：按钮不给、
+     * 点外面不关、返回键也不关，就算误触发也会被这里挡住。
+     */
+    fun dismissAppUpdatePrompt() {
+        val prompt = _appUpdatePrompt.value ?: return
+        if (prompt.forced) {
+            Timber.w("强制更新不允许跳过，忽略关闭请求")
+            return
         }
+        _appUpdatePrompt.value = null
     }
 
-    fun dismissStartupDialog() {
-        _startupUpdateDialog.value = null
+    /** 打开下载页（浏览器）。 */
+    fun openAppUpdateDownload() {
+        val url = _appUpdatePrompt.value?.downloadUrl
+            ?.takeIf { it.isNotBlank() }
+            ?: M7aApi.APP_GITHUB_RELEASES_LATEST
+        Misc.openUriSafely(appContext, url)
     }
 
     fun reset() {

@@ -1,0 +1,35 @@
+# Cloudflare Pages 响应头
+#
+# 这个文件不被客户端下载，是给 Pages 的：部署时它会被翻译成每个资源的
+# HTTP 响应头。作用只有一个 —— 让「公告」和「更新清单」不被 CDN 缓存。
+#
+# 为什么必须这么做：
+#   Cloudflare 会缓存静态资源。改完 update.md 重新部署后，边缘节点上
+#   还留着旧副本，用户可能要等几分钟才看到新版本。更新清单是要命的东西 ——
+#   推了强制更新却因为缓存没生效，等于没推。
+#
+# 站点是纯静态的，没有服务器可以写 Cache-Control，所以用这个文件声明。
+
+/update.md
+  Cache-Control: no-store, must-revalidate
+  Content-Type: text/markdown; charset=utf-8
+
+/update.json
+  Cache-Control: no-store, must-revalidate
+  Content-Type: application/json; charset=utf-8
+
+/announcement_zh.md
+  Cache-Control: no-store, must-revalidate
+  Content-Type: text/markdown; charset=utf-8
+
+/announcement_en.md
+  Cache-Control: no-store, must-revalidate
+  Content-Type: text/markdown; charset=utf-8
+
+# 首页内容会随发版更新，别让 CDN 一直吐旧页面
+/index.html
+  Cache-Control: no-cache
+
+# 图标基本不变，可以放心缓存一周
+/icon.png
+  Cache-Control: public, max-age=604800

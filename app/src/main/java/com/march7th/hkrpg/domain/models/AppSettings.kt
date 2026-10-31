@@ -26,6 +26,20 @@ data class AppSettings(
     @PrefKey(default = "false")
     val autoDownloadUpdate: String = "false",
 
+    /**
+     * 已下发的**强制更新下限**（versionCode，空串表示没有）。
+     *
+     * ## 为什么要在本地留一份
+     *
+     * 服务端一旦把某个版本标成「必须更新」（`update.md` 的 `forceUpdate`），
+     * 这个下限就会被写进本地。此后即便用户关掉「自动检查更新」、
+     * 断网、甚至清了缓存，只要本机 versionCode 仍低于它，启动就会被拦下。
+     *
+     * 换句话说：**能不能跳过更新，由作者在服务端一次性决定，客户端无法自行解除。**
+     */
+    @PrefKey(default = "")
+    val forcedUpdateFloor: String = "",
+
     @PrefKey(default = "SHIZUKU")
     val startupBackend: String = "SHIZUKU",
 

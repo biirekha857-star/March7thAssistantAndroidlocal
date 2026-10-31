@@ -97,7 +97,7 @@
     <string name="settings_font_size_auto_value">Auto · %1$d</string>
     <string name="settings_font_size_use_recommended">Use auto (recommended)</string>
     <string name="settings_background_title">Custom Background</string>
-    <string name="settings_background_desc">Set an image background for the four main tabs</string>
+    <string name="settings_background_desc">Set an image background for the three main tabs</string>
     <string name="settings_background_pick">Choose Image</string>
     <string name="settings_background_replace">Replace Image</string>
     <string name="settings_background_remove">Remove</string>
@@ -514,6 +514,11 @@
     <!-- dialog: app update confirm -->
     <string name="dialog_update_now">Update Now</string>
     <string name="dialog_update_later">Later</string>
+    <string name="update_dialog_title">Version %1$s available</string>
+    <string name="update_dialog_title_forced">Update required</string>
+    <string name="update_dialog_update_now">Update now</string>
+    <string name="update_dialog_version_line">%1$s → %2$s</string>
+    <string name="update_dialog_forced_hint">This version is no longer supported. Please update to continue.</string>
     <string name="dialog_update_failed_title">Update Failed</string>
 
     <!-- dialog: changelog -->

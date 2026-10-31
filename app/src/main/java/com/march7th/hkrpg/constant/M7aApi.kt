@@ -19,22 +19,28 @@ package com.march7th.hkrpg.constant
  * https://<项目名>.pages.dev/
  *   ├── announcement_zh.md   中文公告
  *   ├── announcement_en.md   英文公告
- *   └── update.json          更新清单
+ *   ├── update.md            更新清单（主源，人写的）
+ *   └── update.json          更新清单（旧客户端兼容，由脚本生成）
  * ```
  *
- * ## update.json 格式
+ * ## update.md 格式
  *
- * ```json
- * {
- *   "versionCode": 6,
- *   "versionName": "0.6.0beta",
- *   "apkUrl": "https://.../m7a-0.6.0beta.apk",
- *   "changelog": "修复虚拟屏拉伸；每日实训支持合成机",
- *   "forceUpdate": false
- * }
+ * ```markdown
+ * ---
+ * versionCode: 6
+ * versionName: 0.6.0beta
+ * apkUrl: https://.../m7a-0.6.0beta.apk
+ * forceUpdate: false
+ * minSupportedVersionCode: 1
+ * publishedAt: 2026-10-28
+ * ---
+ *
+ * 修复虚拟屏拉伸；每日实训支持合成机
  * ```
  *
- * 客户端拿本机 `versionCode` 和它比，小就提示更新。
+ * 客户端拿本机 `versionCode` 和它比，小就提示更新；正文就是弹窗里的更新要点。
+ * `update.json` 是同一个内容的老格式，留给 0.5.7beta 以前的客户端，
+ * 由 `scripts/update_manifest.py` 从 md 生成，不要手改。
  */
 object M7aApi {
 
@@ -43,14 +49,12 @@ object M7aApi {
     /**
      * 自有静态站基础地址。
      *
-     * ## 当前状态：**尚未部署**
+     * 托管在 **Cloudflare Pages** —— 纯静态，没有后端、没有数据库、没有接口。
+     * 站上就是几个文件：公告 md、更新清单 md（外加给旧客户端用的 json）。
+     * 客户端拿到的都是一份文本，直接 `GET` 下来解析，改内容只要重新部署一次。
      *
-     * Cloudflare Pages 每个项目都免费给一个 `<项目名>.pages.dev`，
-     * 不用买域名就能用。等站点建好、把公告和 `update.json` 传上去之后，
-     * 这里的地址才会真正可用。
-     *
-     * 在那之前，公告与常见问题都会退回到 GitHub 仓库
-     * （见 [FAQ_URL]），避免用户点开一片 404。
+     * 也因此**不能**靠服务端做逻辑（比如"按地区下发不同版本"），
+     * 所有判断都在客户端做 —— 这也正是清单里要带 `forceUpdate` 的原因。
      *
      * ⚠️ **末尾必须带 `/`** —— 下面用字符串拼接。
      */
@@ -62,7 +66,21 @@ object M7aApi {
     /** 英文公告。 */
     const val ANNOUNCEMENT_EN = "${SITE_BASE}announcement_en.md"
 
-    /** 更新清单（见类注释里的 JSON 格式）。 */
+    /**
+     * 更新清单（主源）。
+     *
+     * 格式见 [M7aApi] 类注释里的 `update.md` 示例。和公告一样是静态文件，
+     * 发版时改这一份、重新部署即可，客户端不需要任何接口。
+     */
+    const val UPDATE_MANIFEST_MD = "${SITE_BASE}update.md"
+
+    /**
+     * 更新清单（JSON，回退用）。
+     *
+     * **只给 0.5.7beta 以前的客户端看** —— 那些版本只会解析 JSON。
+     * 内容由 `scripts/update_manifest.py` 从 [UPDATE_MANIFEST_MD] 生成，
+     * 日常不要手改，否则两份会打架。
+     */
     const val UPDATE_MANIFEST = "${SITE_BASE}update.json"
 
     // ==================== GitHub Release（备用更新源）====================
@@ -78,6 +96,14 @@ object M7aApi {
     /** 最新 Release（含 prerelease）。 */
     const val APP_GITHUB_RELEASES =
         "https://api.github.com/repos/$APP_GITHUB_OWNER/$APP_GITHUB_REPO/releases?per_page=1"
+
+    /**
+     * Release 页面（给人看的）。
+     *
+     * 强制更新但拿不到 `update.json` 时用它兜底 —— 至少能把人送到能下载的地方。
+     */
+    const val APP_GITHUB_RELEASES_LATEST =
+        "https://github.com/$APP_GITHUB_OWNER/$APP_GITHUB_REPO/releases/latest"
 
     /** 最近 5 个 Release（beta 通道）。 */
     const val APP_GITHUB_RELEASES_BETA =

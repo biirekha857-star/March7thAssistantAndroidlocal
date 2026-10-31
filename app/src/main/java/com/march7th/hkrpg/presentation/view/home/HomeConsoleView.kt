@@ -138,9 +138,11 @@ fun HomeConsoleView(
         onRetry = { viewModel.onTryResourceInit() },
     )
 
-    // 「发现新版本」弹窗已删除：这是崩铁移植包，跟随的是崩铁客户端版本，
-    // 而不是上游 MAA-Meow 的版本号；每次启动弹还会挡住任务流程。
-    // 更新检查逻辑保留（UpdateViewModel 仍在），只是不再在首页自动弹窗。
+    // 更新弹窗**不在这里**。
+    //
+    // 它挂在 MainActivity 的导航根层（见 AppUpdateDialog），因为要能盖住
+    // 激活向导和设置页；服务端标记为强制更新时更是必须挡住全部界面。
+    // 首页只负责刷新资源版本、以及展示"本版本已装"的更新公告。
 
     val showCoreDirInaccessibleDialog by viewModel.showCoreDirInaccessibleDialog.collectAsStateWithLifecycle()
     if (showCoreDirInaccessibleDialog) {

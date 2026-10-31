@@ -150,18 +150,19 @@ val appModule = module {
 
     // ==================== 站点内容：公告 + 更新检查 ====================
     //
-    // 两块内容都从自己的静态站（`M7aApi.SITE_BASE`，Cloudflare Pages）拉取：
+    // 两块内容都从自己的静态站（`M7aApi.SITE_BASE`，Cloudflare Pages）拉取，
+    // 都是**纯静态的 Markdown 文件**，没有后端接口：
     //
     // ```
     // https://m7a.pages.dev/announcement_zh.md
-    // https://m7a.pages.dev/update.json
+    // https://m7a.pages.dev/update.md
     // ```
     //
-    // 站点尚未部署时两者都会失败，但**都做了静默降级**：
+    // 站点挂掉或断网时两者都会失败，但**都做了静默降级**：
     //   · 公告 → 退回 APK 内置的 `assets/announcement/*.md`
-    //   · 更新 → 直接不提示
+    //   · 更新 → 回退 `update.json`，再不行就直接不提示
     //
-    // 所以部署与否都不影响 App 正常使用。
+    // 所以站点是否在线都不影响 App 正常使用。
     singleOf(::AnnouncementService)
     singleOf(::AnnouncementStateStore)
     singleOf(::UpdateChecker)

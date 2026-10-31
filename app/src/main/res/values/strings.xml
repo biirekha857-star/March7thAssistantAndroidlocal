@@ -321,7 +321,7 @@
     <string name="settings_font_size_auto_value">自动 · %1$d</string>
     <string name="settings_font_size_use_recommended">使用自动（推荐）</string>
     <string name="settings_background_title">自定义背景</string>
-    <string name="settings_background_desc">为主界面四个标签页设置图片背景</string>
+    <string name="settings_background_desc">为主界面三个标签页设置图片背景</string>
     <string name="settings_background_pick">选择图片</string>
     <string name="settings_background_replace">更换图片</string>
     <string name="settings_background_remove">移除</string>
@@ -744,6 +744,11 @@
     <!-- dialog: app update confirm -->
     <string name="dialog_update_now">立即更新</string>
     <string name="dialog_update_later">稍后再说</string>
+    <string name="update_dialog_title">发现新版本 %1$s</string>
+    <string name="update_dialog_title_forced">需要更新后才能继续使用</string>
+    <string name="update_dialog_update_now">立即更新</string>
+    <string name="update_dialog_version_line">当前 %1$s → 最新 %2$s</string>
+    <string name="update_dialog_forced_hint">此版本已停止支持，请更新到最新版本后继续使用。</string>
     <string name="dialog_update_failed_title">更新失败</string>
 
     <!-- dialog: changelog -->
