@@ -1,5 +1,7 @@
 package com.march7th.hkrpg.starrail
 
+import android.os.SystemClock
+
 import com.march7th.hkrpg.data.model.PowerInstance
 import com.march7th.hkrpg.starrail.engine.OcrEngine
 import com.march7th.hkrpg.starrail.engine.ScreenNavigator
@@ -336,18 +338,20 @@ internal class DailyTask(
         /** 执行一项，做完回大厅确认。 */
         fun runStep(label: String, action: () -> Boolean) {
             note("—— 执行：$label ——")
+            val startedAt = SystemClock.uptimeMillis()
             val ok = try {
                 action()
             } catch (e: Exception) {
                 note("$label 异常：${e.message}")
                 false
             }
+            val costMs = SystemClock.uptimeMillis() - startedAt
             if (ok) {
                 doneActions += label
-                note("$label 完成")
+                note("$label 完成（${costMs}ms）")
             } else {
                 failedActions += label
-                note("$label 失败，继续下一项")
+                note("$label 失败（${costMs}ms），继续下一项")
             }
             // **无论成败都回大厅**，给下一项一个干净起点
             returnToMain()
@@ -435,6 +439,10 @@ internal class DailyTask(
      * 用户明确要求每项之间要回大厅 —— 不做这一步，连续在不同弹层间
      * 跳转很容易因为某个关闭动作没生效而全部错位。
      *
+     * `closeCurrent()` 内部已经是"关一下、120ms 轮询等大厅"的节奏，
+     * 返回 true 就代表确实回到大厅了，所以这里**不再额外 sleep** ——
+     * 原来每次多睡的 600ms 乘以每项一次，纯属白等。
+     *
      * @return 是否确实回到了大厅
      */
     private fun returnToMain(): Boolean {
@@ -442,12 +450,10 @@ internal class DailyTask(
             return true
         }
         repeat(3) { i ->
-            nav.closeCurrent()
-            if (nav.isAt(ScreenNavigator.Screen.MAIN)) {
+            if (nav.closeCurrent()) {
                 Ln.i("$TAG: 已回大厅（第 ${i + 1} 次尝试）")
                 return true
             }
-            Thread.sleep(600)
         }
         Ln.w("$TAG: 没能回到大厅，后续步骤可能受影响")
         return false

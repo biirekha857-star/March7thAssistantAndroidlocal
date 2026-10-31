@@ -68,6 +68,24 @@ class ScreenNavigator(
 
     private val MENU_PANEL_REGION = NormRect(0.58f, 0.30f, 0.42f, 0.70f)
 
+    /**
+     * 右上角「✕」的搜索区。
+     *
+     * 崩铁各子界面的关闭按钮都在右上角一角，实测中心约 (0.96, 0.06)。
+     * 以前 `closeCurrent` 直接拿两个模板**全屏**多尺度匹配，一次几百毫秒
+     * 到 1 秒；限定到这一小块后只要几十毫秒。
+     */
+    private val CROP_CLOSE_CORNER = NormRect(0.88f, 0.00f, 0.12f, 0.14f)
+
+    /** 关闭按钮的候选模板（通用关闭、手机界面关闭）。 */
+    private val CLOSE_TEMPLATES = listOf(
+        "zh_CN/base/click_close.png",
+        "share/plot/close_phone.png",
+    )
+
+    /** 等大厅时重新判态的间隔。 */
+    private const val MAIN_POLL_MS = 120L
+
     /** 菜单网格里的关键词，命中 2 个即判定在菜单。 */
     private val MENU_KEYWORDS = listOf(
         "商店", "好友", "委托", "旅情事记", "合成", "成就",
@@ -1171,8 +1189,46 @@ class ScreenNavigator(
      * 代价是每轮多一两次区域 OCR（各 100~300ms），但这条路本来只在
      * 收尾/自救时才走，多几百毫秒换"不会误退游戏"是值得的。
      */
+    /**
+     * 关掉当前弹出的界面，回到主界面。
+     *
+     * 手游没有 ESC，只能点界面自带的 ✕。
+     *
+     * ⚠️ **手机菜单必须走专用坐标**：M7A 的两个通用关闭模板
+     * （`zh_CN/base/click_close.png` 0.30、`share/plot/close_phone.png` 0.54）
+     * 在手游菜单上都**匹配不到**，只靠它们会一直关不掉。
+     *
+     * ## BACK 的顺序被改过（重要）
+     *
+     * 旧实现把 BACK 放在**第一步**，理由是"邮件页/菜单页的 ✕ 匹配不到"。
+     * 但代价是：判态一旦把主界面漏判，第一下 BACK 就会弹出「是否退出游戏」，
+     * 而且没人处理它。
+     *
+     * 现在改成：
+     * 1. 先点界面自己的 ✕（菜单专用坐标 + 通用模板）—— 无副作用；
+     * 2. 都不行才按 BACK；
+     * 3. **BACK 前后各探测一次弹窗**，认出退出框就点取消，
+     *    并且借这个框反证"其实已经在主界面"，直接判定成功。
+     *
+     * ## 性能（0.5.7 之后重做过一次）
+     *
+     * 上一版把 BACK 挪到后面时，顺手让每一步都踩满了固定等待，实测一次
+     * 关闭要 2~3 秒，一套日常要关十几个界面，白白多花二三十秒。
+     * 现在改成"能省就省"：
+     *
+     * | 步骤 | 旧 | 新 |
+     * |---|---|---|
+     * | 判是不是菜单 | 模板 + 区域 OCR（~1s） | **只查模板**（几十毫秒） |
+     * | 找 ✕ | 全屏多尺度匹配 ×2（几百 ms） | 右上角小块 ×2（几十毫秒） |
+     * | 等画面回大厅 | 固定 sleep 800ms | **120ms 轮询，命中即返回** |
+     *
+     * 菜单那个 OCR 判态放在这里几乎没有收益：万一模板漏判，后面按 BACK
+     * 也能把菜单收掉（菜单不在大厅，BACK 不会弹退出框），代价只是多一次往返。
+     */
     fun closeCurrent(maxAttempts: Int = 4): Boolean {
         if (isAt(Screen.MAIN)) return true
+        val startedAt = SystemClock.uptimeMillis()
+
         repeat(maxAttempts) { i ->
             // ⓪ 任何时刻冒出确认框，先点取消再说
             if (dismissPopup("closeCurrent#${i + 1}") == PopupProbe.EXIT_CONFIRM) {
@@ -1181,40 +1237,86 @@ class ScreenNavigator(
             }
 
             // ① 手机菜单 → 点它自己的右上角 ✕
-            if (isAt(Screen.MENU)) {
+            //
+            // 这里只看电源键模板（几十毫秒）。真在菜单里就一定命中；
+            // 漏判的后果只是多按一次 BACK，不会误操作。
+            if (isPhoneMenuByTemplate()) {
                 Ln.i("$TAG: 在手机菜单，点右上角 ✕ 关闭")
                 clickCrop(Hotspot.MENU_CLOSE, "菜单关闭")
-                sleepInterruptible(SETTLE_MS)
-                if (isAt(Screen.MAIN)) return true
-            }
-            // ② 通用 ✕（多数弹窗/子界面右上角）
-            if (clickImage("zh_CN/base/click_close.png", 0.80, maxRetries = 1)) {
-                sleepInterruptible(SETTLE_MS)
-                if (isAt(Screen.MAIN)) return true
-            }
-            // ③ 手机界面的 ✕（M7A 模板，手游上不一定命中，作为兜底）
-            if (clickImage("share/plot/close_phone.png", 0.80, maxRetries = 1)) {
-                sleepInterruptible(SETTLE_MS)
-                if (isAt(Screen.MAIN)) return true
+                if (awaitMain(SETTLE_MS)) return true
             }
 
-            // ④ 前三步都无效，才动用 BACK
+            // ② 右上角的通用 ✕ —— 只扫那一小块
+            if (clickCloseInCorner()) {
+                if (awaitMain(SETTLE_MS)) return true
+            }
+
+            // ③ 前三步都无效，才动用 BACK
             //
             //    邮件页这类界面确实只有 BACK 能退，所以不能删掉它，
             //    只能把它降级成最后手段。
             Ln.i("$TAG: 未见可点的 ✕，尝试 BACK 键返回（第 ${i + 1} 次）")
             auto.pressKey(android.view.KeyEvent.KEYCODE_BACK)
-            sleepInterruptible(SETTLE_MS)
 
-            // ⑤ BACK 之后**立刻**查退出框 —— 这是唯一能拦住"误退游戏"的位置
+            // ④ BACK 之后**立刻**查退出框 —— 这是唯一能拦住"误退游戏"的位置
             if (dismissPopup("closeCurrent-back#${i + 1}", force = true) == PopupProbe.EXIT_CONFIRM) {
                 Ln.w("$TAG: BACK 触发了退出确认框，已点取消 —— 说明本来就在主界面，结束")
                 return true
             }
-            if (isAt(Screen.MAIN)) return true
+            if (awaitMain(SETTLE_MS)) return true
             trace("close_attempt${i + 1}")
         }
+        val ok = isAt(Screen.MAIN)
+        Ln.i(
+            "$TAG: closeCurrent 结束（${SystemClock.uptimeMillis() - startedAt}ms，" +
+                if (ok) "已回大厅）" else "未回大厅）",
+        )
+        return ok
+    }
+
+    /**
+     * 快速判断"是不是在手机菜单"：**只看电源键模板**，几十毫秒。
+     *
+     * 和 [isPhoneMenu] 的区别：那个在模板没命中时会补一次区域 OCR（~1 秒），
+     * 保证不漏判。而这里故意不补 —— 只用在"猜错也不会出事"的地方
+     * （例如 [closeCurrent] 的关闭顺序），用速度换一点准确率。
+     */
+    private fun isPhoneMenuByTemplate(): Boolean =
+        findInRegion(MENU_POWER_TEMPLATE, 0.80, CROP_MENU_POWER) != null
+
+    /**
+     * 轮询等"回到大厅"，**一命中就返回**。
+     *
+     * 原来固定 `sleep(800)` 再判一次，界面 300ms 就切完了也要干等到 800ms；
+     * 一整套任务要关十几个界面，这些零头加起来就是十几秒。
+     *
+     * @param timeoutMs 最长等多久；超时后再判最后一次
+     */
+    private fun awaitMain(timeoutMs: Long): Boolean {
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (isAt(Screen.MAIN)) return true
+            SystemClock.sleep(MAIN_POLL_MS)
+        }
         return isAt(Screen.MAIN)
+    }
+
+    /**
+     * 只在**右上角**找关闭按钮并点它。
+     *
+     * 返回 false 有两种情况：两个模板都没命中；或者命中了但注入失败
+     * （这种情况 [ShellAutomation.tap] 自己已经自愈过一次并打了日志）。
+     */
+    private fun clickCloseInCorner(): Boolean {
+        val sf = ImageUtils.BASE_HEIGHT.toDouble() / auto.height
+        for (tpl in CLOSE_TEMPLATES) {
+            val hit = findInRegion(tpl, 0.80, CROP_CLOSE_CORNER) ?: continue
+            val cx = ((hit.x + hit.templateWidth * hit.scale / 2) / sf).toInt()
+            val cy = ((hit.y + hit.templateHeight * hit.scale / 2) / sf).toInt()
+            Ln.i("$TAG: 命中关闭按钮 $tpl (${"%.3f".format(hit.score)}) -> ($cx,$cy)")
+            return auto.tap(cx, cy)
+        }
+        return false
     }
 
     /**
@@ -1362,10 +1464,20 @@ class ScreenNavigator(
         return hits >= 2
     }
     fun openPhoneMenu(): Boolean {
-        if (isAt(Screen.MENU)) {
-            Ln.i("$TAG: 已在手机菜单")
+        // ## 快判：先只看电源键模板（几十毫秒）
+        //
+        // 原来这里直接 `isAt(MENU)`，而它在"不在菜单"时会补一次区域 OCR
+        // （~1 秒）。每次导航（邮件 / 委托 / 合成 / 指南）都要走这一下，
+        // 一天下来白花十几秒。
+        //
+        // 漏判的代价很小：下面点图标用的是 `screen/main.png` 模板定位，
+        // 真的在菜单里时那个图标根本不在屏幕上，找不到就直接失败返回，
+        // **不会盲点**（不会点到菜单左上角的「梦境护照」）。
+        if (isPhoneMenuByTemplate()) {
+            Ln.i("$TAG: 已在手机菜单（电源键模板命中）")
             return true
         }
+
         // 手机图标只在大厅可见；不在大厅就先回去
         if (!isAt(Screen.MAIN)) {
             Ln.w("$TAG: 不在大厅，先返回再开菜单")
@@ -1428,12 +1540,22 @@ class ScreenNavigator(
         // 所以判到菜单后额外等 [MENU_SETTLE_MS] 再返回。
         val menuDeadline = SystemClock.uptimeMillis() + MENU_OPEN_TIMEOUT_MS
         while (SystemClock.uptimeMillis() < menuDeadline) {
-            if (isAt(Screen.MENU)) {
+            // 这里只看电源键模板：`isAt(MENU)` 在"面板还没画出来"时会补一次
+            // 区域 OCR（~1 秒），等于把 150ms 的轮询间隔拖到 1 秒以上，
+            // 菜单明明 400ms 就展开完了，却要等到下一次 OCR 才认出来。
+            if (isPhoneMenuByTemplate()) {
                 Ln.i("$TAG: 菜单已出现，等 ${MENU_SETTLE_MS}ms 让它稳定")
                 sleepInterruptible(MENU_SETTLE_MS)
                 return true
             }
             sleepInterruptible(MENU_POLL_MS)
+        }
+
+        // 轮询全程没命中模板 —— 走一次完整判态（含 OCR），避免模板被挡住时误判
+        if (isAt(Screen.MENU)) {
+            Ln.i("$TAG: 菜单已出现（OCR 兜底命中）")
+            sleepInterruptible(MENU_SETTLE_MS)
+            return true
         }
 
         // ## 注入成功但菜单没出现 —— 先怀疑"有东西在吃输入"
@@ -1456,7 +1578,7 @@ class ScreenNavigator(
                 auto.tap(ax, ay)
                 val retryDeadline = SystemClock.uptimeMillis() + MENU_OPEN_TIMEOUT_MS
                 while (SystemClock.uptimeMillis() < retryDeadline) {
-                    if (isAt(Screen.MENU)) {
+                    if (isPhoneMenuByTemplate() || isAt(Screen.MENU)) {
                         Ln.i("$TAG: 掀掉遮罩后菜单打开了")
                         sleepInterruptible(MENU_SETTLE_MS)
                         return true

@@ -250,8 +250,26 @@ class StarRailTasks(
         /** 每次点完 X 后等多久再复查。 */
         private const val SELF_HEAL_INTERVAL_MS = 800L
 
-        /** 失败后的重试间隔（等「点击进入」/等主界面的轮询间隔）。 */
+        /** 失败后的重试间隔（等「点击进入」的轮询间隔）。 */
         private const val RETRY_INTERVAL_MS = 5_000L
+
+        /**
+         * 等主界面时的复查间隔。
+         *
+         * 原来和 [RETRY_INTERVAL_MS] 共用 5 秒 —— 但那 5 秒是为了等
+         * 「点击进入」出现（要轮询几十秒，间隔大点省电），而"等大厅"只持续
+         * 十几秒，5 秒一轮意味着平均要多干等 2.5 秒才动。判大厅是一次区域
+         * 模板匹配（几十毫秒），密一点完全无所谓。
+         */
+        private const val MAIN_POLL_FAST_MS = 1_200L
+
+        /**
+         * 等大厅期间，探月卡的最小间隔。
+         *
+         * 月卡探测要跑两次区域 OCR（几百毫秒），不能像判大厅那样一秒一次；
+         * 但它出现后必须尽快认出来（认不出就会点错界面），所以取 3 秒。
+         */
+        private const val MONTH_CARD_PROBE_INTERVAL_MS = 3_000L
 
         /** 总时长硬上限（实测 90 秒不够，放宽到 110 秒）：超过就判定启动失败并中止任务链。 */
         private const val TOTAL_LIMIT_MS = 180_000L
@@ -1129,19 +1147,22 @@ class StarRailTasks(
     private fun waitForMain(nav: ScreenNavigator): Boolean {
         val startAt = SystemClock.uptimeMillis()
         var blindTried = false
+        // 点完「点击进入」先给转场 + 加载一点时间，别一上来就截图打扰它
         Thread.sleep(AFTER_ENTER_MS)
+        var nextCardProbeAt = SystemClock.uptimeMillis()
 
         while (SystemClock.uptimeMillis() - startAt < TOTAL_LIMIT_MS) {
             if (nav.isCancelled()) return false
             val waited = (SystemClock.uptimeMillis() - startAt) / 1000
 
-            // ① 先探月卡 —— 它出现在大厅之前，且全程盖着头像
-            if (claimTrainSupplyIfAny(nav)) {
-                Ln.i("$TAG: 月卡已领取并回到大厅（点击进入后 ${waited}s）")
-                return true
-            }
-
-            // ② 再判大厅；命中后先守一小段，防止弹窗晚到
+            // ① 先判大厅 —— 一次区域模板匹配，几十毫秒
+            //
+            // 顺序和以前相反（以前先探月卡）。这不影响正确性：月卡的三层界面
+            // 全程盖住角色头像，头像能认出来就说明没有月卡挡着；万一有弹窗
+            // 晚到，② 里的守门还会再兜一次。
+            //
+            // 好处是"进了大厅就能立刻走" —— 原来固定 5 秒一轮，运气不好
+            // 要多干等近 5 秒。
             if (isMainUi(nav)) {
                 if (confirmNoPendingMonthCard(nav)) {
                     Ln.i("$TAG: 已进入主界面（点击进入后 ${waited}s）")
@@ -1149,6 +1170,16 @@ class StarRailTasks(
                 }
                 // 守门时发现画面又变了，让主循环重来一轮
                 continue
+            }
+
+            // ② 不在大厅：可能是还在加载，也可能是月卡 —— 节流着探，
+            //    别在加载动画上反复跑 OCR
+            if (SystemClock.uptimeMillis() >= nextCardProbeAt) {
+                nextCardProbeAt = SystemClock.uptimeMillis() + MONTH_CARD_PROBE_INTERVAL_MS
+                if (claimTrainSupplyIfAny(nav)) {
+                    Ln.i("$TAG: 月卡已领取并回到大厅（点击进入后 ${waited}s）")
+                    return true
+                }
             }
 
             // ③ 卡住兜底：太久没进大厅、也没认到月卡 → 留证据 + 安全试探
@@ -1161,8 +1192,7 @@ class StarRailTasks(
                 continue
             }
 
-            Ln.i("$TAG: 还没进主界面（${waited}s），${RETRY_INTERVAL_MS / 1000}s 后重试")
-            Thread.sleep(RETRY_INTERVAL_MS)
+            Thread.sleep(MAIN_POLL_FAST_MS)
         }
 
         Ln.e("$TAG: 进主界面超时（${TOTAL_LIMIT_MS / 1000}s）")
