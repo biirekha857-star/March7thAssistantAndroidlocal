@@ -33,6 +33,7 @@ Android 8.0+ · arm64-v8a · Shizuku / Root
 - **Daily routines** — launch game, claim monthly pass, mail, stamina farming, daily training, close game
 - **Stamina farming** — Calyx (Golden/Crimson), Stagnant Shadow, Cavern of Corrosion, Ornament Extraction and Echo of War; all 6 instance types supported
 - **Daily training** — pick the items yourself instead of unreliable task-card OCR
+- **Redeem codes** — the list is pulled from the site at runtime, grouped by event; expired codes are skipped automatically, and you can add your own
 - **Task chain** — card-based list with drag-to-reorder, inline configuration and scheduled runs
 - **Live preview** — scaled preview of the virtual display, with letterboxing on tall screens
 - **Logs & diagnostics** — timeline logs plus one-tap log bundle export
@@ -108,6 +109,7 @@ Capturing the virtual display and injecting touch events both require **shell / 
 | **Mail** | ✅ Stable | Claims all mail attachments in one go |
 | **Stamina farming** | ✅ Usable | All 6 instance types, see below |
 | **Daily training** | ✅ Usable (manual selection) | Commissions, photos, synthesizer, technique, stamina spending, rewards |
+| **Redeem codes** | ✅ Usable | Site list grouped by event, expired codes skipped, custom codes supported — see [maintenance guide](docs/CODES.md) |
 | **Close game** | ✅ Stable | Kills the game process |
 
 ### Supported instances

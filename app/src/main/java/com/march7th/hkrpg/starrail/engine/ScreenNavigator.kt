@@ -86,6 +86,83 @@ class ScreenNavigator(
     /** 等大厅时重新判态的间隔。 */
     private const val MAIN_POLL_MS = 120L
 
+    /** 点完设置齿轮后，等设置页渲染完成。 */
+    private const val SETTINGS_LOAD_MS = 1_200L
+
+    /** 点完手机菜单右上角的「…」后，等展开面板画出条目。 */
+    private const val PANEL_OPEN_MS = 500L
+
+    /** 等兑换码弹窗出现的总时长（含淡入）。 */
+    private const val REDEEM_DIALOG_TIMEOUT_MS = 2_400L
+
+    /** 等兑换码弹窗时的轮询间隔。 */
+    private const val REDEEM_DIALOG_POLL_MS = 300L
+
+    /**
+     * 大厅锚点：**右上角的角色头像**。
+     *
+     * 为什么用头像而不是左上角的手机图标：手机图标只在大厅可见，
+     * 但它本身就是「要点的那个东西」—— 用它判断"在不在大厅"，
+     * 会出现「图标被弹窗挡住 → 判定不在大厅 → 去关界面 → 越关越远」。
+     * 头像在所有大厅子界面里位置固定、样式不变，且月卡/公告弹窗
+     * 盖住它的时候就是**真的不在可操作大厅**，正好该先关弹窗。
+     *
+     * 区间与 `StarRailTasks.isMainUi` 保持一致（同一张模板、同一个区）。
+     */
+    private val CROP_MAIN_AVATAR = NormRect(0.90f, 0.00f, 0.10f, 0.12f)
+
+    /** 角色头像模板的匹配阈值（与大厅判定同值，宁严勿松）。 */
+    private const val MAIN_AVATAR_THRESHOLD = 0.85
+
+    /** 关掉界面后等它退回大厅的时间。 */
+    private const val BACK_TO_LOBBY_POLL_MS = 400L
+
+    /**
+     * 手机菜单右上角「…」展开后的面板范围。
+     *
+     * 只框**右半屏**：条目（漫游签证 / 手机装饰 / 开拓穿搭 / 兑换码）
+     * 都落在这一侧，而左侧立绘和底部按钮上不会有「兑换码」这三个字。
+     * 限定范围能把一次全屏 OCR（1920×1080 约 1 秒）缩到 0.4 秒左右，
+     * 而兑换码任务每成功一次都要重新进一遍入口，这个开销会被放大 N 倍。
+     *
+     * 万一版本改动把面板挪到中间，[openRedeemEntry] 还有一次全屏兜底。
+     */
+    private val CROP_MENU_PANEL = NormRect(0.62f, 0.04f, 0.38f, 0.82f)
+
+    /**
+     * 兑换码弹窗里「输入框 + 按钮」那一条横带。
+     *
+     * 用来判断"弹窗到底开没开"：只看这一条，避免把手机菜单里的
+     * 其他文字（商店、好友…）读进来。
+     */
+    private val CROP_REDEEM_DIALOG = NormRect(0.14f, 0.36f, 0.72f, 0.34f)
+
+    /**
+     * 兑换码弹窗里**可能出现结果文案**的范围。
+     *
+     * 两种结果都在这一带：
+     * - 失败的红横幅：紧贴输入框下方（y≈0.53）；
+     * - 成功的独立弹窗：「兑换提示 / 兑换成功 / 请前往邮箱领取奖励」
+     *   居中在屏幕中部（y≈0.35~0.65）。
+     *
+     * 比全屏小一半，OCR 快一倍，也把背景（手机菜单的商店/好友/委托、
+     * 大厅的跃迁/星琼）挡在外面 —— 那些文字里带「成功」「失败」的话，
+     * 全屏扫描会直接判错。
+     */
+    private val CROP_REDEEM_RESULT = NormRect(0.08f, 0.22f, 0.84f, 0.52f)
+
+    /**
+     * 游戏自带「提示：请求从剪切板粘贴」弹窗的范围。
+     *
+     * 弹窗本体实测在 1080×608 帧上占 (200,178)-(880,440)，换成比例约
+     * x 0.19~0.81 / y 0.29~0.72；上下各留一点余量，把标题和底部按钮
+     * （「不粘贴」/「粘贴」，y≈0.653）都框进来。
+     */
+    private val CROP_PASTE_PROMPT = NormRect(0.08f, 0.20f, 0.84f, 0.62f)
+
+    /** 设置页左侧竖排分类栏（「账户」「音画」「其他」…）。 */
+    private val CROP_SETTINGS_TABS = NormRect(0.00f, 0.08f, 0.32f, 0.84f)
+
     /**
      * 按完 BACK 后、探测退出确认框前的等待。
      *
@@ -162,8 +239,20 @@ class ScreenNavigator(
         /** 单轮调试导出上限。 */
         private const val MAX_DUMPS = 60
 
-        /** 全量记录上限（一次校准通常几十张就够）。 */
-        private const val MAX_CAPTURES = 300
+        /** 全量记录上限（一次校准通常几十张就够）。
+         *
+         * ## 为什么从 300 降到 60
+         *
+         * 300 张 PNG × 约 1.8 MB = **540 MB**。实测一次任务导出 274 帧、
+         * 日志包 363 MB —— 用户看到的就是"日志 300 多 MB"，其实文本日志
+         * 只有 1.5 MB，全是截图。
+         *
+         * 现在帧改成 JPEG q85（约 250 KB/帧），60 张约 15 MB，
+         * 而且 [capture] 用环形槽位覆盖，**目录总量恒定**，跑再久也不会涨。 */
+        private const val MAX_CAPTURES = 60
+
+        /** 调试帧的 JPEG 质量。q85 在 1080p 截图上肉眼无损，体积约为 PNG 的 1/7。 */
+        private const val DUMP_JPEG_QUALITY = 85
 
         /**
          * 弹窗探测的节流间隔。
@@ -378,9 +467,47 @@ class ScreenNavigator(
         )
 
         /**
+         * 手机菜单右侧竖栏里的**设置齿轮**。
+         *
+         * 同一根竖栏从上到下依次是：
+         *
+         * | 图标 | 中心（1920×1080） |
+         * |---|---|
+         * | 信封（邮件） | (1852, 340) |
+         * | 带横线的方框（任务） | (1852, 468) |
+         * | **齿轮（设置）** | **(1852, 600)** |
+         * | 相机（拍照） | (1852, 728) |
+         * | 电源键（底部，危险） | (1856, 986) |
+         *
+         * 坐标是在 1920×1080 的菜单帧上量的（齿轮 bbox ≈ (1832,580)-(1872,620)）。
+         *
+         * ## 为什么用坐标而不是模板
+         *
+         * 齿轮图标只有 40px，且这份菜单是**半透明叠在游戏画面上**的 ——
+         * 同样的白色齿轮在设置页、合成台、地图里都能找到，模板匹配很容易
+         * 命中别处。而竖栏位置是固定布局，坐标比模板稳。
+         *
+         * 点错的风险可控：点偏了最多是没进设置页，[gotoRedeem] 会判失败重试。
+         */
+        val MENU_SETTINGS = NormRect(
+            1832f / 1920f, 580f / 1080f, 40f / 1920f, 40f / 1080f,
+        )
+
+        /**
          * 手机菜单右上角的 **✕ 关闭**。
          *
          * 实测 bbox = (1794,5)-(1851,62)，57×57，中心 **(1822, 34)**。
+         *
+         * ## 两帧测量不一致 → 取并集
+         *
+         * 后来在另一张 1920×1080 原生帧上量到的 ✕ 是
+         * bbox (1834,38)-(1876,81)、中心 **(1855, 59)** —— 比上面那组
+         * 右移 33px、下移 25px。原因应该是名片面板的高度随「均衡等级」
+         * 那一行文字长度略有变化，右上角按钮跟着挪。
+         *
+         * 两组取并集：(1794,5)-(1885,95)，中心 (1839,50)。✕ 图标本体
+         * 只有 43px，但**触摸热区**远大于图标，中心落在两组的中间地带
+         * 也能点中；比押注其中一组稳。
          *
          * ## 为什么需要它
          *
@@ -399,7 +526,37 @@ class ScreenNavigator(
          * 0.955）。点它可能**退出登录/关闭游戏**，绝不能拿它当"关闭菜单"。
          */
         val MENU_CLOSE = NormRect(
-            1794f / 1920f, 5f / 1080f, 57f / 1920f, 57f / 1080f,
+            1794f / 1920f, 5f / 1080f, 91f / 1920f, 90f / 1080f,
+        )
+
+        /**
+         * 手机菜单**名片右上角的「…」**（三个点）。
+         *
+         * ## 它是兑换码入口的前置
+         *
+         * 实测流程是两跳，不是一跳：
+         *
+         * ```
+         * 大厅 → 手机 → 名片页 → 点「…」→ 面板 → 点「兑换码」
+         * ```
+         *
+         * 之前按"手机菜单右侧竖排直接有兑换码"写了一版，直接 OCR 找
+         * 「兑换码」永远找不到 —— 因为那一栏要等「…」展开后才画出来。
+         *
+         * ## 坐标（1920×1080 原生帧实测）
+         *
+         * 白色药丸底 + 三个黑点，bbox = (1671,110)-(1751,147)，**81×38**，
+         * 中心 **(1711,128)**。
+         *
+         * ## 为什么用坐标不用模板
+         *
+         * 它是**纯白圆角矩形**，菜单里另有两处相近的白底（好友头像框、
+         * 底部按钮），模板匹配（`TM_CCOEFF_NORMED`）会因为都是"白块"
+         * 拿到 0.9+ 的假阳性。而名片布局在 16:9 虚拟屏上是固定的，
+         * 坐标反而更可靠 —— 点偏了最多是面板没展开，上层会重试。
+         */
+        val MENU_MORE = NormRect(
+            1671f / 1920f, 110f / 1080f, 81f / 1920f, 38f / 1080f,
         )
 
         /**
@@ -551,14 +708,25 @@ class ScreenNavigator(
      *
      * 文件名用「序号_时间戳」排序，方便按时间顺序回看整个流程。
      */
+    /**
+     * 全量记录：每张取到的帧都存一份。
+     *
+     * ## 环形覆盖，不是一直往后排
+     *
+     * 原来序号一直加到 [MAX_CAPTURES] 就停，目录里留下 300 张**最早**的帧 ——
+     * 真出问题时最需要的是**最后几步**，反而没留下。
+     *
+     * 现在按 `(n-1) % MAX_CAPTURES + 1` 取槽位，写满一轮后从头覆盖：
+     * 目录里永远是**最近的 60 帧**，总量恒定。
+     */
     private fun capture(label: String) {
         if (!captureAll) return
         val root = debugDumpRoot ?: return
         val n = captureCount.incrementAndGet()
-        if (n > MAX_CAPTURES) return
+        val slot = ((n - 1) % MAX_CAPTURES) + 1
         val ts = java.text.SimpleDateFormat("HHmmss_SSS", java.util.Locale.US)
             .format(java.util.Date())
-        dumpFrame(root, "cap_%04d_%s_%s".format(n, ts, label.replace('/', '_')))
+        dumpFrame(root, "cap_%03d_%s_%s".format(slot, ts, label.replace('/', '_')))
     }
 
     /** 导出一帧（带计数上限）。 */
@@ -597,17 +765,28 @@ class ScreenNavigator(
      *
      * @param root 可写的根目录（特权进程下通常是 `/data/local/tmp/maameow`）
      */
+    /**
+     * 把当前帧落盘到 `{root}/debug/screenshots/`，用于**采集模板**。
+     *
+     * ## 存 JPEG，不存 PNG
+     *
+     * 之前用 PNG：1080p 截图 1.5~2.3 MB/帧，一次任务 274 帧就把日志包
+     * 顶到 363 MB。JPEG q85 平均 250 KB，**小 6~8 倍**，而调试要看的是
+     * "界面是什么、文字在哪"，压缩噪点完全不影响。
+     *
+     * @param root 可写的根目录（特权进程下通常是 `/data/local/tmp/maameow`）
+     */
     fun dumpFrame(root: java.io.File, label: String): String? {
         if (!auto.takeScreenshot()) {
             Ln.w("$TAG: dumpFrame 取帧失败")
             return null
         }
-        val png = auto.framePng() ?: return null
+        val jpg = auto.frameJpeg(DUMP_JPEG_QUALITY) ?: return null
         return runCatching {
             val dir = java.io.File(root, "debug/screenshots").apply { mkdirs() }
-            val f = java.io.File(dir, "$label.png")
-            f.writeBytes(png)
-            Ln.i("$TAG: 已导出帧 ${f.absolutePath} (${auto.width}x${auto.height})")
+            val f = java.io.File(dir, "$label.jpg")
+            f.writeBytes(jpg)
+            Ln.i("$TAG: 已导出帧 ${f.absolutePath} (${auto.width}x${auto.height}, ${jpg.size / 1024} KB)")
             f.absolutePath
         }.onFailure { Ln.w("$TAG: 导出帧失败: ${it.message}") }.getOrNull()
     }
@@ -1502,6 +1681,63 @@ class ScreenNavigator(
 
         return hits >= 2
     }
+
+    /**
+     * 大厅判态：**角色头像**在右上角命中就算在大厅。
+     *
+     * 这是所有任务共用的"起点确认"（`StarRailTasks.isMainUi` 用的是同一张
+     * 模板、同一个区）。放在导航层，是为了让 [gotoRedeem] 这类
+     * "不在大厅就没法往下走"的入口能自己先确认一次，而不是假设
+     * 上层一定已经把游戏摆回大厅了 —— 兑换码任务每成功一次都会退回
+     * 手机菜单，下一个码再进来时状态是**不确定**的。
+     */
+    fun isAtMainLobby(): Boolean {
+        // 主判据：角色头像
+        val hit = findInRegion("screen/main_avatar_icon.png", MAIN_AVATAR_THRESHOLD, CROP_MAIN_AVATAR)
+        if (hit != null) {
+            Ln.i("$TAG: 大厅锚点命中（角色头像 ${"%.3f".format(hit.score)}）")
+            return true
+        }
+        // 补充判据：左上角手机图标
+        //
+        // 只用来**避免误判成"不在大厅"**：某些活动挂件会把头像挡掉一角，
+        // 但手机图标还在。这时如果硬判"不在大厅"，就会去关界面 ——
+        // 明明在大厅，却把界面越关越远。所以两者命中其一都算在大厅，
+        // 顺序仍然是先头像（更稳）。
+        if (findInRegion(Screen.MAIN.marker, ELEMENT_THRESHOLD, CROP_MENU_ICON) != null) {
+            Ln.i("$TAG: 大厅锚点命中（手机图标，头像被遮挡）")
+            return true
+        }
+        return false
+    }
+
+    /**
+     * 确保停在大厅：已经在就是 `true`；不在就先关掉当前界面再确认。
+     *
+     * 只做"往回退"，不做冷启动 —— 冷启动由上层
+     * （`StarRailTasks.ensureMainMenu`）负责，那里还要处理月卡弹窗。
+     * 这里轻量是刻意的：兑换码任务里每个码都要走一次这个确认，
+     * 重活累积起来就是几十秒。
+     */
+    fun ensureMainLobby(): Boolean {
+        if (isAtMainLobby()) return true
+
+        repeat(2) { round ->
+            Ln.w("$TAG: 不在大厅（角色头像未命中，第 ${round + 1} 次），先关掉当前界面")
+            if (!closeCurrent()) {
+                Ln.w("$TAG: 关不掉当前界面，回不到大厅")
+                return false
+            }
+            sleepInterruptible(BACK_TO_LOBBY_POLL_MS)
+            if (isAtMainLobby()) {
+                Ln.i("$TAG: 已回到大厅")
+                return true
+            }
+        }
+        Ln.w("$TAG: 连续 2 次回退仍不在大厅")
+        return false
+    }
+
     fun openPhoneMenu(): Boolean {
         // ## 快判：先只看电源键模板（几十毫秒）
         //
@@ -1517,10 +1753,14 @@ class ScreenNavigator(
             return true
         }
 
-        // 手机图标只在大厅可见；不在大厅就先回去
-        if (!isAt(Screen.MAIN)) {
-            Ln.w("$TAG: 不在大厅，先返回再开菜单")
-            if (!closeCurrent()) {
+        // 手机图标只在大厅可见；不在大厅就先回去。
+        //
+        // 判「在不在大厅」用**角色头像**而不是手机图标本身：图标就是
+        // 接下来要找的东西，它被挡住时会导致「判定不在大厅 → 关界面」，
+        // 于是越关越远。头像被盖住 = 确实有一层东西挡着，才该退。
+        if (!isAtMainLobby()) {
+            Ln.w("$TAG: 角色头像未命中（不在大厅），先回大厅再开菜单")
+            if (!ensureMainLobby()) {
                 Ln.w("$TAG: 回不到大厅，放弃打开手机菜单")
                 return false
             }
@@ -1974,6 +2214,222 @@ class ScreenNavigator(
         Ln.w("$TAG: 导航到邮件界面失败（3 轮）")
         return false
     }
+
+    /**
+     * 打开**兑换码**弹窗。
+     *
+     * ## 路径（实机截图校准）
+     *
+     * ```
+     * ① 角色头像确认在大厅（和邮件/委托等任务同一步）
+     * ② 点左上角手机图标 → 手机菜单（名片页）
+     * ③ 点右上角「…」→ 展开面板
+     * ④ 点「兑换码」→ 输入框弹窗
+     * ```
+     *
+     * **是两跳，不是一跳。** 早期版本按"手机菜单右侧竖排直接有兑换码"
+     * 实现，直接 OCR 找「兑换码」永远找不到 —— 因为那一列条目要等
+     * 「…」展开之后才画出来。
+     *
+     * ## 每一步用什么定位
+     *
+     * | 步骤 | 手段 | 为什么 |
+     * |---|---|---|
+     * | 在不在大厅 | 模板 `main_avatar_icon.png`，右上角 10%×12% | 头像在所有子界面位置固定，被盖住就是真被挡住了 |
+     * | 大厅里的手机图标 | 模板 `main.png`，限左上角 20% | 图标稳定，限定区域后单次几十毫秒 |
+     * | 右上角「…」 | 归一化坐标 (1711,128) | 纯白药丸，模板会因为"都是白块"假阳性 |
+     * | 「兑换码」条目 | **区域 OCR**（右半屏），全屏兜底 | 文字比位置稳，面板挪位也不怕 |
+     * | 弹窗开没开 | **区域 OCR** 输入框那条横带 | 只读一条带，约 0.3 秒 |
+     *
+     * 也就是说：**固定布局的部分全用坐标/模板，会变的部分（文字）用区域 OCR**，
+     * 没有一处靠"死等固定秒数"来判断成功 —— 都是轮询到特征出现为止。
+     *
+     * ## 每个码都要重新确认起点
+     *
+     * 兑换成功后弹窗关闭、界面退回**手机菜单**（不是大厅），所以下一个
+     * 码进来时状态是不确定的：可能还在菜单里（直接走 ③），也可能已经
+     * 退到名片页或大厅（要重走 ① ②）。所以这里先判"是否已在菜单/弹窗"，
+     * 都不在才回大厅，避免多按一次手机图标把菜单又关掉。
+     *
+     * 设置页那条老路径保留在后面当兜底：万一某个渠道服把它挪回设置里，
+     * 不用改代码也能进。
+     *
+     * ## 找不到的时候
+     *
+     * 把整屏 OCR 结果 dump 到日志再返回 false —— 用户把日志发过来，
+     * 就能直接看到这一版的设置页到底有哪些字、按钮叫什么，
+     * 不用再靠猜。
+     */
+    fun gotoRedeem(): Boolean {
+        repeat(3) { round ->
+            // ① 起点：弹窗开着 / 手机菜单开着，都算"已经在入口附近"
+            if (isRedeemDialogOpen()) {
+                Ln.i("$TAG: 已经在兑换码弹窗上，不再走入口")
+                return true
+            }
+            val alreadyInMenu = isPhoneMenuByTemplate()
+            if (alreadyInMenu) {
+                Ln.i("$TAG: 已在手机菜单里，跳过大厅确认直接找入口")
+            } else {
+                // ② 角色头像确认在大厅（不在就先退回去）
+                if (!ensureMainLobby()) {
+                    Ln.w("$TAG: 不在大厅且回不去（第 ${round + 1} 轮），放弃")
+                    return false
+                }
+                // ③ 点手机图标打开菜单
+                if (!openPhoneMenu()) {
+                    Ln.w("$TAG: 打开手机菜单失败（第 ${round + 1} 轮）")
+                    return false
+                }
+            }
+
+            // ④ 「…」→ 面板 →「兑换码」
+            if (openRedeemEntry()) {
+                if (awaitRedeemDialog()) {
+                    Ln.i("$TAG: 已打开兑换码弹窗（手机 →「…」→ 兑换码）")
+                    return true
+                }
+                Ln.w("$TAG: 点了「兑换码」但弹窗没出现，换条路再试")
+            }
+
+            // ⑤ 兜底：老版本把它放在设置页的账户栏
+            Ln.i("$TAG: 菜单里没进到兑换码，改走设置页")
+            clickCrop(Hotspot.MENU_SETTINGS, "设置")
+            sleepInterruptible(SETTINGS_LOAD_MS)
+
+            if (clickText("兑换码", maxRetries = 1) && awaitRedeemDialog()) {
+                Ln.i("$TAG: 已打开兑换码弹窗（设置页账户栏）")
+                return true
+            }
+
+            // ⑥ 设置页「其他」栏
+            Ln.i("$TAG: 当前页没有兑换码，切到「其他」栏再找")
+            if (clickText("其他", crop = CROP_SETTINGS_TABS, maxRetries = 1)) {
+                sleepInterruptible(SETTINGS_LOAD_MS)
+                if (clickText("兑换码", maxRetries = 1) && awaitRedeemDialog()) {
+                    Ln.i("$TAG: 已打开兑换码弹窗（从「其他」栏进入）")
+                    return true
+                }
+            }
+
+            // ⑦ 三处都没找到 —— 留证据
+            Ln.w("$TAG: 没找到「兑换码」入口（第 ${round + 1} 轮），dump 当前界面文字")
+            withFrameOcr { mat -> OcrEngine.dump(mat, "兑换码入口未找到") }
+
+            if (!closeCurrent()) {
+                Ln.w("$TAG: 回不到大厅，放弃")
+                return false
+            }
+        }
+        Ln.w("$TAG: 导航到兑换码界面失败（3 轮）")
+        return false
+    }
+
+    /**
+     * 在手机菜单里点开「兑换码」条目（不含"等弹窗"那一步）。
+     *
+     * ## 三条路，代价从小到大
+     *
+     * 1. **面板已经展开**：上一次没进成功、面板还留着 —— 直接点。
+     *    先试这条是因为**多按一次「…」反而会把面板收起来**。
+     * 2. **点「…」再点**：正常路径，90% 的情况走这里。
+     * 3. **全屏 OCR**：万一版本把面板挪到屏幕中间，右半屏裁不到，
+     *    用全屏兜一次（约 1 秒，只在异常时付）。
+     *
+     * 三步都用同一个判据：只认「兑换码」这三个字，不认位置。
+     */
+    private fun openRedeemEntry(): Boolean {
+        // ① 面板已展开
+        if (clickText("兑换码", crop = CROP_MENU_PANEL, maxRetries = 1)) {
+            Ln.i("$TAG: 面板已展开，直接点「兑换码」")
+            return true
+        }
+
+        // ② 点右上角「…」展开面板
+        Ln.i("$TAG: 点右上角「…」展开面板")
+        clickCrop(Hotspot.MENU_MORE, "菜单更多")
+        sleepInterruptible(PANEL_OPEN_MS)
+
+        if (clickText("兑换码", crop = CROP_MENU_PANEL, maxRetries = 2)) {
+            Ln.i("$TAG: 已点「兑换码」（面板内）")
+            return true
+        }
+
+        // ③ 面板不在右半屏 —— 全屏兜底
+        Ln.w("$TAG: 右半屏没找到「兑换码」，改全屏找")
+        if (clickText("兑换码", maxRetries = 1)) {
+            Ln.i("$TAG: 已点「兑换码」（全屏兜底）")
+            return true
+        }
+        return false
+    }
+
+    /**
+     * 等兑换码弹窗画出来。
+     *
+     * 用**轮询**而不是固定 `sleep(900)`：弹窗是淡入的，慢的时候 900ms
+     * 只画了半截，快的时候 300ms 就好了。轮询到特征出现立刻返回，
+     * 平均比固定等待快，而且不会因为慢机器误判。
+     */
+    fun awaitRedeemDialog(timeoutMs: Long = REDEEM_DIALOG_TIMEOUT_MS): Boolean {
+        val deadline = SystemClock.uptimeMillis() + timeoutMs
+        while (SystemClock.uptimeMillis() < deadline) {
+            if (isRedeemDialogOpen()) return true
+            SystemClock.sleep(REDEEM_DIALOG_POLL_MS)
+        }
+        return false
+    }
+
+    /**
+     * 当前是不是停在**兑换码弹窗**上。
+     *
+     * 只 OCR 输入框那一条横带（Y 0.36~0.70），不读全屏：
+     * - 全屏读会把手机菜单里的「商店 / 好友 / 委托」也读进来，
+     *   判据一多就容易误判；
+     * - 一条带约 0.3 秒，全屏约 1 秒。
+     *
+     * 特征取两样：占位文字「请输入兑换码…」，或者右下角的「确认」。
+     * 只要占位文字还在，就说明这是一个**空输入框的兑换弹窗**。
+     */
+    fun isRedeemDialogOpen(): Boolean {
+        val texts = readAllText(CROP_REDEEM_DIALOG)
+        if (texts.isEmpty()) return false
+        return texts.any { t ->
+            val s = t.normalized()
+            (s.contains("兑换码") && (s.contains("请") || s.contains("输入"))) || s == "确认"
+        }
+    }
+
+    /**
+     * 只读兑换码弹窗那一带的文字（结果横幅 / 成功提示）。
+     *
+     * 收窄范围的收益不是省时间，是**判对**：全屏扫描会把背景文字也读进来，
+     * 万一背景里有「失败」「成功」之类的词，成功/失败的判定就会整个翻过来。
+     */
+    fun readRedeemResultText(): List<OcrEngine.OcrResult> =
+        readAllText(CROP_REDEEM_RESULT).ifEmpty { readAllText() }
+
+    /**
+     * 读游戏自带「提示：请求从剪切板粘贴」弹窗的文字。
+     *
+     * 这是**游戏自己的对话框**（标题「提示」，正文「《崩坏：星穹铁道》请求从
+     * 剪切板粘贴，可选择粘贴打开内容」，底部两个按钮「不粘贴」/「粘贴」），
+     * 不是 Android 的系统授权框 —— 所以拿不到按钮控件，只能区域 OCR。
+     * 只扫弹窗那一块，避免把背后的兑换码弹窗文字（「确认」等）读进来。
+     */
+    fun readPastePromptText(): List<OcrEngine.OcrResult> = readAllText(CROP_PASTE_PROMPT)
+
+    /**
+     * 在兑换码弹窗范围内点一段文字（目前只用来点输入框的占位文字）。
+     *
+     * 限定范围的原因：占位文字是「请输入兑换码…」，而大厅的任务追踪栏、
+     * 手机菜单里都可能出现「兑换码」字样。全屏点会点错地方。
+     */
+    fun clickRedeemDialogText(text: String): Boolean =
+        clickText(text, crop = CROP_REDEEM_DIALOG, maxRetries = 1)
+
+    /** 兑换码弹窗里有没有这段文字（同样只读那条横带）。 */
+    fun hasRedeemDialogText(text: String): Boolean = hasText(text, CROP_REDEEM_DIALOG)
 
     /**
      * 导航到**每日实训**页（指南的默认子标签）。

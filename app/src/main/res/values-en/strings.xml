@@ -2670,6 +2670,7 @@ Without a build target, it grinds the first domain in the default order.</string
         <string name="task_type_mail">Mail</string>
 <string name="task_type_power">Spend Power</string>
 <string name="task_type_daily">Daily Training</string>
+<string name="task_type_redeem">Redeem Codes</string>
 <string name="panel_daily_checklist_hint">Check the training items to do today. They run in order, returning to the lobby after each, then rewards are claimed at the end.</string>
 <string name="panel_daily_items_title">Items to do</string>
 <string name="panel_daily_item_dispatch">Dispatch or collect 1 commission reward</string>
@@ -2677,10 +2678,33 @@ Without a build target, it grinds the first domain in the default order.</string
 <string name="panel_daily_item_synthesize">Use the Omni-Synthesizer once</string>
 <string name="panel_daily_item_technique">Use Technique twice</string>
 <string name="panel_daily_item_power">Consume 120 Trailblaze Power</string>
+<string name="panel_task_type_redeem">Redeem Codes</string>
 <string name="panel_daily_claim_title">Claim rewards at the end</string>
 <string name="panel_daily_claim_desc">After the items above, tap Claim to collect earned activity rewards.</string>
 <string name="panel_daily_instance_title">Instance to run</string>
 <string name="panel_daily_instance_desc">The target is fixed at 120 Trailblaze Power; run count is computed automatically. Echo of War is excluded (3 runs max = 90 power, not enough).</string>
 <string name="panel_daily_instance_runs">%1$d runs / %2$d power</string>
+<string name="panel_redeem_hint">Codes come from the site list and are refreshed before each run. Expired codes are skipped automatically, and codes already redeemed are not entered again. Anything missing from the list can be added manually.</string>
+<string name="panel_redeem_site_title">Codes from site</string>
+<string name="panel_redeem_refresh">Refresh</string>
+<string name="panel_redeem_loading">Fetching codes…</string>
+<string name="panel_redeem_failed">Could not reach the site, so no new codes for now. Cached codes are used when available.</string>
+<string name="panel_redeem_empty">No usable codes on the site right now.</string>
+<string name="panel_redeem_using_snapshot">Using the %1$d codes synced last time.</string>
+<string name="panel_redeem_select_all">All</string>
+<string name="panel_redeem_clear_all">None</string>
+<string name="panel_redeem_group_long">Permanent codes</string>
+<string name="panel_redeem_group_timed">Limited-time codes</string>
+<string name="panel_redeem_long_term">No expiry</string>
+<string name="panel_redeem_expired">Expired</string>
+<string name="panel_redeem_expire_today">Expires today</string>
+<string name="panel_redeem_days_left">%1$d days left</string>
+<string name="panel_redeem_custom_title">Custom codes</string>
+<string name="panel_redeem_custom_desc">Codes that are not in the list live here permanently and are never overwritten by a site sync.</string>
+<string name="panel_redeem_custom_placeholder">Enter codes, separated by commas or spaces</string>
+<string name="panel_redeem_custom_invalid">Letters, digits and CJK characters only, 2–32 characters each. Invalid entries were ignored.</string>
+<string name="panel_redeem_add">Add</string>
+<string name="panel_redeem_remove">Remove</string>
+<string name="panel_redeem_summary">%1$d codes will be redeemed</string>
 <string name="task_type_start_up">Start Game</string>
 </resources>

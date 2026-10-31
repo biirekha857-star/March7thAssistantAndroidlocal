@@ -26,6 +26,8 @@ enum class CoreTaskType(val value: String) {
     POWER("Power"),
     // 每日实训
     DAILY("Daily"),
+    // 兑换码
+    REDEEM("Redeem"),
 
     // ==================== 明日方舟任务（保留，崩铁内核不支持）====================
     // 日常任务

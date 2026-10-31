@@ -62,6 +62,7 @@ object StarRailTaskRegistry {
         TaskDef("Mail", "邮件", "tasks/reward/mail.py", true),
         TaskDef("Power", "清体力", "tasks/power/power.py", false, needOcr = true),
         TaskDef("Daily", "每日实训", "tasks/daily/daily.py", false, needOcr = true),
+        TaskDef("Redeem", "兑换码", "", false, needOcr = true),
         TaskDef("CloseDown", "关闭游戏", "tasks/game/starrailcontroller.py", true),
     )
 

@@ -26,6 +26,11 @@
   Cache-Control: no-store, must-revalidate
   Content-Type: text/markdown; charset=utf-8
 
+# 兑换码会中途追加（前瞻、活动），缓存住就等于没加
+/codes.md
+  Cache-Control: no-store, must-revalidate
+  Content-Type: text/markdown; charset=utf-8
+
 # 首页内容会随发版更新，别让 CDN 一直吐旧页面
 /index.html
   Cache-Control: no-cache

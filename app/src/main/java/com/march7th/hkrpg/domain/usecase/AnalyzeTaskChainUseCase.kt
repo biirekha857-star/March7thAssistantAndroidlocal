@@ -1,9 +1,11 @@
 package com.march7th.hkrpg.domain.usecase
 
 import com.march7th.hkrpg.constant.Packages
+import com.march7th.hkrpg.data.api.RedeemCodeService
 import com.march7th.hkrpg.data.model.CollectingPreflightLogSink
 import com.march7th.hkrpg.data.model.FightConfig
 import com.march7th.hkrpg.data.model.LogLevel
+import com.march7th.hkrpg.data.model.RedeemTaskConfig
 import com.march7th.hkrpg.data.model.StartUpTaskConfig
 import com.march7th.hkrpg.data.model.TaskChainNode
 import com.march7th.hkrpg.data.model.TaskParamContext
@@ -37,6 +39,8 @@ class AnalyzeTaskChainUseCase(
     private val itemHelper: ItemHelper,
     private val dropsRefresher: FightDropsRefresher,
     private val appSettingsManager: AppSettingsManager,
+    /** 兑换码执行前现拉一次站点清单，用户不用先去面板点「同步」。 */
+    private val redeemCodeService: RedeemCodeService,
     private val relocatePath: (String) -> String = { it },
 ) {
     /** 先等 depot/operBox 分片装载；config 的 toTaskParams 仍是非 suspend。 */
@@ -77,6 +81,24 @@ class AnalyzeTaskChainUseCase(
         val sideTasks = mutableListOf<PlanSideTask>()
 
         val serverDayOfWeek = ServerTimezone.getYjDayOfWeek(clientType)
+
+        // ## 兑换码：执行前现拉一次站点清单
+        //
+        // 面板里保存的 `codes` 只是快照，可能已经放了一周。这里在展开任务前
+        // 用一次带缓存的拉取（30 分钟内直接用本地文件）把快照换成最新的：
+        // 用户加了兑换码任务就能直接跑，不必先去面板手动同步。
+        //
+        // 拉取失败（断网 / 站点没部署）时保留配置里原来的快照 ——
+        // 清空会导致「有网时能兑、断网时一个都不兑」这种莫名其妙的行为。
+        val siteCodes = if (nodes.any { it.config is RedeemTaskConfig }) {
+            runCatching { redeemCodeService.load() }.getOrDefault(emptyList())
+        } else {
+            emptyList()
+        }
+        if (siteCodes.isNotEmpty()) {
+            Timber.tag("AnalyzeTaskChain").i("兑换码：站点清单 %d 个码", siteCodes.size)
+        }
+
         val expanded = nodes.flatMap { node ->
             if (isSkippedByWeeklySchedule(node, serverDayOfWeek)) {
                 return@flatMap emptyList()
@@ -96,7 +118,12 @@ class AnalyzeTaskChainUseCase(
                 operBoxUseYituliuApi = appSettingsManager.operBoxUseYituliuApi.value,
                 relocatePath = relocatePath,
             )
-            val expandedNode = node.config.toTaskParams(ctx).mapIndexed { index, task ->
+            val nodeConfig = when (val c = node.config) {
+                is RedeemTaskConfig ->
+                    if (siteCodes.isEmpty()) c else c.copy(codes = siteCodes.map { it.code })
+                else -> c
+            }
+            val expandedNode = nodeConfig.toTaskParams(ctx).mapIndexed { index, task ->
                 task.copy(slot = TaskSlot(node.id, index))
             }
             ctx.fallbacks.forEach { (index, candidates) ->

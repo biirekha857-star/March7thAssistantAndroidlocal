@@ -11,6 +11,7 @@ import com.march7th.hkrpg.data.preferences.AnnouncementStateStore
 import com.march7th.hkrpg.data.api.HttpClientHelper
 import com.march7th.hkrpg.data.api.M7aApiService
 import com.march7th.hkrpg.data.api.MirrorChyanApiClient
+import com.march7th.hkrpg.data.api.RedeemCodeService
 import com.march7th.hkrpg.data.api.UpdateChecker
 import com.march7th.hkrpg.data.api.YituliuApiService
 import com.march7th.hkrpg.data.config.CorePathConfig
@@ -164,6 +165,7 @@ val appModule = module {
     //
     // 所以站点是否在线都不影响 App 正常使用。
     singleOf(::AnnouncementService)
+    singleOf(::RedeemCodeService)
     singleOf(::AnnouncementStateStore)
     singleOf(::UpdateChecker)
     single<GameDataReporter> {

@@ -591,6 +591,82 @@
   html.js .release.in .md li:nth-child(7) { animation-delay: .35s; }
   html.js .release.in .md li:nth-child(n+8) { animation-delay: .4s; }
 
+  /* ==================== 兑换码 ==================== */
+  .codes-grid {
+    display: grid;
+    /* min() 兜底：窄屏（<340px）时按 100% 走，不会横向溢出 */
+    grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+    gap: 16px;
+  }
+  .code-group {
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(255, 255, 255, .045), rgba(255, 255, 255, .012));
+    padding: 20px 20px 16px;
+    transition: border-color .3s var(--ease);
+  }
+  .code-group:hover { border-color: var(--line-hi); }
+  .code-group.expired { opacity: .4; filter: saturate(.35); }
+  .code-head {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .code-head .name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--gold-soft);
+  }
+  .code-head .left {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--dim);
+    white-space: nowrap;
+  }
+  .code-head .left.urgent { color: #ff9c8a; }
+  .code-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, .03);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13.5px;
+    letter-spacing: .6px;
+    color: var(--text);
+    cursor: pointer;
+    transition: border-color .25s var(--ease), background .25s var(--ease),
+                transform .25s var(--ease);
+  }
+  .code-row + .code-row { margin-top: 8px; }
+  .code-row:hover {
+    border-color: var(--line-hi);
+    background: var(--card-hi);
+    transform: translateY(-1px);
+  }
+  .code-row .hint {
+    font-family: inherit;
+    font-size: 11px;
+    letter-spacing: 0;
+    color: var(--dim);
+  }
+  .code-row.copied { border-color: var(--line-hi); }
+  .code-row.copied .hint { color: var(--gold); }
+  .codes-note {
+    margin-top: 16px;
+    font-size: 12.5px;
+    color: var(--dim);
+  }
+  .codes-empty {
+    color: var(--dim);
+    font-size: 14px;
+    line-height: 1.8;
+  }
+
   /* ==================== 三步上手 ==================== */
   .steps {
     display: grid;
@@ -789,6 +865,7 @@
     <nav>
       <a href="#features">功能</a>
       <a href="#changelog">更新</a>
+      <a href="#codes">兑换码</a>
       <a href="#start">上手</a>
       <a href="#links">反馈</a>
     </nav>
@@ -808,7 +885,7 @@
     <p class="tagline">崩坏：星穹铁道 · 全自动日常助手</p>
 
     <div class="pills">
-      <span class="pill live"><i></i>最新 <b id="ver">0.5.7beta</b></span>
+      <span class="pill live"><i></i>最新 <b id="ver">0.6.0beta</b></span>
       <span class="pill">Shizuku / Root</span>
       <span class="pill">Android 8.0+</span>
       <span class="pill">开源免费</span>
@@ -825,7 +902,7 @@
       </a>
     </div>
 
-    <p class="micro">界面重构 · 触控自愈 · 每日补给修复 · 无需无障碍</p>
+    <p class="micro">界面重构 · 兑换码一键兑换 · 触控自愈 · 无需无障碍</p>
     <div class="scroll-hint" aria-hidden="true"></div>
   </section>
 
@@ -879,6 +956,15 @@
 
         <article class="card reveal" style="--d:.18s">
           <div class="ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2"/><path d="m8.5 9.5 2 2 4-4"/></svg>
+          </div>
+          <h3>兑换码</h3>
+          <p>读站点上的清单批量兑换，分组展示、限时倒计时，也能自己加码。兑过的码不会重复输入。</p>
+          <span class="tagline-sm">清单随时可更新</span>
+        </article>
+
+        <article class="card reveal" style="--d:.18s">
+          <div class="ico">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m3.5 7.5 8.5 6 8.5-6"/></svg>
           </div>
           <h3>一键日常</h3>
@@ -902,31 +988,45 @@
     <section class="section" id="changelog">
       <div class="sec-head reveal">
         <span class="kicker">Changelog</span>
-        <h2>本次更新 <em id="ver-title">0.5.7beta</em></h2>
+        <h2>本次更新 <em id="ver-title">0.6.0beta</em></h2>
         <p>内容直接读站点上的 <code style="font-size:13.5px;color:#c99b3f">update.md</code>，和 App 里弹窗显示的是同一份。</p>
       </div>
 
       <div class="release reveal">
         <div class="release-head">
           <span class="tag"><i style="width:6px;height:6px;border-radius:50%;background:#7ee2a6;display:inline-block"></i>最新版本</span>
-          <span class="ver" id="ver-big">0.5.7beta</span>
-          <span class="date" id="release-date">2026-10-31</span>
+          <span class="ver" id="ver-big">0.6.0beta</span>
+          <span class="date" id="release-date">2026-11-01</span>
         </div>
 
         <!-- 静态兜底：update.md 拉取失败时显示这段，不会空白 -->
         <div class="md" id="changelog-body">
-          <p><strong>界面重构</strong>：首页与任务页合并，底部导航精简为 首页 / 定时 / 设置；任务改为卡片流，点开就地调参；日志改为时间线；设置改为分类式</p>
+          <p><strong>兑换码</strong>：新增「兑换码」任务，一键批量兑换站点上的码，分组展示、限时倒计时、可加自定义码</p>
           <ul>
-            <li>移除无障碍服务，运行态改用「边框 + 悬浮球」</li>
-            <li>新增触控自愈：注入失败自动清理残留手势并降级重试</li>
-            <li>新增退出确认兜底：按过返回键后自动检测「是否退出游戏」并点取消</li>
-            <li>修复进入主界面必然崩溃的问题</li>
-            <li>修复每日首次上线领不到列车补给（月卡）的问题</li>
-            <li>修复清体力点击无效、导航到生存索引失败的问题</li>
-            <li>修复指南页误判，以及失败时副本名显示为空</li>
+            <li>兑换码清单不再写死在 APK 里，改从站点 <code>codes.md</code> 拉取，站点加码后下次执行自动生效</li>
+            <li>流程：识别大厅头像 → 手机 → 「…」→ 兑换码；写剪贴板后点粘贴，自动处理游戏的「请求从剪切板粘贴」提示</li>
+            <li>无效 / 已使用的码自动跳过并记录，同一个码不会重复输入</li>
+            <li>日志瘦身：调试截图改 JPEG，单次任务最多保留最近 60 帧，日志包从 300 MB+ 降到几十 MB</li>
+            <li>修复任务参数拼装缺括号导致兑换码清单读不到的问题</li>
+            <li>修复关闭界面时返回键点击位置偏移、部分机型关不掉弹窗的问题</li>
           </ul>
         </div>
       </div>
+    </section>
+
+    <!-- ==================== 兑换码 ==================== -->
+    <section class="section" id="codes">
+      <div class="sec-head reveal">
+        <span class="kicker">Redeem Codes</span>
+        <h2>现在<em>能兑</em>的码</h2>
+        <p>读站点上的 <code style="font-size:13.5px;color:#c99b3f">codes.md</code>，限时码会标出剩余天数，过期的自动置灰。点一下复制。</p>
+      </div>
+
+      <div id="codes-body" class="reveal">
+        <p class="codes-empty">正在读取兑换码…</p>
+      </div>
+
+      <p class="codes-note reveal">兑换码随时可能追加或失效，App 每次执行「兑换码」任务前都会重新拉一次清单；已经兑换过的码不会重复输入。</p>
     </section>
 
     <!-- ==================== 上手指南 ==================== -->
@@ -1163,6 +1263,144 @@
     .catch(function () {
       /* 拉不到就保留静态兜底内容，页面不会空白 */
     });
+
+  /* ==================== 读站点 codes.md ==================== */
+  //
+  // 和 App 里的解析规则保持一致：
+  //   `## 分组名 · 2026-11-15` → 分组名 + 截止日
+  //   `## 长期` / 没写日期      → 长期有效
+  // 过期的不删，只是置灰 —— 用户看到「已过期」比看到码凭空消失更安心。
+  // 兑换码可能是中文（实测有「永远不会抛弃你」这种），所以字符集放宽到
+  // 字母 + 数字 + 汉字/假名/韩文；含非 ASCII 的必须带列表符号，
+  // 否则「有效期至年底」这类说明行会被当成码渲染出来。
+  var CODE_RE = /^[A-Za-z0-9\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]{2,32}$/;
+  var ASCII_RE = /^[A-Za-z0-9]+$/;
+  var EDGE_SEP = /^[\s·・|｜/／:：\-—–,，、]+|[\s·・|｜/／:：\-—–,，、]+$/g;
+
+  function parseCodes(md) {
+    var body = md.replace(/<!--[\s\S]*?-->/g, '');
+    var groups = [];
+    var cur = null;
+
+    body.replace(/\r\n?/g, '\n').split('\n').forEach(function (raw) {
+      var line = raw.trim();
+      if (!line) return;
+
+      if (line.indexOf('##') === 0) {
+        var title = line.replace(/^#+/, '').trim();
+        var m = title.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+        var name = title;
+        var expires = null;
+        if (m) {
+          expires = new Date(+m[1], +m[2] - 1, +m[3]);
+          name = title.replace(m[0], ' ');
+        }
+        name = name.replace(/长期有效|长期|永久|常驻|不限时/g, ' ').replace(EDGE_SEP, '');
+        cur = { name: name, expires: expires, codes: [] };
+        groups.push(cur);
+        return;
+      }
+      if (line.charAt(0) === '#') return;
+
+      var isList = line.charAt(0) === '-' || line.charAt(0) === '*';
+      var code = line.replace(/^[-*]\s*/, '').trim();
+      if (!cur || !CODE_RE.test(code)) return;
+      if (!isList && !ASCII_RE.test(code)) return;
+      var up = code.toUpperCase();
+      if (cur.codes.indexOf(up) === -1) cur.codes.push(up);
+    });
+
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    var list = groups.filter(function (g) { return g.codes.length > 0; }).map(function (g) {
+      var days = g.expires ? Math.round((g.expires - today) / 86400000) : null;
+      return { name: g.name, expires: g.expires, codes: g.codes, days: days, expired: days !== null && days < 0 };
+    });
+
+    list.sort(function (a, b) {
+      if (a.expired !== b.expired) return a.expired ? 1 : -1;
+      if (a.days === null) return 1;
+      if (b.days === null) return -1;
+      return a.days - b.days;
+    });
+    return list;
+  }
+
+  function renderCodes(groups) {
+    var host = document.getElementById('codes-body');
+    if (!host) return;
+    if (!groups.length) {
+      host.innerHTML = '<p class="codes-empty">站点上暂时没有可用的兑换码，过几天再来看看。</p>';
+      return;
+    }
+
+    host.innerHTML = '<div class="codes-grid">' + groups.map(function (g) {
+      var label = g.expired ? '已过期'
+        : g.days === null ? '长期有效'
+        : g.days === 0 ? '今天到期'
+        : '剩 ' + g.days + ' 天';
+      var urgent = g.days !== null && g.days >= 0 && g.days <= 3 ? ' urgent' : '';
+      var name = g.name || (g.expires ? '限时兑换码' : '长期兑换码');
+
+      return '<div class="code-group' + (g.expired ? ' expired' : '') + '">' +
+        '<div class="code-head"><span class="name">' + escapeHtml(name) + '</span>' +
+        '<span class="left' + urgent + '">' + label + '</span></div>' +
+        g.codes.map(function (c) {
+          return '<div class="code-row" data-code="' + c + '"><span>' + c +
+            '</span><span class="hint">点击复制</span></div>';
+        }).join('') +
+      '</div>';
+    }).join('') + '</div>';
+  }
+
+  function copyCode(row) {
+    var code = row.getAttribute('data-code');
+    var hint = row.querySelector('.hint');
+    function done() {
+      row.classList.add('copied');
+      if (hint) hint.textContent = '已复制';
+      setTimeout(function () {
+        row.classList.remove('copied');
+        if (hint) hint.textContent = '点击复制';
+      }, 1600);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(code).then(done).catch(done);
+    } else {
+      var ta = document.createElement('textarea');
+      ta.value = code;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); } catch (e) { /* 忽略 */ }
+      document.body.removeChild(ta);
+      done();
+    }
+  }
+
+  var codesBody = document.getElementById('codes-body');
+  if (codesBody) {
+    codesBody.addEventListener('click', function (e) {
+      var row = e.target && e.target.closest ? e.target.closest('.code-row') : null;
+      if (row) copyCode(row);
+    });
+
+    fetch('codes.md', { cache: 'no-cache' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.text();
+      })
+      .then(function (text) {
+        // Cloudflare Pages 对不存在的路径不返回 404，而是把首页一起 200 发回来。
+        // 不拦的话整页 HTML 会被当 markdown 解析成「空清单」，看起来像“没有码”。
+        if (/^\s*</.test(text)) throw new Error('not markdown');
+        renderCodes(parseCodes(text));
+      })
+      .catch(function () {
+        codesBody.innerHTML =
+          '<p class="codes-empty">暂时拉不到兑换码清单，稍后刷新页面看看，或者在 App 里打开「兑换码 → 刷新」。</p>';
+      });
+  }
 })();
 </script>
 </body>

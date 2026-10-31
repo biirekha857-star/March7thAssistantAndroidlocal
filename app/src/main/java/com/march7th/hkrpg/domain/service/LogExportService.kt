@@ -10,6 +10,7 @@ import android.os.PowerManager
 import android.view.WindowManager
 import androidx.core.content.FileProvider
 import com.march7th.hkrpg.BuildConfig
+import com.march7th.hkrpg.constant.LogConfig
 import com.march7th.hkrpg.constant.M7aFiles
 import com.march7th.hkrpg.constant.Packages
 import com.march7th.hkrpg.data.config.CorePathConfig
@@ -444,8 +445,23 @@ class LogExportService(
             return
         }
 
+        // ## 截图限量：只打包最近的一批
+        //
+        // 帧改成 JPEG 之后单张约 250 KB，正常不会成为问题；但设备上
+        // 可能还压着**改动前存下的 PNG**（1.5~2.3 MB/张），直接全量
+        // 打包就是几百 MB —— 用户实测导出过 369 MB 的日志包。
+        //
+        // 所以按扩展名收：新版只写 `.jpg`，`.png` 全是旧包留下的残留，
+        // 不再打包（否则用户即使换了新包，导出的包还是几十 MB 的旧帧）。
+        // 名字里带序号/时间戳，按名字逆序取前 N 张大致就是最新的那批。
+        val shots = entries.filter { it.startsWith("screenshots/") && it.endsWith(".jpg") }
+            .sortedByDescending { it }
+            .take(LogConfig.MAX_EXPORT_SCREENSHOTS)
+            .toSet()
+        val ordered = entries.filterNot { it.startsWith("screenshots/") } + shots
+
         var ok = 0
-        for (rel in entries) {
+        for (rel in ordered) {
             // 只收引擎产物：engine.log、截图、以及 DiagDumper 的现场快照
             //
             // `diag/` 是排查画面错位的关键证据（dumpsys display / window /

@@ -83,6 +83,12 @@ enum class TaskTypeInfo(
         nameRes = R.string.task_type_daily,
         defaultConfig = { DailyTaskConfig() },
     ),
+    REDEEM(
+        taskType = "Redeem",
+        nameRes = R.string.task_type_redeem,
+        // 默认没有码 —— 码由 RedeemCodeService 从站点拉到后写进配置
+        defaultConfig = { RedeemTaskConfig() },
+    ),
     CLOSE_DOWN(
         taskType = "CloseDown",
         nameRes = R.string.task_type_close_down,

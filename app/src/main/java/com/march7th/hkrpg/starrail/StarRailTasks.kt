@@ -341,6 +341,8 @@ class StarRailTasks(
             "Power" -> power(params)
             // ---- 每日实训 ----
             "Daily" -> daily(params)
+            // ---- 兑换码 ----
+            "Redeem" -> redeem(params)
             // ---- A: 关闭游戏 ----
             "CloseDown" -> closeDown()
             // ---- 调试：导出当前帧（采模板用）----
@@ -1491,6 +1493,77 @@ class StarRailTasks(
      * 其中"按名字选东西"全部交给 OCR，"位置固定"的按钮继续用模板匹配。
      * 详见 [PowerTask] 的类注释（尤其是安全阀那一节）。
      */
+    // ============ 兑换码 ============
+
+    /**
+     * 兑换码一键兑换。
+     *
+     * 码由主进程从站点 `codes.md` 取，通过参数传进来 —— 内核不碰网络。
+     * 具体流程见 [RedeemTask]。
+     *
+     * 已兑换记录写在 `{dumpRoot}/redeem_used.txt`，同一个码不会重复输入。
+     */
+    private fun redeem(params: String): TaskResult {
+        val nav = navigator
+            ?: return TaskResult("Redeem", false, "导航器未就绪")
+
+        val codes = parseRedeemCodes(params)
+        if (codes.isEmpty()) {
+            // 把原文一起打出来：参数拼坏（少个 `]`、多引号）和"真的没有码"
+            // 在日志里长得一模一样，不打印原文根本分不清是站点的问题
+            // 还是上层拼 JSON 的问题。
+            Ln.w("$TAG: 兑换码参数里没有 codes 数组，原文=${params.take(400)}")
+            return TaskResult("Redeem", false, "没有可兑换的码（参数里 codes 为空）")
+        }
+        Ln.i("$TAG: 兑换码任务，共 ${codes.size} 个码")
+
+        // ① 起点：和其他任务一样，先用**角色头像**确认在大厅
+        //
+        // 不在大厅时 [ensureMainMenu] 会处理月卡弹窗、点 X 自救、冷启动，
+        // 这三件事都只有这一层能做（[ScreenNavigator.ensureMainLobby]
+        // 只负责"往回退"，不做重启）。
+        if (!ensureMainMenu(nav)) {
+            return TaskResult("Redeem", false, "无法回到大厅（自救 + 冷启动均失败），任务链中止")
+        }
+
+        val task = RedeemTask(
+            auto = auto,
+            nav = nav,
+            codes = codes,
+            usedFile = java.io.File(dumpRoot, "redeem_used.txt"),
+        )
+        return try {
+            val r = task.run()
+            TaskResult("Redeem", r.ok, r.detail)
+        } catch (e: ScreenNavigator.StopRequested) {
+            TaskResult("Redeem", false, "任务已被用户停止")
+        } catch (e: Exception) {
+            Ln.e("$TAG: 兑换码任务异常: ${e.message}")
+            TaskResult("Redeem", false, "异常: ${e.message}")
+        }
+    }
+
+    /**
+     * 从参数 JSON 里取出 `codes` 数组。
+     *
+     * ```json
+     * {"codes":["ABC123","DEF456"],"skipUsed":true}
+     * ```
+     *
+     * 手工解析（和 [parseDailyParams] 同样的理由：字段少、没有嵌套对象，
+     * 引一个 JSON 库不值当）。
+     */
+    private fun parseRedeemCodes(json: String): List<String> {
+        val body = Regex("\"codes\"\\s*:\\s*\\[([^\\]]*)]")
+            .find(json)?.groupValues?.get(1)
+            ?: return emptyList()
+        return Regex("\"([^\"]+)\"")
+            .findAll(body)
+            .map { it.groupValues[1].trim() }
+            .filter { it.isNotEmpty() }
+            .toList()
+    }
+
     // ============ 每日实训 ============
 
     /**

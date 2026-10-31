@@ -28,6 +28,7 @@ val useCaseModule = module {
             itemHelper = get(),
             dropsRefresher = get(),
             appSettingsManager = get(),
+            redeemCodeService = get(),
             relocatePath = get<CorePathConfig>()::toCorePath,
         )
     }

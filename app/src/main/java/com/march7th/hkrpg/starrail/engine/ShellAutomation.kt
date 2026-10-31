@@ -187,6 +187,31 @@ class ShellAutomation {
         }.onFailure { Ln.e("$TAG: PNG 编码失败: ${it.message}") }.getOrNull()
     }
 
+    /**
+     * 当前帧编码为 **JPEG**（调试落盘专用）。
+     *
+     * ## 为什么调试帧不能用 PNG
+     *
+     * 截图是**照片类内容**（渐变背景、立绘、半透明叠层），PNG 的无损
+     * 压缩在这种画面上几乎失效：1080p 一帧稳定 1.5~2.3 MB。
+     * 实测一次任务导出 274 帧 → **363 MB** 的日志包。
+     *
+     * JPEG q85 在同一帧上只有 200~350 KB，**小 6~8 倍**，而调试看的是
+     * "界面对不对、文字在哪"，画质损失完全不影响判断。
+     *
+     * 需要无损的地方（模板采集、[framePng] 走 IPC 给 App 显示）保持原样，
+     * 只有写磁盘的调试帧改走这条路。
+     */
+    fun frameJpeg(quality: Int = 85): ByteArray? {
+        val bmp = screenshot ?: return null
+        return runCatching {
+            ByteArrayOutputStream().use { bos ->
+                bmp.compress(Bitmap.CompressFormat.JPEG, quality, bos)
+                bos.toByteArray()
+            }
+        }.onFailure { Ln.e("$TAG: JPEG 编码失败: ${it.message}") }.getOrNull()
+    }
+
     // ---- 触控 ----
 
     /**
@@ -430,4 +455,96 @@ class ShellAutomation {
         if (displayId < 0) return
         runCatching { InputControlUtils.cancel(displayId) }
     }
+
+    /**
+     * 往当前焦点输入框里输入文本（兑换码、账号密码这类短字符串）。
+     *
+     * ## 两条路，按可靠性排序
+     *
+     * 1. **`input text`**（首选）
+     *    `input` 是系统自带的 shell 工具，走 IME 提交路径 —— 大写字母、
+     *    数字、符号都是"直接插入"，不受键盘布局和 shift 状态影响。
+     *    内核进程有 shell 身份（[GameLauncher] 里 `pidof` / `am` 都在用），
+     *    所以能直接 exec 它。
+     *
+     * 2. **逐字符注入 KeyEvent**（兜底）
+     *    `input text` 在部分 ROM 上会因为没有 IME 连接而静默失败
+     *    （虚拟屏尤其常见）。这时改用 [pressKey] 逐个按键：
+     *    `KEYCODE_A..KEYCODE_Z` / `KEYCODE_0..KEYCODE_9` 在 EditText 上
+     *    就是字符插入。
+     *
+     *    ⚠️ 这条路**只能输入大写字母和数字** —— KeyEvent 不带 shift 状态，
+     *    小写字母会变成大写。兑换码对大小写不敏感，正好够用；
+     *    别的场景（中文、符号）不要用它。
+     *
+     * 两条路都只负责"把字发出去"，**不判断有没有输进去** ——
+     * 调用方应该点一次提交按钮，再根据结果提示判断成功与否。
+     *
+     * @param text 要输入的文本（建议先自己校验成 `[A-Za-z0-9]`）
+     * @return 是否至少有一条路径返回成功
+     */
+    fun inputText(text: String): Boolean {
+        if (displayId < 0) {
+            Ln.w("$TAG: inputText —— 虚拟屏未就绪")
+            return false
+        }
+        if (text.isBlank()) return false
+
+        if (inputTextByShell(text)) return true
+
+        Ln.w("$TAG: input text 失败，降级为逐字符 KeyEvent 注入")
+        return inputTextByKeyEvents(text)
+    }
+
+    /**
+     * 用系统 `input text` 命令输入。
+     *
+     * 注意这里**不加 `-d <display>`**：`input` 的 `-d` 参数在老 ROM 上
+     * 普遍不支持（会直接报错退出），而事件本来就是投给"当前获得焦点的窗口"，
+     * 游戏在虚拟屏上前台运行时，焦点就在它那儿。
+     */
+    private fun inputTextByShell(text: String): Boolean = runCatching {
+        val p = Runtime.getRuntime().exec(arrayOf("input", "text", text))
+        // input 是同步命令，退出码 0 = 已提交给 IME
+        val code = p.waitFor()
+        p.inputStream.close()
+        p.errorStream.close()
+        if (code == 0) {
+            Ln.i("$TAG: input text 已提交「${mask(text)}」")
+        } else {
+            Ln.w("$TAG: input text 退出码 $code")
+        }
+        code == 0
+    }.getOrElse {
+        Ln.w("$TAG: input text 执行异常: ${it.message}")
+        false
+    }
+
+    /** 逐字符 KeyEvent 注入（仅大写字母与数字）。 */
+    private fun inputTextByKeyEvents(text: String): Boolean {
+        var allOk = true
+        var typed = 0
+        for (ch in text.uppercase()) {
+            val code = when (ch) {
+                in 'A'..'Z' -> android.view.KeyEvent.KEYCODE_A + (ch - 'A')
+                in '0'..'9' -> android.view.KeyEvent.KEYCODE_0 + (ch - '0')
+                else -> null
+            }
+            if (code == null) {
+                Ln.w("$TAG: 跳过不能按键输入的字符「$ch」")
+                continue
+            }
+            if (!pressKey(code, holdMs = 30L)) allOk = false
+            typed++
+            // 字符之间留一点间隔，太快会被输入框吞掉（尤其低端机）
+            SystemClock.sleep(60)
+        }
+        Ln.i("$TAG: KeyEvent 注入 ${typed}/${text.length} 个字符，结果=$allOk")
+        return allOk && typed > 0
+    }
+
+    /** 日志里不打印完整兑换码（别人的截图/日志也不该带出一个可用的码）。 */
+    private fun mask(text: String): String =
+        if (text.length <= 4) "****"
+        else text.take(2) + "*".repeat(text.length - 4) + text.takeLast(2)
 }

@@ -58,6 +58,7 @@ import com.march7th.hkrpg.data.model.InfrastConfig
 import com.march7th.hkrpg.data.model.MallConfig
 import com.march7th.hkrpg.data.model.ReclamationConfig
 import com.march7th.hkrpg.data.model.RecruitConfig
+import com.march7th.hkrpg.data.model.RedeemTaskConfig
 import com.march7th.hkrpg.data.model.PowerInstance
 import com.march7th.hkrpg.data.model.DailyTaskConfig
 import com.march7th.hkrpg.data.model.PowerTaskConfig
@@ -119,6 +120,11 @@ internal fun TaskConfigBody(
 
             // 每日实训：逐项勾选今天要做的条目
             is DailyTaskConfig -> DailyConfigPanel(
+                config = cfg, onConfigChange = onConfigChange
+            )
+
+            // 兑换码：站点清单分组勾选 + 自定义码
+            is RedeemTaskConfig -> RedeemConfigPanel(
                 config = cfg, onConfigChange = onConfigChange
             )
         }
@@ -729,6 +735,7 @@ internal fun taskTypeLabel(typeInfo: TaskTypeInfo): String {
         TaskTypeInfo.MAIL -> stringResource(R.string.panel_task_type_mail)
         TaskTypeInfo.POWER -> stringResource(R.string.panel_task_type_power)
         TaskTypeInfo.DAILY -> stringResource(R.string.panel_task_type_daily)
+        TaskTypeInfo.REDEEM -> stringResource(R.string.panel_task_type_redeem)
         TaskTypeInfo.CLOSE_DOWN -> stringResource(R.string.panel_task_type_close_down)
     }
 }

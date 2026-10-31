@@ -299,6 +299,29 @@ class StarRailLocalEngine(
         // 虚拟屏画面抓不到（screencap -d 不支持 VD），只能从引擎内部导出。
         val dumpRoot = java.io.File(com.march7th.hkrpg.remote.CoreDataDir.ROOT)
         nav.debugDumpRoot = dumpRoot
+        // ---- 顺手清掉过期调试帧 ----
+        // 截图很占存储：PNG 时代一帧 1.5~2.3 MB，几百帧就是几百兆，
+        // 而排查问题只需要最近几次的证据。
+        // 这里按修改时间删 3 天前的帧；校准模式那份清理由下面自己负责。
+        runCatching {
+            val shotDir = java.io.File(dumpRoot, "debug/screenshots")
+            val cutoff = System.currentTimeMillis() - 3L * 24 * 3600 * 1000
+            var removed = 0
+            var legacy = 0
+            shotDir.listFiles()?.forEach { f ->
+                // `.png` 是改成 JPEG 之前留下的旧帧（单张 1.5~2.3 MB）。
+                // 新代码只写 `.jpg`，这批文件永远不会再被用到，直接删掉，
+                // 免得用户设备上一直压着几十兆。
+                if (f.isFile && f.extension.equals("png", ignoreCase = true)) {
+                    if (f.delete()) legacy++
+                    return@forEach
+                }
+                if (f.isFile && f.lastModified() < cutoff && f.delete()) removed++
+            }
+            if (legacy > 0) Ln.i("$TAG: 清理了 $legacy 张旧格式 PNG 调试帧（已改用 JPEG）")
+            if (removed > 0) Ln.i("$TAG: 清理了 $removed 张过期调试帧（3 天前）")
+        }
+
         // ---- 首次校准：全量记录沿途每一帧 ----
         // 目的：避免"改代码→构建→装机→实测"这个十几分钟一轮的循环。
         // 打开后用户只要正常跑一次任务，就能一次性拿到整套界面帧，
@@ -312,7 +335,7 @@ class StarRailLocalEngine(
                     ?.forEach { it.delete() }
             }
             nav.captureAll = true
-            Ln.i("$TAG: 校准模式已开启 —— 本轮所有取帧都会存到 ${dumpRoot}/debug/screenshots/cap_*.png")
+            Ln.i("$TAG: 校准模式已开启 —— 本轮所有取帧都会存到 ${dumpRoot}/debug/screenshots/cap_*.jpg")
         }
         // 把"是否已取消"透传给任务实现：
         // 引擎的 running 标志只在任务之间检查，任务内部（清体力要跑
