@@ -1,0 +1,5 @@
+# 站点上的任务包索引是**签名过的原始字节**，任何换行转换都会让 ECDSA 验签失败。
+# App 侧一律拒绝验签不过的索引，所以这两个文件必须按二进制处理。
+site/taskpacks/index.json     -text
+site/taskpacks/index.json.sig -text
+*.m7atask                     -text

@@ -20,6 +20,13 @@ import com.march7th.hkrpg.data.preferences.ConfigBackupManager
 import com.march7th.hkrpg.data.preferences.TaskChainState
 import com.march7th.hkrpg.data.preferences.UnlockGestureStore
 import com.march7th.hkrpg.data.resource.BackgroundImageStore
+import com.march7th.hkrpg.data.resource.CustomTaskPackStore
+import com.march7th.hkrpg.data.model.InstalledTaskPack
+import com.march7th.hkrpg.data.resource.RemoteDownloadResult
+import com.march7th.hkrpg.data.resource.RemoteIndexResult
+import com.march7th.hkrpg.data.resource.RemoteTaskPack
+import com.march7th.hkrpg.data.resource.RemoteTaskPackService
+import com.march7th.hkrpg.data.resource.TaskPackInstallResult
 import com.march7th.hkrpg.data.resource.ResourceDataManager
 import com.march7th.hkrpg.domain.models.GestureRecordResult
 import com.march7th.hkrpg.domain.models.GestureRecordStatus
@@ -39,7 +46,9 @@ import com.march7th.hkrpg.utils.Misc
 import com.march7th.hkrpg.utils.i18n.LocaleBootstrap.resolveSelectedLanguage
 import com.march7th.hkrpg.utils.i18n.LocaleBootstrap.toLocaleList
 import com.march7th.hkrpg.utils.i18n.UiText
+import com.march7th.hkrpg.utils.i18n.uiTextDynamic
 import com.march7th.hkrpg.utils.i18n.uiTextOf
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,6 +58,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import java.io.InputStream
 import java.io.OutputStream
@@ -77,6 +87,8 @@ class SettingsViewModel(
     private val switchCoreDataLocation: SwitchCoreDataLocationUseCase,
     private val compositionService: TaskCompositionService,
     private val yituliuApiService: YituliuApiService,
+    private val taskPackStore: CustomTaskPackStore,
+    private val remoteTaskPackService: RemoteTaskPackService,
 ) : ViewModel() {
 
     // ========== 导入导出 ==========
@@ -122,6 +134,193 @@ class SettingsViewModel(
                 Timber.e(e, "import config failed")
                 _settingsMessage.value =
                     uiTextOf(R.string.settings_import_failed, e.message.orEmpty())
+            }
+        }
+    }
+
+    // ========== 自定义任务包 ==========
+
+    private val _taskPacks = MutableStateFlow<List<InstalledTaskPack>>(emptyList())
+    val taskPacks: StateFlow<List<InstalledTaskPack>> = _taskPacks.asStateFlow()
+
+    /**
+     * 导入失败时的逐条错误。
+     *
+     * 用对话框整段展示而不是 Toast：校验一次会给出 5~10 条
+     * 「第几步哪个字段错了」，Toast 根本读不完，用户只能反复试。
+     */
+    private val _taskPackErrors = MutableStateFlow<List<String>?>(null)
+    val taskPackErrors: StateFlow<List<String>?> = _taskPackErrors.asStateFlow()
+
+    fun dismissTaskPackErrors() {
+        _taskPackErrors.value = null
+    }
+
+    fun refreshTaskPacks() {
+        viewModelScope.launch {
+            _taskPacks.value = withContext(Dispatchers.IO) {
+                runCatching { taskPackStore.list() }.getOrDefault(emptyList())
+            }
+        }
+    }
+
+    fun importTaskPack(inputStream: InputStream) {
+        viewModelScope.launch {
+            val bytes = withContext(Dispatchers.IO) {
+                runCatching { inputStream.use { it.readBytes() } }.getOrNull()
+            }
+            if (bytes == null) {
+                _settingsMessage.value = uiTextOf(R.string.settings_taskpack_read_failed)
+                return@launch
+            }
+            // 这里必须 catch Throwable，不能只依赖 install 内部的 try：
+            // 校验器是 `object`，它的正则/常量在 `<clinit>` 里初始化，一旦写错
+            // 抛出的是 ExceptionInInitializerError（Error 而非 Exception），
+            // 会直接穿透到 UncaughtExceptionHandler 把整个 App 干掉。
+            // 用户看到的应该是「导入失败 + 原因」，而不是闪退。
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    taskPackStore.install("taskpack", bytes, BuildConfig.VERSION_CODE)
+                }.getOrElse { e ->
+                    Timber.e(e, "import task pack crashed")
+                    // 和校验器的报错风格保持一致：这个列表是直接当纯文本渲染的
+                    TaskPackInstallResult.Invalid(
+                        listOf(
+                            "导入时 App 内部出错了：${e.javaClass.simpleName}: ${e.message.orEmpty()}\n" +
+                                "这是 App 的 bug（不是任务包的问题），请把这段贴给开发者"
+                        )
+                    )
+                }
+            }
+            when (result) {
+                is TaskPackInstallResult.Success -> {
+                    _taskPacks.value = withContext(Dispatchers.IO) {
+                        runCatching { taskPackStore.list() }.getOrDefault(emptyList())
+                    }
+                    _settingsMessage.value = if (result.upgraded) {
+                        uiTextOf(R.string.settings_taskpack_updated, result.pack.displayName)
+                    } else {
+                        uiTextOf(R.string.settings_taskpack_installed, result.pack.displayName)
+                    }
+                }
+
+                is TaskPackInstallResult.Invalid -> {
+                    _taskPackErrors.value = result.errors
+                }
+            }
+        }
+    }
+
+    fun deleteTaskPack(pack: InstalledTaskPack) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { taskPackStore.delete(pack.id) }
+            _taskPacks.value = withContext(Dispatchers.IO) {
+                runCatching { taskPackStore.list() }.getOrDefault(emptyList())
+            }
+            _settingsMessage.value = uiTextOf(R.string.settings_taskpack_deleted, pack.displayName)
+        }
+    }
+
+    // ========== 在线任务包（站点索引） ==========
+
+    /** 站点索引里的包目录。索引拉不下来时保持空列表 + [remoteError]。 */
+    private val _remotePacks = MutableStateFlow<List<RemoteTaskPack>>(emptyList())
+    val remotePacks: StateFlow<List<RemoteTaskPack>> = _remotePacks.asStateFlow()
+
+    private val _remoteLoading = MutableStateFlow(false)
+    val remoteLoading: StateFlow<Boolean> = _remoteLoading.asStateFlow()
+
+    /**
+     * 索引拉取失败原因（验签不过 / 站点没部署 / 断网）。
+     *
+     * 用原文而不是编好的提示 —— 这些原因差别很大（"签名校验失败" 和
+     * "站点上没这个文件"要做的处理完全不同），抹平了就没法排查。
+     */
+    private val _remoteError = MutableStateFlow<String?>(null)
+    val remoteError: StateFlow<String?> = _remoteError.asStateFlow()
+
+    /** 正在下载安装的包 id，用来在列表里显示进度并防止重复点击 */
+    private val _installingPackId = MutableStateFlow<String?>(null)
+    val installingPackId: StateFlow<String?> = _installingPackId.asStateFlow()
+
+    fun clearRemoteError() {
+        _remoteError.value = null
+    }
+
+    fun refreshRemotePacks() {
+        if (_remoteLoading.value) return
+        viewModelScope.launch {
+            _remoteLoading.value = true
+            _remoteError.value = null
+            when (val res = remoteTaskPackService.fetchIndex()) {
+                is RemoteIndexResult.Success -> {
+                    _remotePacks.value = res.packs
+                    if (res.fromFallback) {
+                        Timber.w("任务包索引来自备用源（Cloudflare 站点可能不可用）")
+                    }
+                }
+
+                is RemoteIndexResult.Failure -> {
+                    _remotePacks.value = emptyList()
+                    _remoteError.value = res.reason
+                }
+            }
+            _remoteLoading.value = false
+        }
+    }
+
+    /**
+     * 从站点下载并安装一个任务包。
+     *
+     * 下载与 sha256 校验在 [RemoteTaskPackService] 里做，落盘沿用
+     * [CustomTaskPackStore.install] —— 所以远程包和本地导入的包走**完全同一套**
+     * 结构校验，远程身份不会降低标准。
+     */
+    fun installRemotePack(pack: RemoteTaskPack) {
+        if (_installingPackId.value != null) return
+        viewModelScope.launch {
+            _installingPackId.value = pack.id
+            try {
+                when (val dl = remoteTaskPackService.downloadPack(pack, BuildConfig.VERSION_CODE)) {
+                    is RemoteDownloadResult.Failure -> {
+                        _settingsMessage.value =
+                            uiTextDynamic("${pack.displayName}：${dl.reason}")
+                    }
+
+                    is RemoteDownloadResult.Success -> {
+                        val result = withContext(Dispatchers.IO) {
+                            taskPackStore.install(
+                                sourceName = "${pack.id}.m7atask",
+                                bytes = dl.bytes,
+                                appVersionCode = BuildConfig.VERSION_CODE,
+                            )
+                        }
+                        when (result) {
+                            is TaskPackInstallResult.Success -> {
+                                _taskPacks.value = withContext(Dispatchers.IO) {
+                                    runCatching { taskPackStore.list() }.getOrDefault(emptyList())
+                                }
+                                _settingsMessage.value = if (result.upgraded) {
+                                    uiTextOf(
+                                        R.string.settings_taskpack_updated,
+                                        result.pack.displayName,
+                                    )
+                                } else {
+                                    uiTextOf(
+                                        R.string.settings_taskpack_installed,
+                                        result.pack.displayName,
+                                    )
+                                }
+                            }
+
+                            is TaskPackInstallResult.Invalid -> {
+                                _taskPackErrors.value = result.errors
+                            }
+                        }
+                    }
+                }
+            } finally {
+                _installingPackId.value = null
             }
         }
     }

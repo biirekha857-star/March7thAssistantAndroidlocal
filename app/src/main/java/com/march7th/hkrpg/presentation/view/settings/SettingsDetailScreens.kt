@@ -1,5 +1,7 @@
 package com.march7th.hkrpg.presentation.view.settings
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -10,15 +12,21 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.rounded.Build
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -29,7 +37,9 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,10 +54,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.march7th.hkrpg.R
+import kotlinx.coroutines.delay
 import com.march7th.hkrpg.constant.Routes
 import com.march7th.hkrpg.data.preferences.AppSettingsManager
 import com.march7th.hkrpg.domain.models.RemoteBackend
@@ -57,6 +71,8 @@ import com.march7th.hkrpg.presentation.components.AdaptiveTaskPromptDialog
 import com.march7th.hkrpg.presentation.components.CollapsibleSection
 import com.march7th.hkrpg.presentation.components.ListItemDivider
 import com.march7th.hkrpg.presentation.components.LogExportController
+import com.march7th.hkrpg.data.model.InstalledTaskPack
+import com.march7th.hkrpg.data.resource.RemoteTaskPack
 import com.march7th.hkrpg.presentation.components.SettingsGroupCard
 import com.march7th.hkrpg.presentation.viewmodel.SettingsViewModel
 import com.march7th.hkrpg.theme.AppAnimatedVisibility
@@ -737,6 +753,29 @@ fun DataSettingsScreen(
         context.contentResolver.openInputStream(uri)?.let { viewModel.importConfig(it) }
     }
 
+    // ---- 任务包 ----
+    val taskPacks by viewModel.taskPacks.collectAsStateWithLifecycle()
+    val taskPackErrors by viewModel.taskPackErrors.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { viewModel.refreshTaskPacks() }
+
+    // ---- 在线任务包（站点索引）----
+    val remotePacks by viewModel.remotePacks.collectAsStateWithLifecycle()
+    val remoteLoading by viewModel.remoteLoading.collectAsStateWithLifecycle()
+    val remoteError by viewModel.remoteError.collectAsStateWithLifecycle()
+    val installingPackId by viewModel.installingPackId.collectAsStateWithLifecycle()
+    var showRemotePacks by rememberSaveable { mutableStateOf(false) }
+
+    val taskPackLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        // `.m7atask` 不是注册过的 MIME，只能放开类型再靠内容（zip 魔数）判断
+        context.contentResolver.openInputStream(uri)?.let { viewModel.importTaskPack(it) }
+    }
+
+    /** 导入前先过免责声明，同意后才打开文件选择器 */
+    var showTaskPackDisclaimer by rememberSaveable { mutableStateOf(false) }
+
     settingsMessage?.let { msg ->
         Toast.makeText(context, msg.resolve(context), Toast.LENGTH_SHORT).show()
         viewModel.clearSettingsMessage()
@@ -761,6 +800,49 @@ fun DataSettingsScreen(
                 )
             }
         }
+
+        // ---- 自定义任务包 ----
+        item {
+            SettingsGroupCard {
+                SettingClickItem(
+                    title = stringResource(R.string.settings_taskpack_import_title),
+                    description = stringResource(R.string.settings_taskpack_import_desc),
+                    // 先弹免责声明，读完才能继续选文件
+                    onClick = { showTaskPackDisclaimer = true },
+                )
+                ListItemDivider()
+                SettingClickItem(
+                    title = stringResource(R.string.settings_taskpack_online_title),
+                    description = stringResource(R.string.settings_taskpack_online_desc),
+                    value = stringResource(R.string.settings_taskpack_online_browse),
+                    onClick = {
+                        showRemotePacks = true
+                        viewModel.refreshRemotePacks()
+                    },
+                )
+                ListItemDivider()
+                SettingClickItem(
+                    title = stringResource(R.string.settings_taskpack_installed_title),
+                    description = if (taskPacks.isEmpty()) {
+                        stringResource(R.string.settings_taskpack_empty)
+                    } else {
+                        stringResource(R.string.settings_taskpack_count, taskPacks.size)
+                    },
+                    value = stringResource(R.string.common_refresh),
+                    onClick = { viewModel.refreshTaskPacks() },
+                )
+                taskPacks.forEach { pack ->
+                    ListItemDivider()
+                    TaskPackRow(pack = pack, onDelete = { viewModel.deleteTaskPack(pack) })
+                }
+                ListItemDivider()
+                SettingClickItem(
+                    title = stringResource(R.string.settings_taskpack_spec_title),
+                    description = stringResource(R.string.settings_taskpack_spec_desc),
+                    onClick = { openTaskFileSpec(context) },
+                )
+            }
+        }
     }
 
     if (showRestartDialog) {
@@ -775,4 +857,358 @@ fun DataSettingsScreen(
             onDismissRequest = { viewModel.dismissRestartDialog() },
         )
     }
+
+    // 校验失败：整段列出所有问题，不用 Toast 挤成一行
+    taskPackErrors?.let { errors ->
+        AdaptiveTaskPromptDialog(
+            visible = true,
+            title = stringResource(R.string.settings_taskpack_invalid_title),
+            message = errors.joinToString("\n") { "• $it" },
+            confirmText = stringResource(R.string.common_confirm),
+            onConfirm = { viewModel.dismissTaskPackErrors() },
+            onDismissRequest = { viewModel.dismissTaskPackErrors() },
+        )
+    }
+
+    if (showTaskPackDisclaimer) {
+        TaskPackDisclaimerDialog(
+            onAgree = {
+                showTaskPackDisclaimer = false
+                // `.m7atask` 没有注册 MIME，只能放开类型、靠内容（zip 魔数）判断
+                taskPackLauncher.launch(
+                    arrayOf(
+                        "application/json",
+                        "application/zip",
+                        "application/octet-stream",
+                    )
+                )
+            },
+            onDismiss = { showTaskPackDisclaimer = false },
+        )
+    }
+
+    if (showRemotePacks) {
+        RemoteTaskPackDialog(
+            packs = remotePacks,
+            loading = remoteLoading,
+            error = remoteError,
+            installingId = installingPackId,
+            onRefresh = { viewModel.refreshRemotePacks() },
+            onInstall = { viewModel.installRemotePack(it) },
+            onDismiss = {
+                showRemotePacks = false
+                viewModel.clearRemoteError()
+            },
+        )
+    }
 }
+
+/**
+ * 在线任务包列表。
+ *
+ * 索引验签失败时**一个包都不列** —— 这里没有「忽略警告继续装」的入口，
+ * 因为远程任务包是会被执行的指令，验签不过就等于不知道该听谁的。
+ */
+@Composable
+private fun RemoteTaskPackDialog(
+    packs: List<RemoteTaskPack>,
+    loading: Boolean,
+    error: String?,
+    installingId: String?,
+    onRefresh: () -> Unit,
+    onInstall: (RemoteTaskPack) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 520.dp),
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.settings_taskpack_online_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_taskpack_online_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    IconButton(onClick = onRefresh, enabled = !loading) {
+                        Icon(
+                            imageVector = Icons.Rounded.Refresh,
+                            contentDescription = stringResource(R.string.common_refresh),
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    when {
+                        loading && packs.isEmpty() -> Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            Text(
+                                text = stringResource(R.string.settings_taskpack_online_loading),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+
+                        // 原文直接展示：验签失败 / 站点没部署 / 断网 三种原因
+                        // 处理方式完全不同，抹成一句「加载失败」就没法排查了
+                        error != null -> Text(
+                            text = error,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
+
+                        packs.isEmpty() -> Text(
+                            text = stringResource(R.string.settings_taskpack_online_empty),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+
+                        else -> packs.forEach { pack ->
+                            RemoteTaskPackRow(
+                                pack = pack,
+                                installing = installingId == pack.id,
+                                enabled = installingId == null,
+                                onInstall = { onInstall(pack) },
+                            )
+                        }
+                    }
+                }
+
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.common_close))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RemoteTaskPackRow(
+    pack: RemoteTaskPack,
+    installing: Boolean,
+    enabled: Boolean,
+    onInstall: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = pack.displayName,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = buildString {
+                    if (pack.author.isNotBlank()) append(pack.author).append(" · ")
+                    if (pack.version.isNotBlank()) append("v").append(pack.version)
+                    if (pack.stepCount > 0) append(" · ").append(pack.stepCount).append(" 步")
+                    if (pack.sizeText.isNotEmpty()) append(" · ").append(pack.sizeText)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (pack.description.isNotBlank()) {
+                Text(
+                    text = pack.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (installing) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(18.dp),
+                strokeWidth = 2.dp,
+            )
+        } else {
+            OutlinedButton(onClick = onInstall, enabled = enabled) {
+                Text(stringResource(R.string.settings_taskpack_online_install))
+            }
+        }
+    }
+}
+
+/** 已安装任务包一行：名字 + 版本/作者/步数 + 删除。 */
+@Composable
+private fun TaskPackRow(
+    pack: InstalledTaskPack,
+    onDelete: () -> Unit,
+) {
+    var confirmDelete by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = AppDesignTokens.Spacing.listItemVertical),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = pack.displayName,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = stringResource(
+                    R.string.settings_taskpack_row_meta,
+                    "v${pack.version}",
+                    pack.author,
+                    pack.stepCount,
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        IconButton(onClick = { confirmDelete = true }) {
+            Icon(
+                imageVector = Icons.Rounded.Delete,
+                contentDescription = stringResource(R.string.settings_taskpack_delete),
+                tint = MaterialTheme.colorScheme.error,
+            )
+        }
+    }
+
+    if (confirmDelete) {
+        AdaptiveTaskPromptDialog(
+            visible = true,
+            title = pack.displayName,
+            message = stringResource(R.string.settings_taskpack_delete),
+            confirmText = stringResource(R.string.settings_taskpack_delete),
+            dismissText = stringResource(R.string.common_cancel),
+            onConfirm = {
+                confirmDelete = false
+                onDelete()
+            },
+            onDismissRequest = { confirmDelete = false },
+        )
+    }
+}
+
+/** 规范文档放在仓库 docs/ 下，App 内不重复渲染一份，免得两边写飘。 */
+private const val TASK_FILE_SPEC_URL =
+    "https://github.com/biirekha857-star/March7thAssistantAndroidlocal/blob/main/docs/task-file.md"
+
+private fun openTaskFileSpec(context: android.content.Context) {
+    val ok = runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(TASK_FILE_SPEC_URL)))
+    }.isSuccess
+    if (!ok) {
+        Toast.makeText(
+            context,
+            R.string.settings_taskpack_spec_desc,
+            Toast.LENGTH_SHORT,
+        ).show()
+    }
+}
+
+/**
+ * 导入任务包前的免责声明。
+ *
+ * **强制观看**：[DISCLAIMER_SECONDS] 秒内确认按钮不可点。这不是走过场 ——
+ * 任务文件确实会代替用户在屏幕上点击，作者写错一步就是真的点歪，
+ * 所以要让"我知道这东西会动我的屏幕"这件事被明确同意一次。
+ *
+ * 文案刻意写清**能做什么**和**不能做什么**：只写"后果自负"没有信息量，
+ * 用户无法据此判断；写清边界，他才知道"最多是乱点，不会装别的 App"。
+ *
+ * 同时必须写明**来源**（第三方、来自网络、未审核）、**合法性自负**、
+ * **恶意内容反馈渠道** 和 **免责** —— 任务包会真的消耗用户的游戏内资源，
+ * 出问题时用户至少知道该找谁、当初同意了什么。
+ */
+@Composable
+private fun TaskPackDisclaimerDialog(
+    onAgree: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var left by remember { mutableStateOf(DISCLAIMER_SECONDS) }
+
+    LaunchedEffect(Unit) {
+        while (left > 0) {
+            delay(1_000)
+            left -= 1
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.taskpack_disclaimer_title)) },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 360.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.taskpack_disclaimer_body),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    lineHeight = 20.sp,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onAgree, enabled = left <= 0) {
+                Text(
+                    if (left > 0) {
+                        stringResource(R.string.taskpack_disclaimer_wait, left)
+                    } else {
+                        stringResource(R.string.taskpack_disclaimer_agree)
+                    }
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.common_cancel))
+            }
+        },
+    )
+}
+
+/** 免责声明倒计时秒数。文案偏长（来源/合法性/免责三块），6 秒读不完，给 8 秒。 */
+private const val DISCLAIMER_SECONDS = 8

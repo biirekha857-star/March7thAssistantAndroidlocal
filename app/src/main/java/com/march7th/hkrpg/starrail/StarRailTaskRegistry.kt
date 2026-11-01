@@ -71,6 +71,13 @@ object StarRailTaskRegistry {
             needOcr = true,
         ),
         TaskDef("Redeem", "兑换码", "", false, needOcr = true),
+        TaskDef(
+            "Custom",
+            "自定义任务",
+            "docs/task-file.md",
+            false,
+            needOcr = true,
+        ),
         TaskDef("CloseDown", "关闭游戏", "tasks/game/starrailcontroller.py", true),
     )
 

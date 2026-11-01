@@ -98,6 +98,12 @@ enum class TaskTypeInfo(
         taskType = "CloseDown",
         nameRes = R.string.task_type_close_down,
         defaultConfig = { StarRailTaskConfig("CloseDown") },
+    ),
+    CUSTOM(
+        taskType = CustomTaskConfig.TASK_TYPE,
+        nameRes = R.string.task_type_custom,
+        // 默认不指向任何包 —— 用户在卡片里选，没选就执行时报错
+        defaultConfig = { CustomTaskConfig() },
     );
 
     fun defaultName(context: Context): String = context.getString(nameRes)
@@ -164,6 +170,7 @@ data class StarRailTaskConfig(
  */
 fun TaskParamProvider.taskTypeOrNull(): String? {
     if (this is StarRailTaskConfig) return type
+    if (this is CustomTaskConfig) return type
     if (this is PowerTaskConfig) return taskType
     if (this is ForgottenHallConfig) return taskType
     return TaskTypeInfo.entries

@@ -19,9 +19,17 @@ package com.march7th.hkrpg.constant
  * https://<项目名>.pages.dev/
  *   ├── announcement_zh.md   中文公告
  *   ├── announcement_en.md   英文公告
+ *   ├── codes.md             兑换码清单（手工维护）
  *   ├── update.md            更新清单（主源，人写的）
- *   └── update.json          更新清单（旧客户端兼容，由脚本生成）
+ *   ├── update.json          更新清单（旧客户端兼容，由脚本生成）
+ *   └── taskpacks/
+ *       ├── index.json       在线任务包目录（**必须签名**）
+ *       ├── index.json.sig   目录签名（Base64）
+ *       └── *.m7atask        任务包本体
  * ```
+ *
+ * 除 APK 之外都是小文件。APK 走 GitHub Release —— Pages 单文件上限 25MB，
+ * 放不下安装包。
  *
  * ## update.md 格式
  *
@@ -135,6 +143,54 @@ object M7aApi {
 
     fun appGitHubReleaseByTag(tag: String): String =
         "https://api.github.com/repos/$APP_GITHUB_OWNER/$APP_GITHUB_REPO/releases/tags/$tag"
+
+    // ==================== 在线任务包（远程分发）====================
+    //
+    // 和兑换码一样的路子：站点上放两个文件，客户端拉下来解析。区别只有一个 ——
+    // **任务包是会被执行的指令**，不是给人看的文本。索引被篡改就等于远程接管
+    // 所有用户的手机，所以索引必须验签。
+    //
+    // 发布流程（改完索引后必须跑签名，否则客户端一律拒绝）：
+    //
+    // ```bash
+    // python scripts/sign_taskpack_index.py
+    // ```
+    //
+    // 私钥在开发者机器上（`m7a-keystore/taskpack-signing-key.pem`），**不进仓库**。
+    // 公钥硬编码在下面 [TASKPACK_INDEX_PUBKEY]，换密钥必须发新版 App。
+
+    /**
+     * 在线任务包索引（JSON）。
+     *
+     * 结构见 `docs/task-file.md` 第 6 节。里面列的是「有哪些包、每个包多大、
+     * 指纹是多少、从哪下载」——**不含包本体**，所以几 KB，改完部署就行。
+     */
+    const val TASKPACK_INDEX = "${SITE_BASE}taskpacks/index.json"
+
+    /** 索引签名（Base64 的 ECDSA P-256 / SHA-256 签名，对 [TASKPACK_INDEX] 原始字节签名）。 */
+    const val TASKPACK_INDEX_SIG = "${SITE_BASE}taskpacks/index.json.sig"
+
+    /**
+     * 备用索引源 —— 仓库里的同一份文件。
+     *
+     * Cloudflare 站点挂掉（或被停）时切这里。注意 `raw.githubusercontent.com`
+     * 在国内经常连不上，所以它只是**兜底**，不能当主源。
+     */
+    const val TASKPACK_INDEX_FALLBACK =
+        "https://raw.githubusercontent.com/$APP_GITHUB_OWNER/$APP_GITHUB_REPO/main/site/taskpacks/index.json"
+
+    /** 备用索引的签名。 */
+    const val TASKPACK_INDEX_SIG_FALLBACK =
+        "https://raw.githubusercontent.com/$APP_GITHUB_OWNER/$APP_GITHUB_REPO/main/site/taskpacks/index.json.sig"
+
+    /**
+     * 索引验签公钥（X.509 SubjectPublicKeyInfo 的 Base64，单行）。
+     *
+     * 对应私钥：`m7a-keystore/taskpack-signing-key.pem`（不入库）。
+     * 换了私钥就要改这里 + 发新版 App，老用户才不会因为验签失败装不了包。
+     */
+    const val TASKPACK_INDEX_PUBKEY =
+        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEBV7DxGojv+uWib45GMhSNH2jF+7gOscw+Djf4lnJQpbI8IUVixpoWSmxM/jC5rpYQsYmGFzWE02/uBXJSugVyA=="
 
     // ==================== 反馈 ====================
 

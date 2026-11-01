@@ -2,6 +2,7 @@ package com.march7th.hkrpg.presentation.view.panel
 
 import kotlin.math.roundToInt
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -44,6 +45,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -62,6 +66,11 @@ import com.march7th.hkrpg.data.model.RedeemTaskConfig
 import com.march7th.hkrpg.data.model.PowerInstance
 import com.march7th.hkrpg.data.model.DailyTaskConfig
 import com.march7th.hkrpg.data.model.ForgottenHallConfig
+import com.march7th.hkrpg.data.model.CustomTaskConfig
+import com.march7th.hkrpg.data.model.InstalledTaskPack
+import com.march7th.hkrpg.data.resource.CustomTaskPackStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.march7th.hkrpg.data.model.PowerTaskConfig
 import com.march7th.hkrpg.data.model.RoguelikeConfig
 import com.march7th.hkrpg.data.model.SwitchThemeConfig
@@ -131,6 +140,11 @@ internal fun TaskConfigBody(
 
             // 兑换码：站点清单分组勾选 + 自定义码
             is RedeemTaskConfig -> RedeemConfigPanel(
+                config = cfg, onConfigChange = onConfigChange
+            )
+
+            // 自定义任务：选一个已导入的任务包
+            is CustomTaskConfig -> CustomTaskConfigPanel(
                 config = cfg, onConfigChange = onConfigChange
             )
         }
@@ -929,6 +943,7 @@ internal fun taskTypeLabel(typeInfo: TaskTypeInfo): String {
         TaskTypeInfo.FORGOTTEN_HALL -> stringResource(R.string.panel_task_type_forgotten_hall)
         TaskTypeInfo.REDEEM -> stringResource(R.string.panel_task_type_redeem)
         TaskTypeInfo.CLOSE_DOWN -> stringResource(R.string.panel_task_type_close_down)
+        TaskTypeInfo.CUSTOM -> stringResource(R.string.task_type_custom)
     }
 }
 
@@ -1096,4 +1111,102 @@ internal fun clientLabel(client: StartUpTaskConfig.GameClient): String = when (c
         stringResource(R.string.panel_startup_client_local)
     StartUpTaskConfig.GameClient.CLOUD ->
         stringResource(R.string.panel_startup_client_cloud)
+}
+
+/**
+ * 自定义任务：从已导入的任务包里选一个。
+ *
+ * 包列表直接读磁盘而不走 ViewModel —— 设置页导入完回到这里，
+ * `LaunchedEffect(Unit)` 会重新读一次，不会出现「刚导的包不显示」。
+ */
+@Composable
+private fun CustomTaskConfigPanel(
+    config: CustomTaskConfig,
+    onConfigChange: (TaskParamProvider) -> Unit,
+) {
+    val context = LocalContext.current
+    var packs by remember { mutableStateOf<List<InstalledTaskPack>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        packs = withContext(Dispatchers.IO) {
+            runCatching {
+                CustomTaskPackStore { CustomTaskPackStore.appRootDir(context) }.list()
+            }.getOrDefault(emptyList())
+        }
+    }
+
+    Column(
+        // 与其它面板一致：**不能**在这里再套滚动容器（外层卡片已可滚动）
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            text = stringResource(R.string.panel_custom_pick_title),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Medium
+        )
+
+        if (packs.isEmpty()) {
+            Text(
+                text = stringResource(R.string.panel_custom_empty),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            packs.forEach { pack ->
+                val selected = pack.id == config.packId
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable {
+                            onConfigChange(
+                                config.copy(packId = pack.id, packName = pack.displayName)
+                            )
+                        }
+                        .background(
+                            if (selected) {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                            } else {
+                                Color.Transparent
+                            }
+                        )
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = pack.displayName,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f)
+                        )
+                        if (selected) {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                    Text(
+                        text = "v${pack.version} · ${pack.author} · ${pack.stepCount} 步",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        Text(
+            text = stringResource(R.string.panel_custom_hint),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            lineHeight = 18.sp
+        )
+    }
 }

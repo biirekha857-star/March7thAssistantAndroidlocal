@@ -51,10 +51,24 @@ class CoreDataPusher(
         }
     }
 
-    /** 任务下发前调用，把用户刚改过的作业 / 基建文件送过去 */
-    suspend fun pushUserData(): Boolean {
-        if (!pathConfig.isCoreSeparated) return true
-        return withRemote(false) { pushUserDataLocked(it) }
+    /**
+     * 任务下发前调用，把用户刚改过的作业 / 基建文件送过去
+     *
+     * `taskpacks` 单独处理：崩铁内核跑在提权进程，根目录恒为 [CoreDataDir.ROOT]，
+     * 不受 `coreDataLocation` 影响，所以**两种模式都要推**。曾经把它并进
+     * [CoreDataDir.USER_DATA_DIRS]，结果 APP_DIR 模式下整段被 `isCoreSeparated`
+     * 短路掉，导入成功的任务包执行时永远「找不到任务包」。
+     *
+     * 服务没连上时：独立目录模式判失败（旧行为，资源肯定没就位），
+     * APP_DIR 模式仍判成功（旧行为，此时任务本身也起不来，不该由这里拦）。
+     */
+    suspend fun pushUserData(): Boolean = withRemote(!pathConfig.isCoreSeparated) { srv ->
+        val packsOk = pushDirsLocked(srv, listOf(CoreDataDir.TASKPACKS_DIR))
+        if (!pathConfig.isCoreSeparated) {
+            packsOk
+        } else {
+            packsOk && pushDirsLocked(srv, CoreDataDir.USER_DATA_DIRS)
+        }
     }
 
     /** 热更新完成后调用；未连接则留到下次 prepare */
@@ -94,11 +108,15 @@ class CoreDataPusher(
         return ok
     }
 
-    private fun pushUserDataLocked(srv: RemoteService): Boolean {
+    private fun pushUserDataLocked(srv: RemoteService): Boolean =
+        pushDirsLocked(srv, CoreDataDir.USER_DATA_DIRS)
+
+    /** 把 [dirs] 下的文件按相对路径整体投递，单个失败不打断其余 */
+    private fun pushDirsLocked(srv: RemoteService, dirs: List<String>): Boolean {
         val root = File(pathConfig.rootDir)
         var ok = true
         var count = 0
-        for (dir in CoreDataDir.USER_DATA_DIRS) {
+        for (dir in dirs) {
             val top = File(root, dir)
             if (!top.isDirectory) continue
             top.walkTopDown().filter { it.isFile }.forEach { file ->
@@ -106,7 +124,7 @@ class CoreDataPusher(
                 if (sendFile(file, "putCoreFile") { srv.putCoreFile(rel, it) }) count++ else ok = false
             }
         }
-        Timber.d("core user data pushed: %d files ok=%s", count, ok)
+        Timber.d("core user data pushed (dirs=%s): %d files ok=%s", dirs, count, ok)
         return ok
     }
 

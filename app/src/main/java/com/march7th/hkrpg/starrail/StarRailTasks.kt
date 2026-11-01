@@ -6,6 +6,7 @@ import com.march7th.hkrpg.starrail.engine.GameLauncher
 import com.march7th.hkrpg.starrail.engine.ImageUtils
 import com.march7th.hkrpg.starrail.engine.OcrEngine
 import com.march7th.hkrpg.starrail.engine.ScreenNavigator
+import com.march7th.hkrpg.starrail.engine.ScriptedTaskRunner
 import com.march7th.hkrpg.starrail.engine.ShellAutomation
 import com.march7th.hkrpg.third.Ln
 
@@ -345,6 +346,8 @@ class StarRailTasks(
             "ForgottenHall" -> forgottenHall(params)
             // ---- 兑换码 ----
             "Redeem" -> redeem(params)
+            // ---- 自定义任务包（用户导入的流程）----
+            "Custom" -> custom(params)
             // ---- A: 关闭游戏 ----
             "CloseDown" -> closeDown()
             // ---- 调试：导出当前帧（采模板用）----
@@ -353,7 +356,39 @@ class StarRailTasks(
         }
     }
 
+    // ============ 自定义任务包 ============
+
+    /**
+     * 执行用户导入的任务包（`docs/task-file.md`）。
+     *
+     * 参数只有一个 `packId`，具体流程全部在 `taskpacks/<packId>/task.json` 里，
+     * 由 [com.march7th.hkrpg.starrail.engine.ScriptedTaskRunner] 解释执行。
+     *
+     * 之所以不把步骤塞进 `params`：任务链会存进 DataStore，几百步的流程
+     * 序列化进去会让配置膨胀几十 KB，而且每次改包还得重新存一次链。
+     */
+    private fun custom(params: String): TaskResult {
+        val packId = Regex("\"packId\"\\s*:\\s*\"([^\"]*)\"")
+            .find(params)?.groupValues?.get(1).orEmpty()
+        if (packId.isBlank()) {
+            return TaskResult("Custom", false, "没有选择任务包")
+        }
+        val nav = navigator
+            ?: return TaskResult("Custom", false, "导航层未就绪（采集没接上）")
+
+        Ln.i("$TAG: 执行自定义任务包 $packId")
+        val runner = ScriptedTaskRunner(
+            auto = auto,
+            nav = nav,
+            isCancelled = isCancelled,
+            log = { msg -> Ln.i("$TAG[custom]: $msg") },
+        )
+        val result = runner.run(packId)
+        return TaskResult("Custom", result.ok, result.detail)
+    }
+
     // ============ A. 启动游戏 ============
+
     /**
      * 启动游戏并**推进到主界面**。
      *

@@ -53,3 +53,6 @@ tmp.txt
 
 # 临时备份
 .old-head-backup
+
+# Kotlin 增量编译缓存
+.kotlin/

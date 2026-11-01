@@ -52,6 +52,8 @@ import com.march7th.hkrpg.data.repository.OperBoxRepository
 import com.march7th.hkrpg.data.resource.ActivityManager
 import com.march7th.hkrpg.data.resource.BackgroundImageStore
 import com.march7th.hkrpg.data.resource.CopilotResourceProvider
+import com.march7th.hkrpg.data.resource.CustomTaskPackStore
+import com.march7th.hkrpg.data.resource.RemoteTaskPackService
 import com.march7th.hkrpg.data.resource.ItemHelper
 import com.march7th.hkrpg.data.resource.ItemIconLoader
 import com.march7th.hkrpg.data.resource.ResourceDataManager
@@ -131,6 +133,7 @@ import org.koin.core.module.dsl.singleOf
 import org.koin.core.qualifier.named
 import org.koin.dsl.bind
 import org.koin.dsl.module
+import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.seconds
 import com.march7th.hkrpg.domain.service.AchievementReporter
@@ -247,6 +250,10 @@ val appModule = module {
     singleOf(::TaskChainState)
     singleOf(::ConfigBackupManager)
     singleOf(::CorePathConfig)
+    // 任务包落在 MAA 根目录下的 taskpacks/，随用户文件一起投递给 core
+    single { CustomTaskPackStore { File(get<CorePathConfig>().rootDir) } }
+    // 在线任务包：拉站点索引（验签）+ 下载包（校验 sha256）
+    singleOf(::RemoteTaskPackService)
     singleOf(::CoreDataPusher)
     singleOf(::ResourceDownloader)
     singleOf(::AppDownloader)

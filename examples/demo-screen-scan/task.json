@@ -1,0 +1,250 @@
+{
+  "schemaVersion": 1,
+  "id": "demo-screen-scan",
+  "name": "示例·画面体检",
+  "author": "M7A 官方示例",
+  "version": "1.0.0",
+  "description": "把自定义任务的原语全用一遍：模板识别、颜色计数、变量表达式、循环、OCR、点击。跑起来基本不碰游戏，只在最后点一下手机图标",
+  "minAppVersionCode": 11,
+  "params": [
+    {
+      "key": "who",
+      "label": "称呼",
+      "type": "string",
+      "default": "旅行者"
+    }
+  ],
+  "steps": [
+    {
+      "op": "log",
+      "text": "=== 自定义任务链路自检开始 ==="
+    },
+    {
+      "op": "log",
+      "text": "你好，{who}。接下来依次演示：模板识别 → 颜色计数 → 变量表达式 → 循环 → OCR → 点一下手机图标"
+    },
+    {
+      "op": "wait",
+      "ms": 800
+    },
+
+    {
+      "op": "ifTemplate",
+      "note": "① 模板匹配",
+      "image": "assets/phone.png",
+      "region": [0.0, 0.0, 0.2, 0.2],
+      "threshold": 0.75,
+      "then": [
+        {
+          "op": "log",
+          "text": "✅ ① 模板匹配成功：左上角有手机图标，说明当前在游戏大厅"
+        }
+      ],
+      "else": [
+        {
+          "op": "log",
+          "text": "ℹ️ ① 左上角没看到手机图标 —— 当前不在大厅。不影响后面（颜色识别不依赖它）"
+        }
+      ]
+    },
+
+    {
+      "op": "ifCount",
+      "note": "② 数金色块",
+      "region": [0.0, 0.0, 1.0, 1.0],
+      "color": "#FFC870",
+      "tolerance": 32,
+      "minArea": 80,
+      "maxArea": 4000,
+      "compare": ">=",
+      "value": 1,
+      "then": [
+        {
+          "op": "log",
+          "text": "✅ ② 全屏数到金色块 —— 上一行日志里的数字就是块数，这就是「数星星」的通用写法"
+        }
+      ],
+      "else": [
+        {
+          "op": "log",
+          "text": "ℹ️ ② 全屏一块金色都没有，大概在战斗或加载画面里"
+        }
+      ]
+    },
+
+    {
+      "op": "setVar",
+      "note": "③ 变量",
+      "to": "k",
+      "expr": "0"
+    },
+    {
+      "op": "setVar",
+      "note": "③ 表达式",
+      "to": "total",
+      "expr": "(2 + 3) * 4"
+    },
+    {
+      "op": "ifExpr",
+      "note": "③ 校验表达式",
+      "expr": "total == 20 && len(\"abc\") == 3 && clamp(99, 0, 6) == 6",
+      "then": [
+        {
+          "op": "log",
+          "text": "✅ ③ 表达式引擎正常：(2+3)*4 == 20、len(\"abc\") == 3、clamp(99,0,6) == 6"
+        }
+      ],
+      "else": [
+        {
+          "op": "log",
+          "text": "❌ ③ 表达式算错了，这是个该反馈的 bug"
+        }
+      ]
+    },
+
+    {
+      "op": "repeat",
+      "note": "④ repeat",
+      "times": 3,
+      "steps": [
+        {
+          "op": "log",
+          "text": "④ repeat 跑了一轮"
+        },
+        {
+          "op": "wait",
+          "ms": 300
+        }
+      ]
+    },
+
+    {
+      "op": "whileExpr",
+      "note": "⑤ whileExpr",
+      "expr": "k < 3",
+      "steps": [
+        {
+          "op": "setVar",
+          "to": "k",
+          "expr": "k + 1"
+        },
+        {
+          "op": "log",
+          "text": "⑤ while 里 k 自增一次"
+        }
+      ]
+    },
+    {
+      "op": "ifExpr",
+      "note": "⑤ 校验循环",
+      "expr": "k == 3",
+      "then": [
+        {
+          "op": "log",
+          "text": "✅ ⑤ 循环正好跑了 3 轮，k == 3"
+        }
+      ],
+      "else": [
+        {
+          "op": "log",
+          "text": "❌ ⑤ 循环轮数不对"
+        }
+      ]
+    },
+
+    {
+      "op": "readText",
+      "note": "⑥ OCR 读左上角",
+      "region": [0.0, 0.0, 0.6, 0.12],
+      "to": "topText",
+      "optional": true
+    },
+    {
+      "op": "ifExpr",
+      "note": "⑥ 用 OCR 的结果",
+      "expr": "len(topText) > 0",
+      "optional": true,
+      "then": [
+        {
+          "op": "log",
+          "text": "✅ ⑥ OCR 读到的文字在上一条日志里，并且已经存进变量 topText"
+        }
+      ],
+      "else": [
+        {
+          "op": "log",
+          "text": "ℹ️ ⑥ 左上角没读到文字"
+        }
+      ]
+    },
+
+    {
+      "op": "assertCount",
+      "note": "⑦ 故意写一个必失败的判断",
+      "optional": true,
+      "region": [0.4, 0.4, 0.2, 0.2],
+      "color": "#000000",
+      "tolerance": 0,
+      "minArea": 100000,
+      "maxArea": 200000,
+      "compare": ">=",
+      "value": 50
+    },
+    {
+      "op": "log",
+      "text": "⑦ 上一步是故意写失败的：它应该只打一条「⚠️ 跳过」，流程继续 —— 这就是 optional:true"
+    },
+
+    {
+      "op": "waitColor",
+      "note": "⑧ 等颜色出现",
+      "color": "#FFC870",
+      "tolerance": 32,
+      "region": [0.0, 0.0, 1.0, 1.0],
+      "ratio": 0.001,
+      "timeoutMs": 3000,
+      "optional": true
+    },
+    {
+      "op": "log",
+      "text": "⑧ 颜色等待结束（超时也只会跳过，不会中断）"
+    },
+
+    {
+      "op": "log",
+      "text": "⑨ 下面会真的点一下左上角的手机图标 —— 应该会弹出手机菜单，别慌"
+    },
+    {
+      "op": "tapTemplate",
+      "note": "⑨ 点击模板中心",
+      "image": "assets/phone.png",
+      "region": [0.0, 0.0, 0.2, 0.2],
+      "threshold": 0.75,
+      "timeoutMs": 5000,
+      "optional": true
+    },
+    {
+      "op": "wait",
+      "ms": 1500
+    },
+    {
+      "op": "tap",
+      "note": "⑨ 点左侧空白，把菜单关掉",
+      "x": 0.12,
+      "y": 0.86
+    },
+    {
+      "op": "log",
+      "text": "⑨ 如果菜单还开着，手动点一下空白就能关 —— 这个包不会做别的事"
+    },
+
+    {
+      "op": "log",
+      "text": "=== 自检结束，如果没有 ❌ 就说明整条链路正常 ==="
+    },
+    {
+      "op": "stop",
+      "ok": true
+    }
+  ]
+}

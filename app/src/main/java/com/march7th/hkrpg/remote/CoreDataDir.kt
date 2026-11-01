@@ -21,7 +21,22 @@ object CoreDataDir {
     private const val HOT_UPDATE_TOP_DIR = "MaaResource-main/"
     private const val HOT_UPDATE_RESOURCE_DIR = "resource/"
 
-    /** App 写、core 读，整体投递 */
+    /**
+     * 自定义任务包目录（见 `docs/task-file.md`）
+     *
+     * 执行器 [com.march7th.hkrpg.starrail.engine.ScriptedTaskRunner] 跑在提权进程，
+     * 根目录**恒为** [ROOT]，和 `coreDataLocation` 设置无关 —— 所以这个目录
+     * 不能只放在 [USER_DATA_DIRS] 里（那份只在 LOCAL_TMP 模式投递），
+     * 必须由 `CoreDataPusher` 在两种模式下都推过去。
+     */
+    const val TASKPACKS_DIR = "taskpacks"
+
+    /**
+     * App 写、core 读，整体投递
+     *
+     * 只在 MaaCore 用独立目录（LOCAL_TMP）时才整体推送；`taskpacks` 见
+     * [TASKPACKS_DIR]，崩铁内核两种模式都要读，单独处理。
+     */
     val USER_DATA_DIRS = listOf(M7aFiles.OVERRIDES, "copilot", "custom_infrast")
 
     /** 热更包 zip 条目 → cache/resource 下的相对路径；不属于资源的条目返回 null；App 侧解包同样用它 */
