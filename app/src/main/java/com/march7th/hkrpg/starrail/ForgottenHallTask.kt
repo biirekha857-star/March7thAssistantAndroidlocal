@@ -89,8 +89,8 @@ internal class ForgottenHallTask(
         /** 「领取」按钮（奖励弹窗每一行右侧）。 */
         private const val TEMPLATE_RECEIVE = "forgottenhall/receive.png"
 
-        /** 星星（纯黑白掩码，配合颜色二值化使用）。 */
-        private const val TEMPLATE_STAR = "forgottenhall/star.png"
+        // 注：`forgottenhall/star.png`（17×17）**故意不用** —— 实机星星是 40×40，
+        // 尺度对不上，模板分数接近 0。星数改用数金色连通块，见 [judgeStars]。
 
         /** 红点（有未领奖励）。 */
         private const val TEMPLATE_RED_DOT = "share/base/RedExclamationMark.png"
@@ -123,13 +123,33 @@ internal class ForgottenHallTask(
             0f / 1920f, 903f / 1080f, 144f / 1920f, 120f / 1080f,
         )
 
-        /** 星星的裁剪尺寸（1920×1080 基准下的像素）。M7A 用 120×120。 */
-        private const val STAR_CROP_PX = 120f
+        /**
+         * 星星带相对**层号文字框**的偏移（1920×1080 基准像素）。
+         *
+         * 实测：左边界 = 层号左边界 - 16；上边界 = 层号下边界 + 2；
+         * 带宽 156（3 颗 40px 星 + 余量）；带高 64。
+         * 四层（09/10/11/12）逐一验证过，见 [judgeStars] 的表。
+         */
+        private const val STAR_BAND_DX = 16f
+        private const val STAR_BAND_DY = 2f
+        private const val STAR_BAND_W = 156f
+        private const val STAR_BAND_H = 64f
+
+        /**
+         * 一颗星的金色像素面积区间（1920×1080 实测量级）。
+         *
+         * 实测单颗约 300~330 像素，三颗合计 930~970 且互不相连。
+         * 下限 80 容得下抗锯齿把边缘吃掉一半；上限 4000 挡住整片背景。
+         */
+        private const val STAR_MIN_AREA = 80
+        private const val STAR_MAX_AREA = 4_000
 
         /**
          * 星星的颜色（**BGR** 顺序）。
          *
          * M7A 写的是 `pixel_bgr=[112,200,255]`，即 RGB(255,200,112) —— 金色。
+         * 实机采样到的星点像素是 `FFCA6E / FBC968 / E8B969 / FACB73`，
+         * 落在同一个色域里；背景是深紫 `2C185F` 一类，差得足够远。
          */
         private val STAR_COLOR_BGR = doubleArrayOf(112.0, 200.0, 255.0)
 
@@ -165,8 +185,14 @@ internal class ForgottenHallTask(
         /** 开自动战斗失败后，隔多久再试（游戏有切换动画，不能连点）。 */
         private const val AUTO_RETRY_MS = 5_000L
 
-        /** 关卡栏最多横滑几次去找一个层号。M7A 是左右各 15 次 × 6 秒。 */
+        /** 关卡区最多横滑几次去找一个层号。M7A 是左右各 15 次 × 6 秒。 */
         private const val MAX_LEVEL_SWIPES = 14
+
+        /** 开局"滑到最小层号那头"最多滑几次（看到第 1~2 层就早停）。 */
+        private const val MAX_START_SWIPES = 10
+
+        /** 层号文字的形状：1~2 位纯数字（`07` / `12` / `7`）。 */
+        private val LEVEL_NUM_RE = Regex("""\d{1,2}""")
 
         /** 领奖最多点几次「领取」（防死循环）。 */
         private const val MAX_CLAIMS = 8
@@ -182,6 +208,13 @@ internal class ForgottenHallTask(
         val skipFullStar: Boolean = true,
         val autoBattle: Boolean = true,
         val battleTimeoutMin: Int = 30,
+        /**
+         * 本期已满星时是否仍传送进去。
+         *
+         * 默认 false（满星就收工）。打开它可以把"传送 → 找层 → 数星"
+         * 这后半条链路在满星期完整跑一遍，用于实机验证。
+         */
+        val enterEvenIfFull: Boolean = false,
     )
 
     /** 结果。 */
@@ -257,12 +290,17 @@ internal class ForgottenHallTask(
         // ---- ④ 本期是否已满星 ----
         //
         // 满星就直接收工 —— 再进去也是白打（0 奖励，纯浪费电）。
+        // 例外：用户打开了「满星也进入」（[Params.enterEvenIfFull]），
+        // 那是为了把后半条链路实机验证一遍，此时照常往下走。
         val stars = nav.readChaosStars(ForgottenHallConfig.TOTAL_STARS)
         if (stars != null) {
             note("混沌回忆进度 ${stars.first}/${stars.second}")
             if (stars.first >= stars.second) {
-                nav.closeCurrent()
-                return Result(true, "本期混沌回忆已满星（${stars.first}/${stars.second}），无需挑战")
+                if (!config.enterEvenIfFull) {
+                    nav.closeCurrent()
+                    return Result(true, "本期混沌回忆已满星（${stars.first}/${stars.second}），无需挑战")
+                }
+                note("已满星，但用户勾选了「满星也进入」—— 继续传送（每层都会被判定为满星跳过）")
             }
         } else {
             note("没能读到星数进度，按「未满星」继续")
@@ -383,37 +421,86 @@ internal class ForgottenHallTask(
 
     // ==================== 关卡栏 ====================
 
-    /** 把关卡栏滑到最左（层数最小那头）。 */
+    /**
+     * 把关卡区滑到**最小层号那头**。
+     *
+     * ## 为什么要先滑到头
+     *
+     * 实机上这一页一次只显示 **4 层**（比如 09/10/11/12），是斜向散开的
+     * 四颗晶石，不是 PC 那条能一眼看全的横排。默认视口停在"最近几层"，
+     * 想打第 7 层就得往回滑。
+     *
+     * 先滑到最小层号那头，之后按升序找层就只需要**单向滑动**，
+     * 不会出现"滑过头又得滑回来"的来回拉扯。
+     *
+     * ## 早停判据
+     *
+     * 看到第 1 或第 2 层就停 —— 再滑也不会更小了。滑到头还看不到
+     * （可能是本期开放的层数不从这里起）就按当前位置继续，不报错。
+     */
     private fun scrollLevelBarToStart() {
-        note("关卡栏滑到最左")
-        repeat(5) {
+        var texts = scanLevels()
+        note("关卡区当前可见层：${describeLevels(texts)}")
+        if (levelsOf(texts).let { it.isNotEmpty() && it.min() <= 2 }) return
+
+        repeat(MAX_START_SWIPES) { i ->
             checkCancelled()
             nav.swipeChaosLevelBar(toRight = true)
+            texts = scanLevels()
+            if (levelsOf(texts).let { it.isNotEmpty() && it.min() <= 2 }) {
+                note("已滑到最小层号（滑 ${i + 1} 次）：${describeLevels(texts)}")
+                return
+            }
         }
+        note("滑了 $MAX_START_SWIPES 次仍没见到第 1~2 层（${describeLevels(texts)}），按当前位置继续")
     }
 
     /**
-     * 在关卡栏里找某一层，找不到就**往右滑**继续找。
+     * 在关卡区里找某一层，找不到就**往层号变大的方向滑**继续找。
      *
-     * 为什么不每次先滑回最左：层是按升序逐个处理的，找到第 7 层之后
-     * 第 8 层就在右边不远处，往回滑再滑回来纯属浪费时间。
+     * 为什么要往一个方向找：层是按升序逐个处理的，`scrollLevelBarToStart`
+     * 之后第 7 层一定在当前视口的右边，往后滑就行，不用双向试探。
      */
     private fun findLevel(level: Int): OcrEngine.OcrResult? {
-        findLevelOnScreen(level)?.let { return it }
+        var texts = scanLevels()
+        pickLevel(texts, level)?.let { return it }
+
         repeat(MAX_LEVEL_SWIPES) { i ->
             checkCancelled()
             nav.swipeChaosLevelBar(toRight = false)
-            val hit = findLevelOnScreen(level)
-            if (hit != null) {
-                note("第 $level 层在右滑 ${i + 1} 次后找到 @(${hit.cx},${hit.cy})")
+            texts = scanLevels()
+            pickLevel(texts, level)?.let { hit ->
+                note("第 $level 层在滑 ${i + 1} 次后找到 @(${hit.cx},${hit.cy})")
                 return hit
             }
         }
+        note("滑到头了，当前可见层：${describeLevels(texts)}")
         return null
     }
 
+    /** 一次 OCR 读完整条关卡区（后续所有判断都复用这一份结果）。 */
+    private fun scanLevels(): List<OcrEngine.OcrResult> =
+        nav.readAllText(ScreenNavigator.Hotspot.CHAOS_LEVEL_BAR)
+
+    /** 从一次 OCR 结果里解析出可见的层号（1~12）。 */
+    private fun levelsOf(texts: List<OcrEngine.OcrResult>): List<Int> {
+        val out = sortedSetOf<Int>()
+        for (t in texts) {
+            val s = t.normalized()
+            if (!LEVEL_NUM_RE.matches(s)) continue
+            val v = s.toIntOrNull() ?: continue
+            if (v in ForgottenHallConfig.MIN_LEVEL..ForgottenHallConfig.MAX_LEVEL) out.add(v)
+        }
+        return out.toList()
+    }
+
+    private fun describeLevels(texts: List<OcrEngine.OcrResult>): String {
+        val lv = levelsOf(texts)
+        return if (lv.isEmpty()) "未识别" else lv.joinToString("/")
+    }
+
     /**
-     * 在当前视口里找层号。
+     * 从一次 OCR 结果里挑出目标层的那个文字框。
      *
      * 三级匹配，从严到松：
      * 1. 完全等于 `07`（最理想，OCR 直接读对）；
@@ -421,8 +508,10 @@ internal class ForgottenHallTask(
      * 3. 完全等于 `7`（OCR 吃掉了前导 0 —— **只认整框相等**，
      *    否则「7」会命中「17」「7/12」之类的无关文字）。
      */
-    private fun findLevelOnScreen(level: Int): OcrEngine.OcrResult? {
-        val texts = nav.readAllText(ScreenNavigator.Hotspot.CHAOS_LEVEL_BAR)
+    private fun pickLevel(
+        texts: List<OcrEngine.OcrResult>,
+        level: Int,
+    ): OcrEngine.OcrResult? {
         if (texts.isEmpty()) return null
         val padded = "%02d".format(level)
         val plain = level.toString()
@@ -436,37 +525,58 @@ internal class ForgottenHallTask(
     /**
      * 数某一层的星星（0~3）。
      *
-     * ## 区域
+     * ## 区域怎么来的（实机量出来的，不是照抄上游）
      *
-     * 从层号文字框的**左上角**起，取 120×120 像素（1920×1080 基准）——
-     * 和 M7A `judge_stars` 完全一致。星星就在层号右侧/下方这一小块里。
+     * 上游 `judge_stars` 是"层号文字框左上角起取 120×120"。实机上星星
+     * **在层号正下方、左边对齐**，四层实测：
+     *
+     * | 层 | 层号框 | 星星带 |
+     * |---|---|---|
+     * | 09 | x400 y564 h56 | x400..520 y632..672 |
+     * | 10 | x744 y640 h60 | x744..864 y712..744 |
+     * | 11 | x1132 y540 h52 | x1128..1248 y608..648 |
+     * | 12 | x1528 y468 h56 | x1520..1640 y536..576 |
+     *
+     * 归纳出：**左边界 = 层号左边界 - 16，上边界 = 层号下边界 + 2，
+     * 尺寸 156×64**。这个式子对四层全部成立（星星比层号往左飘 0~8px，
+     * 靠 -16 的余量吃掉）。
+     *
+     * ## 为什么不用模板匹配
+     *
+     * `forgottenhall/star.png` 是 **17×17**（PC 抠的），实机那颗星约
+     * **40×40**。CCOEFF 对尺度敏感，17px 模板塞进 40px 实心星里几乎是
+     * 一片纯白，归一化后分数接近 0 —— 三颗满星会被读成 0 星，
+     * 于是任务会去白打一层已经满星的关卡。改用**数金色连通块**
+     * （[ImageUtils.countColorBlobs]），完全不吃尺度。
      *
      * @return 0~3；读不出来返回 null（调用方按"没满星"处理）
      */
     private fun judgeStars(hit: OcrEngine.OcrResult): Int? {
         val sx = auto.width / 1920f
         val sy = auto.height / 1080f
+        val left = hit.x - (STAR_BAND_DX * sx).toInt()
+        val top = hit.y + hit.h + (STAR_BAND_DY * sy).toInt()
         val rect = org.opencv.core.Rect(
-            hit.x,
-            hit.y,
-            (STAR_CROP_PX * sx).toInt().coerceAtLeast(1),
-            (STAR_CROP_PX * sy).toInt().coerceAtLeast(1),
+            left.coerceAtLeast(0),
+            top.coerceAtLeast(0),
+            (STAR_BAND_W * sx).toInt().coerceAtLeast(1),
+            (STAR_BAND_H * sy).toInt().coerceAtLeast(1),
         )
         val count = nav.withFrameOcr { mat ->
-            ImageUtils.countColoredMatches(
+            ImageUtils.countColorBlobs(
                 src = mat,
-                templatePath = TEMPLATE_STAR,
-                bgr = STAR_COLOR_BGR,
                 region = rect,
-                threshold = 0.60,
-                maxCount = ForgottenHallConfig.STARS_PER_LEVEL,
+                bgr = STAR_COLOR_BGR,
                 toleranceSq = STAR_COLOR_TOLERANCE,
+                minArea = STAR_MIN_AREA,
+                maxArea = STAR_MAX_AREA,
             )
         } ?: return null
 
-        if (count !in 0..ForgottenHallConfig.STARS_PER_LEVEL) {
-            // 理论上不会发生（maxCount 已经卡在 3），保险起见记一条
-            Ln.w("$TAG: 星数计数异常 $count，按未知处理")
+        if (count > ForgottenHallConfig.STARS_PER_LEVEL) {
+            // 数多了说明图形被切碎或框里混进了别的东西 —— **不能夹到 3**，
+            // 夹到 3 会被当成"已满星"从而漏打。按未知处理（= 去打）。
+            Ln.w("$TAG: 星数数出 $count 团（>3），按未知处理")
             return null
         }
         if (count == 0) {

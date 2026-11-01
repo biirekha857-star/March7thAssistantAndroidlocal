@@ -2780,4 +2780,6 @@ MAA 不会因为取消勾选此选项而提前在局内结束探索</string>
 <string name="panel_forgotten_hall_skip_full_desc">三层星拿满的层不重复打（重复打没有任何奖励）</string>
 <string name="panel_forgotten_hall_auto_battle_title">战斗中自动开启「自动战斗」</string>
 <string name="panel_forgotten_hall_auto_battle_desc">关掉它就只能靠手打，自动化会卡在战斗里，一般不用关</string>
+    <string name="panel_forgotten_hall_even_if_full_title">满星也进入（仅用于验证）</string>
+    <string name="panel_forgotten_hall_even_if_full_desc">这个周期已经 36 星时，任务默认在详情页就收工。勾上它会照常传送进去，把「传送 → 找层 → 数星」整条链路走一遍；每层都会被判为满星跳过，不会真的开打</string>
 </resources>

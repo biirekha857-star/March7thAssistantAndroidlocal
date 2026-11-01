@@ -2721,4 +2721,6 @@ Without a build target, it grinds the first domain in the default order.</string
 <string name="panel_forgotten_hall_skip_full_desc">Floors that already have all 3 stars give no rewards, so they are skipped</string>
 <string name="panel_forgotten_hall_auto_battle_title">Enable Auto-Battle</string>
 <string name="panel_forgotten_hall_auto_battle_desc">Turn this off and you have to fight manually; the task will wait until the floor times out</string>
+    <string name="panel_forgotten_hall_even_if_full_title">Enter even when full (verification only)</string>
+    <string name="panel_forgotten_hall_even_if_full_desc">When this period is already 36/36 the task stops on the detail page. Enable this to still teleport in and exercise the whole "teleport - find floor - count stars" path; every floor will be judged full-star and skipped, so no fight actually starts</string>
 </resources>

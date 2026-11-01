@@ -702,7 +702,7 @@ private fun DailyConfigPanel(
  * 1. **顶部提示**：这个版本用**游戏内已配好的队伍**，不自动选人。
  *    用户必须先在游戏里给要打的那几层配好队伍，否则会停在配队页。
  * 2. **层数区间**：默认第 7~12 层（前 6 层是常驻「回忆」，不刷新）。
- * 3. **两个开关**：跳过已满星层、自动战斗。
+ * 3. **三个开关**：跳过已满星层、自动战斗、满星也进入（验证用）。
  */
 @Composable
 private fun ForgottenHallConfigPanel(
@@ -839,6 +839,38 @@ private fun ForgottenHallConfigPanel(
                 )
                 Text(
                     text = stringResource(R.string.panel_forgotten_hall_auto_battle_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+        // ---- 满星也进入（调试 / 验证用）----
+        //
+        // 满星时任务默认在详情页就收工，后半条链路（传送→找层→数星）一行
+        // 都不会跑。勾上这个就能在满星期把那半条链路完整验一遍 ——
+        // 每层都会被"已满 3 星"跳过，所以不会真的开打。
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onConfigChange(config.copy(enterEvenIfFull = !config.enterEvenIfFull)) },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(
+                checked = config.enterEvenIfFull,
+                onCheckedChange = { onConfigChange(config.copy(enterEvenIfFull = it)) }
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.panel_forgotten_hall_even_if_full_title),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = stringResource(R.string.panel_forgotten_hall_even_if_full_desc),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

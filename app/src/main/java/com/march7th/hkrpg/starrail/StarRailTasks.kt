@@ -1666,7 +1666,7 @@ class StarRailTasks(
      *
      * 形状（由 `ForgottenHallConfig.toTaskParams` 生成）：
      * ```json
-     * {"fromLevel":7,"toLevel":12,"skipFullStar":true,"autoBattle":true,"battleTimeoutMin":30}
+     * {"fromLevel":7,"toLevel":12,"skipFullStar":true,"autoBattle":true,"battleTimeoutMin":30,"enterEvenIfFull":false}
      * ```
      *
      * 字段少且固定，依旧手工解析 —— 和 [parsePowerParams] 同样的理由。
@@ -1686,6 +1686,7 @@ class StarRailTasks(
             skipFullStar = bool("skipFullStar", true),
             autoBattle = bool("autoBattle", true),
             battleTimeoutMin = int("battleTimeoutMin", 30),
+            enterEvenIfFull = bool("enterEvenIfFull", false),
         )
     }
 

@@ -70,6 +70,18 @@ data class ForgottenHallConfig(
     val autoBattle: Boolean = true,
 
     /**
+     * 本期已满星时，是否仍然传送进混沌回忆页。
+     *
+     * 默认**关** —— 满星就没什么可打的了，进去白耗时间。
+     *
+     * 留着这个开关是因为：满星时整个"传送 → 找层 → 数星 → 开打"的后半条链路
+     * 一行代码都不会被执行，而那条链路恰恰是最需要实机验证的部分。
+     * 打开它就可以在满星期把链路完整跑一遍（每层都会因为"已满 3 星"被跳过，
+     * 所以不会有任何战斗，也没有风险）。
+     */
+    val enterEvenIfFull: Boolean = false,
+
+    /**
      * 单层战斗的时间上限（分钟）。
      *
      * 混沌回忆一层要打两个半场，满配队伍 3~6 分钟，练度低会更久。
@@ -97,6 +109,7 @@ data class ForgottenHallConfig(
             append(""","skipFullStar":$skipFullStar""")
             append(""","autoBattle":$autoBattle""")
             append(""","battleTimeoutMin":${battleTimeoutMin.coerceIn(1, 120)}""")
+            append(""","enterEvenIfFull":$enterEvenIfFull""")
             append("}")
         }
         return listOf(CoreTaskParams(coreType, json))

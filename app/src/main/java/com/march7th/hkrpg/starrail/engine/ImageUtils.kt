@@ -547,6 +547,116 @@ object ImageUtils {
         }
     }
 
+    /**
+     * 数**同色连通块**的个数 —— 比 [countColoredMatches] 更抗缩放。
+     *
+     * ## 为什么需要它
+     *
+     * `forgottenhall/star.png` 只有 **17×17**（PC 端从这个尺寸抠的），
+     * 而手游 1920×1080 上那颗星是 **约 40×40**。CCOEFF 匹配对尺度很敏感，
+     * 拿 17px 的模板去找 40px 的实心星，分数上不去，"三颗星全满"会被
+     * 读成 0 星 —— 于是逻辑会去白打一层已经满星的关卡。
+     *
+     * 数连通块完全不吃尺度：先按颜色二值化，再数有几个面积达标的色块。
+     * 星星的颜色是金色（实测 RGB≈(250,200,110)，背景是深紫 (45,25,90)），
+     * 两者差得足够远，颜色过滤后每颗星都是独立一团（实测约 310 像素）。
+     *
+     * ## 参数怎么定的
+     *
+     * 实测（1920×1080 实机截图，第 09~12 层）：
+     * - 单颗星的金色像素 ≈ 300~330；
+     * - 三颗星合计 ≈ 930~970，彼此不粘连。
+     *
+     * 所以 [minArea] 取 80（单星面积的四分之一，容得下抗锯齿和压缩损失），
+     * [maxArea] 取 4000（防止把整片背景误当一颗星）。
+     *
+     * @param src 原始帧（BGR）
+     * @param region 只在这个像素矩形里数；null = 全帧
+     * @param bgr 目标颜色（B, G, R）
+     * @param toleranceSq 各通道差的平方和上限
+     * @param minArea 一块算作"一个图形"的最小面积（像素）
+     * @param maxArea 超过这个面积视为背景，不计
+     */
+    fun countColorBlobs(
+        src: Mat,
+        region: org.opencv.core.Rect?,
+        bgr: DoubleArray,
+        toleranceSq: Double = 3000.0,
+        minArea: Int = 80,
+        maxArea: Int = 4000,
+    ): Int {
+        if (src.empty()) return 0
+        val rx = (region?.x ?: 0).coerceIn(0, (src.cols() - 1).coerceAtLeast(0))
+        val ry = (region?.y ?: 0).coerceIn(0, (src.rows() - 1).coerceAtLeast(0))
+        val rw = (region?.width ?: src.cols()).coerceAtMost(src.cols() - rx)
+        val rh = (region?.height ?: src.rows()).coerceAtMost(src.rows() - ry)
+        if (rw <= 0 || rh <= 0) return 0
+
+        val roi = Mat(src, org.opencv.core.Rect(rx, ry, rw, rh)).clone()
+        return try {
+            val px = ByteArray(rw * rh * 3)
+            roi.get(0, 0, px)
+
+            // ---- ① 颜色二值化 ----
+            val mask = BooleanArray(rw * rh)
+            var i = 0
+            for (p in 0 until rw * rh) {
+                val db = (px[i].toInt() and 0xFF) - bgr[0]
+                val dg = (px[i + 1].toInt() and 0xFF) - bgr[1]
+                val dr = (px[i + 2].toInt() and 0xFF) - bgr[2]
+                mask[p] = db * db + dg * dg + dr * dr <= toleranceSq
+                i += 3
+            }
+
+            // ---- ② 洪水填充数连通块 ----
+            val visited = BooleanArray(rw * rh)
+            val stack = IntArray(rw * rh)
+            var count = 0
+            for (start in 0 until rw * rh) {
+                if (!mask[start] || visited[start]) continue
+                var sp = 0
+                stack[sp++] = start
+                visited[start] = true
+                var area = 0
+                while (sp > 0) {
+                    val cur = stack[--sp]
+                    area++
+                    val cx = cur % rw
+                    val cy = cur / rw
+                    // 四邻域足够 —— 星星内部是实心的，不需要八邻域
+                    if (cx > 0) {
+                        val n = cur - 1
+                        if (mask[n] && !visited[n]) { visited[n] = true; stack[sp++] = n }
+                    }
+                    if (cx < rw - 1) {
+                        val n = cur + 1
+                        if (mask[n] && !visited[n]) { visited[n] = true; stack[sp++] = n }
+                    }
+                    if (cy > 0) {
+                        val n = cur - rw
+                        if (mask[n] && !visited[n]) { visited[n] = true; stack[sp++] = n }
+                    }
+                    if (cy < rh - 1) {
+                        val n = cur + rw
+                        if (mask[n] && !visited[n]) { visited[n] = true; stack[sp++] = n }
+                    }
+                }
+                if (area in minArea..maxArea) count++
+            }
+            // ## 不在这里 clamp（重要）
+            //
+            // 星星图形万一被抗锯齿切碎，3 颗会数成 4~5 个色块。这时**必须**
+            // 把"我数不清"如实报上去，让调用方按"未知"处理（= 去打），
+            // 而不是夹到 3 —— 夹到 3 会让它误判成"已满星"从而漏掉该打的层。
+            count
+        } catch (t: Throwable) {
+            Ln.w("ImageUtils: countColorBlobs 失败：${t.message}")
+            0
+        } finally {
+            roi.release()
+        }
+    }
+
     /** 清空模板缓存（换资源包时调用）。 */
     fun clearCache() {
         templateCache.values.forEach { (t, m) ->
