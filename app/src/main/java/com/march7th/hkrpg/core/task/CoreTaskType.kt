@@ -28,6 +28,8 @@ enum class CoreTaskType(val value: String) {
     DAILY("Daily"),
     // 兑换码
     REDEEM("Redeem"),
+    // 忘却之庭 · 混沌回忆
+    FORGOTTEN_HALL("ForgottenHall"),
 
     // ==================== 明日方舟任务（保留，崩铁内核不支持）====================
     // 日常任务

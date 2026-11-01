@@ -431,6 +431,122 @@ object ImageUtils {
         return match(screenshot, tpl, mask, threshold, scaleRange)
     }
 
+    /**
+     * 数「**指定颜色的图形**」在画面里出现了几次 —— 对应 M7A 的 `image_count`。
+     *
+     * ## 为什么不能直接用普通模板匹配
+     *
+     * 忘却之庭的星星是**金色实心图形**，背景随关卡卡片的底色变化（有时是
+     * 深蓝、有时是半透明灰）。直接拿 `star.png` 做 CCOEFF 匹配，背景一亮
+     * 分数就掉到 0.4 以下，星数永远读成 0。
+     *
+     * M7A 的做法是**先把画面按颜色二值化**（只留下金色像素），再拿
+     * `star.png`（它本身就是纯黑白掩码，17×17，白星黑底）去匹配二值图。
+     * 背景被颜色过滤掉了，所以怎么变都不影响。
+     *
+     * ## 计数方式
+     *
+     * 匹配一次只有一个最好位置，所以这里做**迭代抑制**：
+     * 命中一次 → 把那一块涂黑 → 再匹配，直到分数不达标或到 [maxCount]。
+     *
+     * @param src 原始帧（BGR）
+     * @param templatePath 黑白掩码模板（如 `forgottenhall/star.png`）
+     * @param bgr 目标颜色（B, G, R 顺序，与 Mat 一致）
+     * @param region 只在（归一化前的）像素矩形里找
+     * @param threshold CCOEFF_NORMED 阈值
+     * @param maxCount 最多数几个（星星最多 3 个，数多了就是误判）
+     * @param toleranceSq 颜色容差（各通道差的平方和上限）
+     * @return 命中个数；模板缺失或区域非法时返回 0
+     */
+    fun countColoredMatches(
+        src: Mat,
+        templatePath: String,
+        bgr: DoubleArray,
+        region: org.opencv.core.Rect? = null,
+        threshold: Double = 0.60,
+        maxCount: Int = 3,
+        toleranceSq: Double = 3000.0,
+    ): Int {
+        val (tplBgr, _) = loadTemplate(templatePath) ?: run {
+            Ln.w("ImageUtils: 计数模板不存在 $templatePath")
+            return 0
+        }
+
+        // ---- ① 取 ROI（**复制**一份，避免后续涂黑影响原帧）----
+        val roi = if (region == null) src.clone() else {
+            val x = region.x.coerceIn(0, (src.cols() - 1).coerceAtLeast(0))
+            val y = region.y.coerceIn(0, (src.rows() - 1).coerceAtLeast(0))
+            val w = region.width.coerceAtMost(src.cols() - x)
+            val h = region.height.coerceAtMost(src.rows() - y)
+            if (w <= 0 || h <= 0) return 0
+            Mat(src, org.opencv.core.Rect(x, y, w, h)).clone()
+        }
+
+        val tplGray = Mat()
+        try {
+            Imgproc.cvtColor(tplBgr, tplGray, Imgproc.COLOR_BGR2GRAY)
+            Imgproc.threshold(tplGray, tplGray, 128.0, 255.0, Imgproc.THRESH_BINARY)
+
+            // ---- ② 按颜色生成黑白图 ----
+            val w = roi.cols()
+            val h = roi.rows()
+            if (w < tplGray.cols() || h < tplGray.rows()) return 0
+            val px = ByteArray(w * h * 3)
+            roi.get(0, 0, px)
+            val bw = ByteArray(w * h)
+            var i = 0
+            for (p in 0 until w * h) {
+                val db = (px[i].toInt() and 0xFF) - bgr[0]
+                val dg = (px[i + 1].toInt() and 0xFF) - bgr[1]
+                val dr = (px[i + 2].toInt() and 0xFF) - bgr[2]
+                bw[p] = if (db * db + dg * dg + dr * dr <= toleranceSq) 0xFF.toByte() else 0
+                i += 3
+            }
+            val bwMat = Mat(h, w, org.opencv.core.CvType.CV_8UC1)
+            bwMat.put(0, 0, bw)
+            try {
+                // ---- ③ 迭代匹配 + 抑制 ----
+                var count = 0
+                repeat(maxCount) {
+                    val res = Mat()
+                    val score: Double
+                    val locX: Int
+                    val locY: Int
+                    try {
+                        Imgproc.matchTemplate(bwMat, tplGray, res, Imgproc.TM_CCOEFF_NORMED)
+                        val mm = Core.minMaxLoc(res)
+                        score = mm.maxVal
+                        locX = mm.maxLoc.x.toInt()
+                        locY = mm.maxLoc.y.toInt()
+                    } finally {
+                        res.release()
+                    }
+                    if (!score.isFinite() || score < threshold) return count
+                    count++
+                    // 涂黑命中块（含 4px 余量），防止同一个星星被数两次
+                    val mx = (locX - 4).coerceAtLeast(0)
+                    val my = (locY - 4).coerceAtLeast(0)
+                    val mw = (tplGray.cols() + 8).coerceAtMost(w - mx)
+                    val mh = (tplGray.rows() + 8).coerceAtMost(h - my)
+                    if (mw > 0 && mh > 0) {
+                        val sub = Mat(bwMat, org.opencv.core.Rect(mx, my, mw, mh))
+                        try {
+                            sub.setTo(org.opencv.core.Scalar(0.0))
+                        } finally {
+                            sub.release()
+                        }
+                    }
+                }
+                return count
+            } finally {
+                bwMat.release()
+            }
+        } finally {
+            roi.release()
+            tplGray.release()
+        }
+    }
+
     /** 清空模板缓存（换资源包时调用）。 */
     fun clearCache() {
         templateCache.values.forEach { (t, m) ->

@@ -1206,6 +1206,7 @@
     <string name="panel_task_card_summary_power">%1$s · up to %2$d runs</string>
     <string name="panel_task_card_summary_power_unlimited">%1$s · until power runs out</string>
     <string name="panel_task_card_summary_daily">%1$d drills selected</string>
+    <string name="panel_task_card_summary_forgotten_hall">Memory of Chaos, floor %1$d-%2$d</string>
     <string name="panel_task_card_summary_daily_none">No drills selected</string>
     <string name="panel_task_card_duplicate">Duplicate</string>
     <string name="panel_task_card_delete">Delete</string>
@@ -2707,4 +2708,17 @@ Without a build target, it grinds the first domain in the default order.</string
 <string name="panel_redeem_remove">Remove</string>
 <string name="panel_redeem_summary">%1$d codes will be redeemed</string>
 <string name="task_type_start_up">Start Game</string>
+
+<!-- ==================== Forgotten Hall / Memory of Chaos ==================== -->
+<string name="task_type_forgotten_hall">Forgotten Hall</string>
+<string name="panel_task_type_forgotten_hall">Forgotten Hall</string>
+<string name="panel_forgotten_hall_hint">This task reuses the teams you have already saved in-game — it does not pick characters for you. Set up a team for each floor in Memory of Chaos once before the first run.</string>
+<string name="panel_forgotten_hall_levels_title">Floors to challenge</string>
+<string name="panel_forgotten_hall_levels_value">Floor %1$d → Floor %2$d</string>
+<string name="panel_forgotten_hall_from">First floor</string>
+<string name="panel_forgotten_hall_to">Last floor</string>
+<string name="panel_forgotten_hall_skip_full_title">Skip 3-star floors</string>
+<string name="panel_forgotten_hall_skip_full_desc">Floors that already have all 3 stars give no rewards, so they are skipped</string>
+<string name="panel_forgotten_hall_auto_battle_title">Enable Auto-Battle</string>
+<string name="panel_forgotten_hall_auto_battle_desc">Turn this off and you have to fight manually; the task will wait until the floor times out</string>
 </resources>

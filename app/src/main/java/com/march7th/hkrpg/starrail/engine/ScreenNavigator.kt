@@ -271,6 +271,40 @@ class ScreenNavigator(
          * 已经远超偶发抖动的范围，再重试只是浪费时间。
          */
         private const val INPUT_DEAD_THRESHOLD = 3
+
+        // ==================== 忘却之庭 / 混沌回忆 ====================
+
+        /** 点开「忘却之庭」后，等右侧详情面板画出「混沌回忆」的上限。 */
+        private const val DETAIL_WAIT_MS = 8_000L
+
+        /** 点「传送」后等混沌回忆页出现（含转场 + 加载）的上限。 */
+        private const val CHAOS_TELEPORT_TIMEOUT_MS = 25_000L
+
+        /**
+         * 星数进度的正则。
+         *
+         * OCR 输出的原文可能是 `12/36`、`12 /36`、`★ 12/36`，
+         * 所以两边都允许空白。
+         */
+        private val STAR_PROGRESS_RE = Regex("""(\d{1,2})\s*/\s*(\d{1,2})""")
+
+        /**
+         * 「点击空白处继续」这类过场提示的搜索区（画面下半部分）。
+         *
+         * 提示文字固定在底部一两行，取 y 0.62~0.98 已经足够，
+         * 又不至于把上半部分的界面标题读进来。
+         */
+        private val CROP_BLANK_TAP_PROMPT = NormRect(
+            0.10f, 0.62f, 0.80f, 0.36f,
+        )
+
+        /** 过场提示可能出现的文案（按命中优先级）。 */
+        private val BLANK_TAP_TEXTS = listOf(
+            "点击空白处继续",
+            "点击空白处",
+            "点击任意处继续",
+            "点击任意位置",
+        )
     }
 
     /**
@@ -303,6 +337,7 @@ class ScreenNavigator(
      */
     private val ORDER = listOf(
         Screen.MENU, Screen.MAIL, Screen.ACHIEVEMENT,
+        Screen.MEMORY_OF_CHAOS,
         Screen.GUIDE3, Screen.GUIDE4, Screen.GUIDE5, Screen.GUIDE,
         Screen.DISPATCH, Screen.MAIN,
     )
@@ -412,6 +447,22 @@ class ScreenNavigator(
 
         /** 星际和平指南 - 旷宇纷争（同样靠 OCR 判态） */
         GUIDE5("guide5", ""),
+
+        /**
+         * 忘却之庭 - **混沌回忆**（逐层挑战页）。
+         *
+         * 锚点 `screen/forgottenhall/memory_of_chaos.png` 是该页左上角的
+         * 「忘却之庭 / 混沌回忆」标题组合（104×47，含金色图标）。
+         *
+         * 搜索区取**顶部 35% 全宽**：标题在左上角，但不同版本可能挪到
+         * 顶部居中；只框左上 1/4 万一挪位就会永远判不出"在混沌回忆页"，
+         * 而那条判据一挂，传送之后的每一步都会走错。
+         */
+        MEMORY_OF_CHAOS(
+            "memory_of_chaos",
+            "screen/forgottenhall/memory_of_chaos.png",
+            NormRect(0.00f, 0.00f, 1.00f, 0.35f),
+        ),
 
         /** 委托 */
         DISPATCH("dispatch", "screen/dispatch.png"),
@@ -629,6 +680,72 @@ class ScreenNavigator(
          */
         val GUIDE_SURVIVAL_TAB = NormRect(
             262f / 1920f, 289f / 1080f, 180f / 1920f, 60f / 1080f,
+        )
+
+        // ==================== 忘却之庭 / 混沌回忆 ====================
+        //
+        // 下面这几个 crop 全部**直接抄 M7A**（`memoryofchaos.py` 与
+        // `screens.json` 里的显式坐标）。理由和 [MAIL_ICON] 一样：
+        // 虚拟屏固定 1920×1080，与 PC 版布局逐像素一致，抄过来就能用。
+
+        /**
+         * 逐光捡金页**左侧入口列表**（忘却之庭 / 虚构叙事 / 末日幻影）。
+         *
+         * M7A：`crop=(231/1920, 420/1080, 450/1920, 536/1080)`。
+         */
+        val RELICS_ENTRY_LIST = NormRect(
+            231f / 1920f, 420f / 1080f, 450f / 1920f, 536f / 1080f,
+        )
+
+        /**
+         * 逐光捡金页**右侧详情面板**。
+         *
+         * 选中某个入口后，右侧会显示它的标题（「混沌回忆」）、进度
+         * （`12/36`）、模式说明和底部的「传送」按钮，全都在这一块。
+         *
+         * M7A：`crop=(689/1920, 285/1080, 970/1920, 474/1080)`。
+         */
+        val RELICS_DETAIL = NormRect(
+            689f / 1920f, 285f / 1080f, 970f / 1920f, 474f / 1080f,
+        )
+
+        /**
+         * 混沌回忆页的**关卡栏**（第 1~12 层横排，可左右滑动）。
+         *
+         * M7A `find_level`：`crop=(540/1920, 406/1080, 1156/1920, 516/1080)`。
+         */
+        val CHAOS_LEVEL_BAR = NormRect(
+            540f / 1920f, 406f / 1080f, 1156f / 1920f, 516f / 1080f,
+        )
+
+        /**
+         * 配队页右下角的「开始挑战」按钮。
+         *
+         * M7A `start_level`：`crop=(1546/1920, 962/1080, 343/1920, 62/1080)`。
+         * 正常情况下用 OCR 点「开始挑战」三个字更稳，这个区域是兜底。
+         */
+        val CHAOS_START_BUTTON = NormRect(
+            1546f / 1920f, 962f / 1080f, 343f / 1920f, 62f / 1080f,
+        )
+
+        /**
+         * 领奖弹窗里的**奖励条目列表**（`receive.png` = 「领取」按钮所在列）。
+         *
+         * M7A `collect_rewards`：`crop=(1081/1920, 171/1080, 500/1920, 736/1080)`。
+         */
+        val CHAOS_REWARD_LIST = NormRect(
+            1081f / 1920f, 171f / 1080f, 500f / 1920f, 736f / 1080f,
+        )
+
+        /**
+         * 混沌回忆页右上角的**红点**（有未领奖励时出现）。
+         *
+         * M7A：`crop=(1775/1920, 902/1080, 116/1920, 110/1080)`。
+         * ⚠️ 注意它在**右下角**（y 0.835），不是通常意义的右上角 ——
+         * 那个位置是页面右下角的「奖励」按钮入口。
+         */
+        val CHAOS_RED_DOT = NormRect(
+            1775f / 1920f, 902f / 1080f, 116f / 1920f, 110f / 1080f,
         )
     }
 
@@ -2542,17 +2659,46 @@ class ScreenNavigator(
      *
      * 失败先关掉回大厅，不在原地连点（原地连点是早期误触「梦境护照」的原因）。
      */
-    fun gotoGuide3(): Boolean {
+    fun gotoGuide3(): Boolean = gotoGuideTab(GuideTab.SURVIVAL)
+
+    /**
+     * 导航到「星际和平指南 - **逐光捡金**」（忘却之庭 / 虚构叙事 / 末日幻影的入口）。
+     *
+     * 和 [gotoGuide3] 只差一个 tab（第 3 个，index=2）。抽成
+     * [gotoGuideTab] 之后两边共用同一套"每轮从大厅重来"的容错逻辑。
+     */
+    fun gotoGuide4(): Boolean = gotoGuideTab(GuideTab.RELICS)
+
+    /**
+     * 导航到指南的任意子标签。
+     *
+     * 路径：`main` → 点手机图标 → `menu` → 点「指南」→ 切到 [target] tab
+     *
+     * ## 判态靠 OCR，不靠图标模板
+     *
+     * 指南页打开后**默认停在「每日实训」**，而且 5 个 tab 是纯图标，
+     * `guide3.png` 在真机上只有 0.648 分 —— 用它判态永远不会成功。
+     *
+     * 所以这里改成：
+     * 1. `guideTab()` 用页内文字判断当前在哪个子标签；
+     * 2. `switchGuideTab(target)` 按索引点 tab（唯一无字可读的地方）；
+     * 3. 每步都用 OCR 复核。
+     *
+     * ## 每轮从大厅重来
+     *
+     * 失败先关掉回大厅，不在原地连点（原地连点是早期误触「梦境护照」的原因）。
+     */
+    private fun gotoGuideTab(target: GuideTab): Boolean {
         // 已经在目标页
-        if (guideTab() == GuideTab.SURVIVAL) {
-            Ln.i("$TAG: 已在生存索引")
+        if (guideTab() == target) {
+            Ln.i("$TAG: 已在${target.label}")
             return true
         }
         // 已在指南页（任一子标签），直接切 tab，不用再走一遍菜单
         val onGuide = guideTab()
         if (onGuide != null) {
-            Ln.i("$TAG: 已在指南页「${onGuide.label}」，直接切到生存索引")
-            if (switchGuideTab(GuideTab.SURVIVAL)) return true
+            Ln.i("$TAG: 已在指南页「${onGuide.label}」，直接切到${target.label}")
+            if (switchGuideTab(target)) return true
         }
 
         repeat(3) { i ->
@@ -2586,14 +2732,14 @@ class ScreenNavigator(
                 clickCrop(Hotspot.MENU_GUIDE, "指南")
             }
 
-            // 等指南页出现（任一子标签都算），再切到生存索引
+            // 等指南页出现（任一子标签都算），再切到目标 tab
             if (waitForGuidePage(20)) {
                 trace("guide_page_ok")
-                if (switchGuideTab(GuideTab.SURVIVAL)) {
-                    trace("guide3_ok")
+                if (switchGuideTab(target)) {
+                    trace("guide_${target.index}_ok")
                     return true
                 }
-                Ln.w("$TAG: 已打开指南但切不到生存索引（第 ${i + 1} 轮）")
+                Ln.w("$TAG: 已打开指南但切不到${target.label}（第 ${i + 1} 轮）")
             } else {
                 Ln.w("$TAG: 指南页未打开（第 ${i + 1} 次）")
             }
@@ -2610,8 +2756,189 @@ class ScreenNavigator(
         } else {
             "注入均成功，界面无响应（疑似被遮挡窗口吞掉输入）"
         }
-        Ln.w("$TAG: 导航到生存索引失败（3 轮）—— $verdict；连续注入失败 ${auto.consecutiveInputFailures} 次")
+        Ln.w("$TAG: 导航到${target.label}失败（3 轮）—— $verdict；连续注入失败 ${auto.consecutiveInputFailures} 次")
         return false
+    }
+
+    // ==================== 忘却之庭 / 混沌回忆 ====================
+
+    /**
+     * 当前是不是停在**混沌回忆页**（逐层挑战页）。
+     *
+     * 锚点 `screen/forgottenhall/memory_of_chaos.png` 是左上角的
+     * 「忘却之庭 / 混沌回忆」标题组合。
+     */
+    fun isMemoryOfChaosPage(): Boolean = isAt(Screen.MEMORY_OF_CHAOS)
+
+    /**
+     * 在逐光捡金页点开「忘却之庭」，等右侧详情面板出现「混沌回忆」。
+     *
+     * ## 为什么分成两步（点入口 / 传送）
+     *
+     * 中间要插一步**「本期有没有刷新」的判断**（读 `12/36`）。如果
+     * 已满星就不用传送进去了 —— 而那个判断属于任务逻辑，不该塞进导航层。
+     * 所以导航层只做"打开详情"，传送由调用方决定。
+     *
+     * ## 点击策略
+     *
+     * 先点左侧列表里的「忘却之庭」；点完右侧详情面板是**异步渲染**的，
+     * 所以之后要轮询等「混沌回忆」四个字出现，而不是固定 sleep。
+     */
+    fun openChaosDetail(): Boolean {
+        // 已经在混沌回忆页，说明详情早就打开过了
+        if (isMemoryOfChaosPage()) return true
+        // 右侧详情已经在显示「混沌回忆」—— 上一次调用点过了，不重复点
+        if (locateText("混沌回忆", Hotspot.RELICS_DETAIL) != null) {
+            Ln.i("$TAG: 忘却之庭详情已打开")
+            return true
+        }
+
+        repeat(3) { i ->
+            Ln.i("$TAG: 点「忘却之庭」入口（第 ${i + 1} 次）")
+            val clicked = clickText("忘却之庭", Hotspot.RELICS_ENTRY_LIST, maxRetries = 3) ||
+                clickText("忘却之庭", null, maxRetries = 1)
+            if (!clicked) {
+                Ln.w("$TAG: 没找到「忘却之庭」入口")
+                dumpCurrentScreenText("忘却之庭入口未找到")
+                return false
+            }
+
+            // 等右侧详情渲染（标题「混沌回忆」出现）
+            val deadline = SystemClock.uptimeMillis() + DETAIL_WAIT_MS
+            while (SystemClock.uptimeMillis() < deadline) {
+                if (isCancelled()) throw StopRequested()
+                if (locateText("混沌回忆", Hotspot.RELICS_DETAIL) != null) {
+                    Ln.i("$TAG: 已打开忘却之庭详情（混沌回忆）")
+                    return true
+                }
+                SystemClock.sleep(400)
+            }
+            Ln.w("$TAG: 点了「忘却之庭」但右侧没出现「混沌回忆」（第 ${i + 1} 次）")
+        }
+        dumpCurrentScreenText("混沌回忆详情未出现")
+        return false
+    }
+
+    /**
+     * 读混沌回忆的**星数进度**（如 `12/36`）。
+     *
+     * @return `(当前星数, 总星数)`；读不到返回 null
+     *
+     * ## 为什么要限定区域
+     *
+     * 逐光捡金页上还有虚构叙事 / 末日幻影，它们的进度也是 `x/12`、`x/36`
+     * 这种格式。全屏读会把别的模式的数字读进来，于是"本期已满星"
+     * 会被误判成"没满"（或反过来）。所以只读右侧详情面板。
+     *
+     * 详情面板读不到才退回全屏（面板被弹窗盖住等异常情况）。
+     */
+    fun readChaosStars(total: Int = 36): Pair<Int, Int>? {
+        val texts = readAllText(Hotspot.RELICS_DETAIL).ifEmpty { readAllText() }
+        for (t in texts) {
+            val s = t.normalized()
+            // OCR 常把 `12/36` 读成 `12/36`、`12 /36`、`★12/36`
+            val m = STAR_PROGRESS_RE.find(s) ?: continue
+            val cur = m.groupValues[1].toIntOrNull() ?: continue
+            val tot = m.groupValues[2].toIntOrNull() ?: continue
+            if (tot != total) continue
+            Ln.i("$TAG: 混沌回忆进度 = $cur/$tot（原文「${t.text}」）")
+            return cur to tot
+        }
+        Ln.w("$TAG: 没读到混沌回忆的星数进度")
+        return null
+    }
+
+    /**
+     * 点「传送」，等真正进到混沌回忆页。
+     *
+     * ## 为什么点完还要再看一眼
+     *
+     * 传送会播一段转场（约 3~5 秒），之后**可能**先弹一个
+     * 「点击空白处继续」的过场框（M7A 里那段 `click_message_box`）。
+     * 所以这里：点传送 → 等 → 看到过场框就点掉 → 再判页面。
+     */
+    fun teleportToChaos(timeoutMs: Long = CHAOS_TELEPORT_TIMEOUT_MS): Boolean {
+        if (isMemoryOfChaosPage()) return true
+
+        repeat(2) { attempt ->
+            Ln.i("$TAG: 点「传送」（第 ${attempt + 1} 次）")
+            val clicked = clickText("传送", Hotspot.RELICS_DETAIL, maxRetries = 3) ||
+                clickText("传送", null, maxRetries = 1)
+            if (!clicked) {
+                Ln.w("$TAG: 没找到「传送」按钮")
+                dumpCurrentScreenText("传送按钮未找到")
+                return false
+            }
+
+            sleepInterruptible(SETTLE_MS)
+            val deadline = SystemClock.uptimeMillis() + timeoutMs
+            while (SystemClock.uptimeMillis() < deadline) {
+                if (isCancelled()) throw StopRequested()
+                if (isMemoryOfChaosPage()) {
+                    Ln.i("$TAG: 已进入混沌回忆页")
+                    return true
+                }
+                // 过场框：点掉它，让流程继续
+                if (dismissBlankTapPrompt()) continue
+                SystemClock.sleep(700)
+            }
+            Ln.w("$TAG: 传送后 ${timeoutMs / 1000}s 内没进到混沌回忆页（第 ${attempt + 1} 次）")
+        }
+        dumpCurrentScreenText("传送后未进入混沌回忆")
+        return false
+    }
+
+    /**
+     * 混沌回忆关卡栏**左右滑动**。
+     *
+     * @param toRight true = 手指向右滑 ⇒ 内容右移 ⇒ 露出**更靠前**的层
+     *   （第 1、2 层）；false = 手指向左滑 ⇒ 露出更靠后的层。
+     *
+     * 这里必须用滑动而不是"点箭头"：关卡栏没有箭头按钮，只有拖拽滚动。
+     */
+    fun swipeChaosLevelBar(toRight: Boolean, durationMs: Long = 320L): Boolean {
+        val (x, y, w, h) = Hotspot.CHAOS_LEVEL_BAR.toPixels(auto.width, auto.height)
+        if (w <= 0 || h <= 0) return false
+        val cy = y + h / 2
+        val left = x + (w * 0.30f).toInt()
+        val right = x + (w * 0.70f).toInt()
+        val (from, to) = if (toRight) left to right else right to left
+        val ok = auto.swipe(from, cy, to, cy, durationMs, steps = 10)
+        SystemClock.sleep(600)
+        return ok
+    }
+
+    /**
+     * 点掉「点击空白处继续」这类**过场提示框**。
+     *
+     * @return true = 确实点掉了（调用方应立刻重新判态）
+     *
+     * 崩铁的加载/过场提示框只有底部一行字，位置不固定，所以做区域 OCR
+     * 找文字本身再点它 —— 比写死坐标稳。
+     */
+    fun dismissBlankTapPrompt(): Boolean {
+        val hit = withFrameOcrRegion(CROP_BLANK_TAP_PROMPT) { mat, region ->
+            BLANK_TAP_TEXTS.firstNotNullOfOrNull { t -> OcrEngine.findText(mat, t, region) }
+        } ?: return false
+        Ln.i("$TAG: 点过场提示「${hit.text}」@(${hit.cx},${hit.cy})")
+        auto.tap(hit.cx, hit.cy, durationMs = 100L)
+        SystemClock.sleep(SETTLE_MS)
+        return true
+    }
+
+    /** 把当前整屏 OCR 结果写进日志 —— 卡住时的唯一有效证据。 */
+    fun dumpCurrentScreenText(tag: String) {
+        runCatching {
+            val texts = readAllText()
+            if (texts.isEmpty()) {
+                Ln.w("$TAG: [$tag] 全屏 OCR 一条文字都没认出来")
+            } else {
+                Ln.w(
+                    "$TAG: [$tag] 全屏 OCR ${texts.size} 条：" +
+                        texts.joinToString(" | ") { "${it.normalized()}@(${it.cx},${it.cy})" },
+                )
+            }
+        }.onFailure { Ln.w("$TAG: [$tag] 全屏 OCR 失败：${it.message}") }
     }
 
     /** 画面变化后的高频观察窗口（毫秒）。页面淡入 + 加载一般 1~2 秒。 */

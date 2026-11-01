@@ -14,6 +14,7 @@ package com.march7th.hkrpg.starrail
  * | `Mail` | 领邮件 | ✅ |
  * | `Power` | 清体力（刷副本） | ✅ |
  * | `Daily` | 每日实训（识别+领奖） | ✅ |
+ * | `ForgottenHall` | 忘却之庭 · 混沌回忆（逐层挑战） | ✅ |
  * | `CloseDown` | 关闭游戏 | ✅ |
  *
  * **「每日实训」和「成就」已删除**：它们都依赖 OCR 识别进度数字
@@ -62,6 +63,13 @@ object StarRailTaskRegistry {
         TaskDef("Mail", "邮件", "tasks/reward/mail.py", true),
         TaskDef("Power", "清体力", "tasks/power/power.py", false, needOcr = true),
         TaskDef("Daily", "每日实训", "tasks/daily/daily.py", false, needOcr = true),
+        TaskDef(
+            "ForgottenHall",
+            "忘却之庭",
+            "tasks/challenge/memoryofchaos.py",
+            false,
+            needOcr = true,
+        ),
         TaskDef("Redeem", "兑换码", "", false, needOcr = true),
         TaskDef("CloseDown", "关闭游戏", "tasks/game/starrailcontroller.py", true),
     )

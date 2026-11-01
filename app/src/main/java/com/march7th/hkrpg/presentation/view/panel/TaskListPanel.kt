@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.Email
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -59,6 +60,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.march7th.hkrpg.R
 import com.march7th.hkrpg.data.model.DailyTaskConfig
+import com.march7th.hkrpg.data.model.ForgottenHallConfig
 import com.march7th.hkrpg.data.model.PowerTaskConfig
 import com.march7th.hkrpg.data.model.StartUpTaskConfig
 import com.march7th.hkrpg.data.model.StarRailTaskConfig
@@ -474,6 +476,7 @@ private fun TaskChainNode.taskTypeIcon(): ImageVector = when (config.taskTypeOrN
     TaskTypeInfo.MAIL.taskType -> Icons.Rounded.Email
     TaskTypeInfo.POWER.taskType -> Icons.Rounded.BatteryChargingFull
     TaskTypeInfo.DAILY.taskType -> Icons.Rounded.Checklist
+    TaskTypeInfo.FORGOTTEN_HALL.taskType -> Icons.Rounded.Star
     TaskTypeInfo.CLOSE_DOWN.taskType -> Icons.Rounded.PowerSettingsNew
     else -> Icons.Rounded.Tune
 }
@@ -509,6 +512,10 @@ private fun taskSummary(node: TaskChainNode): String = when (val cfg = node.conf
             stringResource(R.string.panel_task_card_summary_daily, picked)
         }
     }
+
+    is ForgottenHallConfig -> stringResource(
+        R.string.panel_task_card_summary_forgotten_hall, cfg.fromLevel, cfg.toLevel
+    )
 
     is StarRailTaskConfig -> stringResource(R.string.panel_task_card_no_config)
 

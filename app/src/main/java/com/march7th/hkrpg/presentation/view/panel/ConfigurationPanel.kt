@@ -61,6 +61,7 @@ import com.march7th.hkrpg.data.model.RecruitConfig
 import com.march7th.hkrpg.data.model.RedeemTaskConfig
 import com.march7th.hkrpg.data.model.PowerInstance
 import com.march7th.hkrpg.data.model.DailyTaskConfig
+import com.march7th.hkrpg.data.model.ForgottenHallConfig
 import com.march7th.hkrpg.data.model.PowerTaskConfig
 import com.march7th.hkrpg.data.model.RoguelikeConfig
 import com.march7th.hkrpg.data.model.SwitchThemeConfig
@@ -120,6 +121,11 @@ internal fun TaskConfigBody(
 
             // 每日实训：逐项勾选今天要做的条目
             is DailyTaskConfig -> DailyConfigPanel(
+                config = cfg, onConfigChange = onConfigChange
+            )
+
+            // 忘却之庭 · 混沌回忆：层数区间 + 跳过满星 + 自动战斗
+            is ForgottenHallConfig -> ForgottenHallConfigPanel(
                 config = cfg, onConfigChange = onConfigChange
             )
 
@@ -689,6 +695,159 @@ private fun DailyConfigPanel(
 }
 
 /**
+ * 「忘却之庭 · 混沌回忆」配置面板。
+ *
+ * # 三层信息
+ *
+ * 1. **顶部提示**：这个版本用**游戏内已配好的队伍**，不自动选人。
+ *    用户必须先在游戏里给要打的那几层配好队伍，否则会停在配队页。
+ * 2. **层数区间**：默认第 7~12 层（前 6 层是常驻「回忆」，不刷新）。
+ * 3. **两个开关**：跳过已满星层、自动战斗。
+ */
+@Composable
+private fun ForgottenHallConfigPanel(
+    config: ForgottenHallConfig,
+    onConfigChange: (TaskParamProvider) -> Unit,
+) {
+    Column(
+        // 与其它面板一致：**不能**在这里再套可滚动容器
+        // （卡片本身在可滚动列表里测量，内层滚动会抛
+        //  "Vertically scrollable component was measured with an infinity
+        //   maximum height constraints"）
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // ---- 顶部提示：队伍从哪来 ----
+        Surface(
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.tertiaryContainer,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.padding(12.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Info,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                    tint = MaterialTheme.colorScheme.onTertiaryContainer
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = stringResource(R.string.panel_forgotten_hall_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    lineHeight = 18.sp
+                )
+            }
+        }
+
+        // ---- 层数区间 ----
+        Text(
+            text = stringResource(R.string.panel_forgotten_hall_levels_title),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Medium
+        )
+        Text(
+            text = stringResource(
+                R.string.panel_forgotten_hall_levels_value,
+                config.fromLevel,
+                config.toLevel,
+            ),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = stringResource(R.string.panel_forgotten_hall_from),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Slider(
+            value = config.fromLevel.toFloat(),
+            onValueChange = {
+                val v = it.toInt()
+                // 起点不能超过终点
+                onConfigChange(config.copy(fromLevel = v.coerceAtMost(config.toLevel)))
+            },
+            valueRange = ForgottenHallConfig.MIN_LEVEL.toFloat()..ForgottenHallConfig.MAX_LEVEL.toFloat(),
+            steps = ForgottenHallConfig.MAX_LEVEL - ForgottenHallConfig.MIN_LEVEL - 1,
+        )
+        Text(
+            text = stringResource(R.string.panel_forgotten_hall_to),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Slider(
+            value = config.toLevel.toFloat(),
+            onValueChange = {
+                val v = it.toInt()
+                onConfigChange(config.copy(toLevel = v.coerceAtLeast(config.fromLevel)))
+            },
+            valueRange = ForgottenHallConfig.MIN_LEVEL.toFloat()..ForgottenHallConfig.MAX_LEVEL.toFloat(),
+            steps = ForgottenHallConfig.MAX_LEVEL - ForgottenHallConfig.MIN_LEVEL - 1,
+        )
+
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+        // ---- 跳过已满星 ----
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onConfigChange(config.copy(skipFullStar = !config.skipFullStar)) },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(
+                checked = config.skipFullStar,
+                onCheckedChange = { onConfigChange(config.copy(skipFullStar = it)) }
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.panel_forgotten_hall_skip_full_title),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = stringResource(R.string.panel_forgotten_hall_skip_full_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // ---- 自动战斗 ----
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onConfigChange(config.copy(autoBattle = !config.autoBattle)) },
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(
+                checked = config.autoBattle,
+                onCheckedChange = { onConfigChange(config.copy(autoBattle = it)) }
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.panel_forgotten_hall_auto_battle_title),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = stringResource(R.string.panel_forgotten_hall_auto_battle_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    }
+}
+
+/**
  * 每日实训面板里的一个勾选行。
  *
  * @param score 这项值多少活跃度（显示在右侧，方便用户算总分）
@@ -735,6 +894,7 @@ internal fun taskTypeLabel(typeInfo: TaskTypeInfo): String {
         TaskTypeInfo.MAIL -> stringResource(R.string.panel_task_type_mail)
         TaskTypeInfo.POWER -> stringResource(R.string.panel_task_type_power)
         TaskTypeInfo.DAILY -> stringResource(R.string.panel_task_type_daily)
+        TaskTypeInfo.FORGOTTEN_HALL -> stringResource(R.string.panel_task_type_forgotten_hall)
         TaskTypeInfo.REDEEM -> stringResource(R.string.panel_task_type_redeem)
         TaskTypeInfo.CLOSE_DOWN -> stringResource(R.string.panel_task_type_close_down)
     }

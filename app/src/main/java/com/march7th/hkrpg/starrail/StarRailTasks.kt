@@ -341,6 +341,8 @@ class StarRailTasks(
             "Power" -> power(params)
             // ---- 每日实训 ----
             "Daily" -> daily(params)
+            // ---- 忘却之庭 · 混沌回忆 ----
+            "ForgottenHall" -> forgottenHall(params)
             // ---- 兑换码 ----
             "Redeem" -> redeem(params)
             // ---- A: 关闭游戏 ----
@@ -1607,6 +1609,84 @@ class StarRailTasks(
             Ln.e("$TAG: 每日实训异常: ${e.message}")
             TaskResult("Daily", false, "异常: ${e.message}")
         }
+    }
+
+    // ============ 忘却之庭 · 混沌回忆 ============
+
+    /**
+     * 忘却之庭 · 混沌回忆。
+     *
+     * 全流程交给 [ForgottenHallTask]：
+     *
+     * ```
+     * 大厅 → 手机 → 指南 → 逐光捡金 → 忘却之庭 → 混沌回忆 → 传送
+     *   → 逐层挑战（第 7~12 层，满星跳过）
+     *   → 领奖 → 回大厅
+     * ```
+     *
+     * ## 和其他任务一样的两个前提
+     *
+     * 1. OCR 必须就绪 —— 找层号、找「开始挑战」全靠读字；
+     * 2. 必须在大厅 —— 否则导航的第一步就无从谈起。
+     *
+     * 参数见 [com.march7th.hkrpg.data.model.ForgottenHallConfig]。
+     */
+    private fun forgottenHall(params: String): TaskResult {
+        val nav = navigator
+            ?: return TaskResult("ForgottenHall", false, "导航器未就绪")
+
+        // 起点统一：先确保在大厅（识别角色头像，失败则自救）
+        if (!ensureMainMenu(nav)) {
+            return TaskResult("ForgottenHall", false, "无法回到大厅（自救 + 冷启动均失败），任务链中止")
+        }
+
+        val parsed = parseForgottenHallParams(params)
+        Ln.i(
+            "$TAG: 忘却之庭参数 层=${parsed.fromLevel}~${parsed.toLevel} " +
+                "跳过满星=${parsed.skipFullStar} 自动战斗=${parsed.autoBattle} " +
+                "单层上限=${parsed.battleTimeoutMin}min",
+        )
+
+        val task = ForgottenHallTask(auto, nav, parsed, isCancelled)
+        return try {
+            val r = task.run()
+            TaskResult("ForgottenHall", r.ok, r.detail)
+        } catch (e: ForgottenHallTask.Stopped) {
+            TaskResult("ForgottenHall", false, "已被用户停止${e.partial}")
+        } catch (e: ScreenNavigator.StopRequested) {
+            TaskResult("ForgottenHall", false, "任务已被用户停止")
+        } catch (e: Exception) {
+            Ln.e("$TAG: 忘却之庭异常: ${e.message}")
+            TaskResult("ForgottenHall", false, "异常: ${e.message}")
+        }
+    }
+
+    /**
+     * 解析忘却之庭的参数 JSON。
+     *
+     * 形状（由 `ForgottenHallConfig.toTaskParams` 生成）：
+     * ```json
+     * {"fromLevel":7,"toLevel":12,"skipFullStar":true,"autoBattle":true,"battleTimeoutMin":30}
+     * ```
+     *
+     * 字段少且固定，依旧手工解析 —— 和 [parsePowerParams] 同样的理由。
+     */
+    private fun parseForgottenHallParams(json: String): ForgottenHallTask.Params {
+        fun int(key: String, def: Int): Int =
+            Regex("\"$key\"\\s*:\\s*(\\d+)")
+                .find(json)?.groupValues?.get(1)?.toIntOrNull() ?: def
+
+        fun bool(key: String, def: Boolean): Boolean =
+            Regex("\"$key\"\\s*:\\s*(true|false)")
+                .find(json)?.groupValues?.get(1)?.toBoolean() ?: def
+
+        return ForgottenHallTask.Params(
+            fromLevel = int("fromLevel", 7),
+            toLevel = int("toLevel", 12),
+            skipFullStar = bool("skipFullStar", true),
+            autoBattle = bool("autoBattle", true),
+            battleTimeoutMin = int("battleTimeoutMin", 30),
+        )
     }
 
     /**

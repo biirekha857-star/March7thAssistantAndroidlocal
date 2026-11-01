@@ -109,6 +109,7 @@ Capturing the virtual display and injecting touch events both require **shell / 
 | **Mail** | ✅ Stable | Claims all mail attachments in one go |
 | **Stamina farming** | ✅ Usable | All 6 instance types, see below |
 | **Daily training** | ✅ Usable (manual selection) | Commissions, photos, synthesizer, technique, stamina spending, rewards |
+| **Forgotten Hall** | 🧪 Awaiting device verification | Memory of Chaos, floor by floor: read stars, skip 3-star floors, fight, auto-battle, claim rewards. **Uses the teams already saved in-game** — no character picking |
 | **Redeem codes** | ✅ Usable | Site list grouped by event, expired codes skipped, custom codes supported — see [maintenance guide](docs/CODES.md) |
 | **Close game** | ✅ Stable | Kills the game process |
 

@@ -83,6 +83,11 @@ enum class TaskTypeInfo(
         nameRes = R.string.task_type_daily,
         defaultConfig = { DailyTaskConfig() },
     ),
+    FORGOTTEN_HALL(
+        taskType = "ForgottenHall",
+        nameRes = R.string.task_type_forgotten_hall,
+        defaultConfig = { ForgottenHallConfig() },
+    ),
     REDEEM(
         taskType = "Redeem",
         nameRes = R.string.task_type_redeem,
@@ -160,6 +165,7 @@ data class StarRailTaskConfig(
 fun TaskParamProvider.taskTypeOrNull(): String? {
     if (this is StarRailTaskConfig) return type
     if (this is PowerTaskConfig) return taskType
+    if (this is ForgottenHallConfig) return taskType
     return TaskTypeInfo.entries
         .firstOrNull { it.defaultConfig()::class == this::class }
         ?.taskType
