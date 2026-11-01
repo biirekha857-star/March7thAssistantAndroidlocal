@@ -265,11 +265,32 @@ maa.r8=light
 
 > ⚠️ 本项目不会因为赞赏而提供任何额外功能、优先支持或特殊待遇。
 
-## Contributors
+## 贡献者
+
+### 代码来源的作者
+
+下面这些人的代码是这个项目的底子。**他们不会出现在 GitHub 的贡献者图里** —— 那张图只
+统计在本仓库留下过 commit 的账号，而他们的贡献发生在上游仓库。但功劳是他们的：
+
+| 作者 | 项目 | 贡献 |
+|---|---|---|
+| [@moesnow](https://github.com/moesnow) | [March7thAssistant](https://github.com/moesnow/March7thAssistant) | 崩铁任务逻辑：清体力、每日实训、忘却之庭 |
+| [@Aliothmoon](https://github.com/Aliothmoon) | [MAA-Meow](https://github.com/Aliothmoon/MAA-Meow) | 技术底座：虚拟屏采集、Shizuku 特权服务、Compose UI、任务链框架 |
+| [@MistEO](https://github.com/MistEO) 与 MAA 开发组 | [MaaAssistantArknights](https://github.com/MaaAssistantArknights/MaaAssistantArknights) | MAA 内核本体 |
+| [RapidAI](https://github.com/RapidAI/RapidOCR) / [OpenCV](https://opencv.org/) 团队 | RapidOCR / OpenCV | OCR 与图像处理 |
+
+用途、许可证与二次开发说明见上文 [相关项目与作者](#相关项目与作者)。完整名单（含任务包作者）
+见 [CONTRIBUTORS.md](CONTRIBUTORS.md)。
+
+### 本仓库贡献者
 
 <a href="https://github.com/biirekha857-star/March7thAssistantAndroidlocal/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=biirekha857-star/March7thAssistantAndroidlocal" />
 </a>
+
+这张图由 GitHub 按 commit 自动生成，**没法手动加人**。想出现在这里唯一的方式是在本仓库
+留下提交 —— 改文档、修 bug、加一个任务，都算。只提供了建议、测试反馈或任务包、但没有
+commit 的，记在 [CONTRIBUTORS.md](CONTRIBUTORS.md) 里。
 
 ## Stargazers over time
 
