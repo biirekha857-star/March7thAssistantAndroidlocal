@@ -123,41 +123,90 @@ internal class PowerTask(
          */
         private const val MAX_ROUNDS = 8
 
-        /** 「快捷补充开拓力」开启状态的模板（橙色胶囊）。 */
-        private const val TEMPLATE_SWITCH_ON = "share/power/trailblaze_power/refill_switch_on.png"
-
-        /** 开关模板匹配阈值。 */
-        private const val SWITCH_THRESHOLD = 0.85
-
-        /** 「快捷补充开拓力」字样（OCR 定位用）。 */
-        private const val TEXT_REFILL = "快捷补充开拓力"
-
-        /** 开关中心相对字样的横向偏移（1920 基准，实测约 +100px）。 */
-        private const val SWITCH_OFFSET_X = 100f
-
         // ==================== 体力与补充 ====================
 
-        /** 「快捷补充开拓力」**关闭**状态的模板（深色胶囊 + 圆点在左）。 */
+        /**
+         * 「快捷补充开拓力」**关闭**状态的模板。
+         *
+         * 深蓝胶囊 + 白色圆点在左，59×30（1920 宽基准）。
+         * 从玩家真机截图里直接裁的，跟实机 1:1 —— 不是 PC 端资源包那种
+         * 大一圈的图。
+         *
+         * > 老那份是 PC 端导出的 83×43，比实机大 1.4 倍。CCOEFF 虽然有多
+         * > 尺度搜索，但把 83 缩到 59 之后边缘细节糊掉，分数过不了阈值，
+         * > 于是"永远看不到开关"。换模板比调阈值管用。
+         */
         private const val TEMPLATE_SWITCH_OFF = "power/switch_off.png"
 
-        /** 关闭模板的匹配阈值。 */
-        private const val SWITCH_OFF_THRESHOLD = 0.85
+        /**
+         * 关闭态模板的匹配阈值。
+         *
+         * 模板与实机同源，正常帧上分数在 0.9 以上；放到 0.80 是为了容忍
+         * 不同机型的分辨率缩放和截图压缩噪点。
+         */
+        private const val SWITCH_OFF_THRESHOLD = 0.80
 
-        /** 点一次开关后等多久再复查（游戏切换动画）。 */
+        /** 点一下开关后等多久再复查（游戏切换动画）。 */
         private const val SWITCH_TOGGLE_SETTLE_MS = 500L
 
-        /** 尝试开启开关的最大次数。 */
-        private const val MAX_SWITCH_TOGGLE_TRIES = 3
+
+        /**
+         * 「体力不足」提示框的搜索区（屏幕中间偏下）。
+         *
+         * 只看中间：右侧面板上有「快捷补充开拓力」这行字，顶部资源栏有
+         * 体力数字，认宽了天天误判。
+         */
+        private val CROP_POPUP_CENTER = ScreenNavigator.NormRect(
+            0.15f, 0.25f, 0.70f, 0.55f,
+        )
+
+        /**
+         * 判「体力不足」的关键词。
+         *
+         * ## 为什么只认这几个
+         *
+         * 「补充」「开拓力」这种单独的词在副本页本身就存在
+         *（「快捷补充开拓力」），拿它们当判据等于永远命中。
+         * 必须带上**不足 / 不够**这层语义才认。
+         */
+        private val NO_POWER_KEYWORDS = listOf(
+            "开拓力不足", "体力不足", "开拓力不够", "体力不够",
+        )
+
+        /** 关掉「体力不足」提示要点的按钮（按优先级）。 */
+        private val NO_POWER_CANCEL_TEXTS = listOf("取消", "否", "关闭")
 
 
         /**
          * 开关的搜索区（副本入口页右侧面板，「快捷补充开拓力」那一行）。
          *
-         * 实测关闭状态的开关在 x 0.930~0.973、y 0.706~0.746。
-         * 四周留余量应对不同副本/难度下的轻微偏移。
+         * ## 实测（1920 宽实机截图，拟造花萼·毁灭之蕾页）
+         *
+         * ```
+         *  快捷补充开拓力   ●───     ← 文字右边界 x≈1620，开关 x[1628,1690] y[614,646]
+         *  ────────────────────────
+         *  －  挑战次数 1  ●──── 24  ＋    ← y≈684 起
+         * ```
+         *
+         * 实测（真机截图，1920 宽）：开关本体 x[1631,1689] y[615,644]，
+         * 归一化到 1080 高之后是 x 0.848~0.880、y 0.705~0.741。
+         *
+         * ## ⚠️ 之前错在哪
+         *
+         * 旧值是 `(0.88, 0.66, 0.12, 0.10)`，左边界 0.88 × 1920 = **1690**，
+         * 正好压在开关的**右边缘**上 —— 整个开关只落进去 1 列像素。
+         * 于是不管怎么读都是"什么都没有"，状态永远判不出来。
+         *
+         * ## 现在为什么取这么宽
+         *
+         * - x 从 0.80（1536）到 0.95（1824）：给不同副本、不同语言下文字
+         *   长度变化留余量，开关本体完整落在里面；
+         * - y 取 0.62~0.76：上下兼容"截图带黑边 / 不带黑边"两种坐标系。
+         *   再往下就跨到「挑战次数」那一行了，那里有「+ / −」按钮，
+         *   白底黑符号同样高对比，容易干扰匹配。
          */
         private val CROP_REFILL_SWITCH = ScreenNavigator.NormRect(
-            0.88f, 0.66f, 0.12f, 0.10f,
+            0.80f, 0.62f, 0.15f, 0.14f,
         )
 
         /**
@@ -729,31 +778,29 @@ internal class PowerTask(
             return RoundOutcome(RoundStatus.FAILED, detail = "未能进入副本「${def.defaultInstanceName}」")
         }
 
-        // ⑥ 不做体力识别 —— 设定多少就打多少
+        // ⑤ 「快捷补充开拓力」开关
         //
-        // ## 为什么砍掉体力识别
+        // 这个开关是**有状态**的（点一下反转），不是每次进本都重置：
+        // 用户上次手动打开过，这一轮进来它就已经是开的。
         //
-        // 曾经为了"体力不够自动开补充"，写过一整套：
-        // 读开拓力 → 读后备开拓力 → 加起来判断 → 开「快捷补充开拓力」开关。
+        // 判据和动作都很简单（细节见 [ensureRefillSwitch]）：
         //
-        // 实测这条路踩的坑太多：
-        // - 不同副本页顶部数字个数不同（饰品提取多一个「沉浸器 0/12」），
-        //   整排数值左移，固定裁剪区必然读串；
-        // - OCR 时好时坏，`0/12` 的 `0` 被当成开拓力 → 判定"体力不足"
-        //   → 任务无限退出重试，反而更糟。
-        //
-        // 而**游戏本身对体力有保护**：不够时点「挑战」会弹提示，
-        // 不会真的多扣资源。所以让用户自己在游戏里管体力更简单可靠。
-        //
-        // 现在的规则非常直白：
         // ```
-        // 用户设了 N 次 → 把次数设成 N → 点挑战 → 打
+        // 看到「关闭」态 → 点一下
+        // 看不到         → 不动
         // ```
-        note("按设定执行 ${thisRound} 次（不做体力识别）")
+        //
+        // 为什么不"读状态再对齐"：开关只有两态，"读出来是关"和"能看到
+        // 关闭态"本来就是同一件事。多读一次只多一次误判机会，还会因为
+        // 点完动画没跟上去而反复切换，反而把开关搞乱。
+        val refillActual = ensureRefillSwitch(config.allowRefill)
+        when (refillActual) {
+            true -> note("自动补充：开（体力不够时游戏自己从后备 / 燃料补）")
+            false -> note("自动补充：关（体力就是硬上限，不会消耗后备 / 燃料）")
+            null -> note("⚠️ 自动补充开关状态未知 —— 未做任何点击，按「关」保守处理")
+        }
 
-        val refillOn = false
-
-        // ⑦ 目标次数
+        // ⑥ 目标次数
         //
         // ## ⚠️ `maxRuns = 0` 表示「全部打完」，不是「打 0 次」
         //
@@ -763,7 +810,7 @@ internal class PowerTask(
         // 用户看到的是"根本没打就结束了"。
         //
         // 现在：0 视为"尽可能多打"，用一个足够大的数（游戏上限 cap）。
-        // 真正的体力截断交给游戏自己（不够时点挑战会弹提示）。
+        // 体力不够时的收尾交给 [startFight] 里的弹窗检测。
         val capHere = MAX_ATTEMPTS[def.wireName] ?: def.maxAttemptsPerRun
         val roundTarget = if (thisRound <= 0) capHere else thisRound
         if (thisRound <= 0) {
@@ -849,14 +896,32 @@ internal class PowerTask(
             if (!attemptsSet) note("设置连续挑战次数失败，本批只打 1 次")
 
             // ⑩ 开打
-            if (!startFight(isDiffUniverse = def.wireName.contains("饰品提取"))) {
-                exitInstance()
-                return RoundOutcome(
-                    RoundStatus.FAILED,
-                    done = totalDone,
-                    instanceName = instanceName,
-                    detail = "无法开始挑战",
-                )
+            when (startFight(isDiffUniverse = def.wireName.contains("饰品提取"))) {
+                FightStart.STARTED -> Unit
+                FightStart.NO_POWER -> {
+                    exitInstance()
+                    val why = if (refillActual == false) {
+                        "开拓力不足，且「快捷补充开拓力」是关着的 —— " +
+                            "要么在游戏里打开该开关，要么在任务配置里允许补充"
+                    } else {
+                        "开拓力不足（自动补充开着但后备 / 燃料已经用完）"
+                    }
+                    return RoundOutcome(
+                        RoundStatus.NO_POWER,
+                        done = totalDone,
+                        instanceName = instanceName,
+                        detail = why,
+                    )
+                }
+                FightStart.FAILED -> {
+                    exitInstance()
+                    return RoundOutcome(
+                        RoundStatus.FAILED,
+                        done = totalDone,
+                        instanceName = instanceName,
+                        detail = "无法开始挑战",
+                    )
+                }
             }
 
             // ⑪ 等结算
@@ -1489,28 +1554,84 @@ internal class PowerTask(
      *
      * @return 是否成功补充
      */
+    // ==================== 自动补充开关 ====================
+
     /**
-     * 确保「快捷补充开拓力」处于**开启**状态。
+     * 让「快捷补充开拓力」开关处于**开启**状态。
      *
-     * # 怎么判断开关状态
+     * ## 判据只有一个
      *
-     * 开关是**橙色胶囊**（开）/ 灰色胶囊（关）。用模板匹配判断：
+     * `power/switch_off.png` —— 就是**关闭态**那个样子（深蓝胶囊 +
+     * 白色圆点在左）。这个模板是直接从玩家真机截图里裁下来的（59×30），
+     * 跟实机 1:1，所以单尺度就能过阈值。
      *
-     * - 命中 `refill_switch_on.png`（橙色、圆点在右）→ 已开启
-     * - 未命中 → 认为关闭，点一次再复查
+     * > 之前失败的原因不是逻辑，是模板：老那份是 PC 端的 83×43，
+     * > 跟实机差 1.4 倍，多尺度降到 0.71 再比，分数根本上不去，
+     * > 于是"永远看不到开关"——看着像逻辑没生效，其实是从来没匹配过。
      *
-     * # 为什么用模板而不是 OCR
+     * ## 动作
      *
-     * 开关是纯图形，OCR 读不出"开还是关"。而它位置固定
-     * （在「挑战次数」上方一行），模板匹配非常稳定。
+     * ```
+     * 看到「关闭」态 → 点一下（就这一下）
+     * 没看到         → 什么都不做
+     * ```
      *
-     * # 位置会浮动
+     * 为什么不重试：开关点一下就是反转。点完如果动画还没切完、又"看到"
+     * 关闭态，再点一次反而把它关回去 —— 越重试越乱。所以点一次、
+     * 复查一次、把结果写进日志，就够了。
      *
-     * 用户反馈：体力不足时下方会展开消耗预览，把整块内容往上顶。
-     * 所以搜索区域要给足纵向余量（0.55~0.75），不能卡死一行。
+     * 为什么不判"开启"态：开的那份模板同样是 PC 尺寸，而且"没看到关闭态"
+     * 本身就等价于"不是关的"，不需要第二份模板来确认。
      *
-     * @return 最终是否处于开启状态
+     * @param want 配置是否允许自动补充。`false` 时只看不动手
+     * @return `true` = 现在是开 / `false` = 现在还是关 / `null` = 认不出
      */
+    private fun ensureRefillSwitch(want: Boolean): Boolean? {
+        val off = nav.findInRegion(TEMPLATE_SWITCH_OFF, SWITCH_OFF_THRESHOLD, CROP_REFILL_SWITCH)
+        if (off == null) {
+            // ## 没命中时补一条"最佳分"日志
+            //
+            // "没检测到"有两种完全不同的原因：
+            //
+            // | 最佳分 | 含义 | 该怎么修 |
+            // |---|---|---|
+            // | 0.85 ~ 1.0 | 确实是"开"着 | 什么都不用改 |
+            // | 0.5 ~ 0.8 | 模板对不上（尺寸/主题） | 换模板或降阈值 |
+            // | < 0.5 / 空 | 区域里根本没有开关 | 改 crop |
+            //
+            // 不打印分数的话，这三种情况在日志里长得一模一样。
+            // threshold 传 -1.0 拿到无条件最佳值（只跑 1.0 尺度，够判断）。
+            val best = nav.findInRegion(TEMPLATE_SWITCH_OFF, -1.0, CROP_REFILL_SWITCH)
+            if (best != null) {
+                note("区域最佳相似度 ${"%.2f".format(best.score)}（阈值 $SWITCH_OFF_THRESHOLD）@(${best.x},${best.y})")
+            } else {
+                note("区域里没有任何候选位置（crop 可能没框到开关）")
+            }
+            // 看不见「关闭」态 ⇒ 它不是关的。要开的话已经满足，直接放过。
+            note("没检测到「关闭」状态的开关 ⇒ 不点")
+            return true
+        }
+
+        if (!want) {
+            note("「快捷补充开拓力」当前是关的，符合配置，不点")
+            return false
+        }
+
+        val (x, y) = matchCenter(off)
+        note("检测到「关闭」状态的开关 @($x,$y)（相似度 ${"%.2f".format(off.score)}），点一下")
+        auto.tap(x, y, durationMs = 100L)
+        sleepInterruptible(SWITCH_TOGGLE_SETTLE_MS)
+
+        val stillOff = nav.findInRegion(TEMPLATE_SWITCH_OFF, SWITCH_OFF_THRESHOLD, CROP_REFILL_SWITCH)
+        return if (stillOff == null) {
+            note("「快捷补充开拓力」已开启")
+            true
+        } else {
+            // 只点这一次 —— 再点就切回去了。
+            note("点了一下，画面里仍是「关闭」态；不再重复点，按「未开启」处理")
+            false
+        }
+    }
 
     private fun refillPower(): Boolean {
         note("开始补充开拓力")
@@ -1741,6 +1862,18 @@ internal class PowerTask(
 
     // ==================== 开打 ====================
 
+    /** 「开打」这一步的结果。 */
+    private enum class FightStart {
+        /** 真的进战斗了 */
+        STARTED,
+
+        /** 体力不够，游戏弹了补充 / 不足提示（已关掉） */
+        NO_POWER,
+
+        /** 其它原因没开起来 */
+        FAILED,
+    }
+
     /**
      * 点「开始挑战」/「挑战」。
      *
@@ -1752,8 +1885,18 @@ internal class PowerTask(
      * ## 只认这两个词
      *
      * 「模拟战斗」「快速战斗」这类相似按钮语义完全不同，绝不点。
+     *
+     * ## 为什么返回三态而不是 Boolean
+     *
+     * 「体力不足」和「按钮没点上」是**完全不同的两件事**：
+     *
+     * - 体力不足 → 本轮正常收工（[RoundStatus.NO_POWER]），不该重试；
+     * - 按钮没点上 → 可能是点击被转场吞了，重试也许能救。
+     *
+     * 混在一起的话，体力不足会被当成失败连打 3 轮，每轮都弹同一个框，
+     * 白等好几分钟才报错。
      */
-    private fun startFight(isDiffUniverse: Boolean = false): Boolean {
+    private fun startFight(isDiffUniverse: Boolean = false): FightStart {
         // ## 两步点击（缺一不可）
         //
         // 崩铁的进本流程是**两个页面**：
@@ -1776,6 +1919,22 @@ internal class PowerTask(
 
         // 等转场到队伍配置页
         sleepInterruptible(CHALLENGE_TRANSITION_MS)
+
+        // ①.5 体力不足 ⇒ 游戏弹「补充开拓力 / 开拓力不足」，不处理会一直卡着
+        //
+        // 这一段是「快捷补充开拓力」关着时的**兜底**：
+        // 关着就意味着体力是硬上限，次数却按用户设定设成了 N。
+        // 体力不够时点「挑战」不会进本，而是弹一个补充框；
+        // 没人点它的话，[waitUntilSettled] 只会看到画面停滞 60 秒，
+        // 最后报一个和真实原因毫无关系的"战斗没开始"。
+        //
+        // 所以这里主动认一下：认出来就点取消，把结论如实交给上层。
+        val noPower = detectNoPowerPrompt()
+        if (noPower) {
+            note("弹出「开拓力不足 / 补充开拓力」提示 ⇒ 体力不够，本次收工")
+            dismissNoPowerPrompt()
+            return FightStart.NO_POWER
+        }
 
         // ② 点「开始挑战」—— **最多点两次**
         //
@@ -1847,7 +2006,61 @@ internal class PowerTask(
             auto.tap(ATK_BTN_X, ATK_BTN_Y, durationMs = 100L)
             sleepInterruptible(1_500)
         }
-        return true
+        return FightStart.STARTED
+    }
+
+    /**
+     * 判断当前是不是弹了「体力不足」这类提示框。
+     *
+     * ## 认哪些字
+     *
+     * 崩铁在「快捷补充开拓力」关着、体力又不够时，点「挑战」会拦下来
+     * 并弹一个补充提示。标题大概是「开拓力不足」，正文里会提到
+     * 「补充」「后备开拓力」之类。
+     *
+     * 只认**明确的不足语义**，不认单独的「补充」二字 ——
+     * 副本页右侧本身就有一行「快捷补充开拓力」，认宽了会天天误判。
+     *
+     * ## 限定区域
+     *
+     * 只看屏幕中间偏下的弹窗区。右侧面板、顶部资源栏都在外面，
+     * 不会被卷进来。
+     */
+    private fun detectNoPowerPrompt(): Boolean {
+        val texts = nav.readAllText(CROP_POPUP_CENTER)
+        if (texts.isEmpty()) return false
+        val joined = texts.joinToString("|") { it.normalized() }
+        val hit = NO_POWER_KEYWORDS.firstOrNull { joined.contains(it) }
+        if (hit != null) {
+            Ln.i("$TAG: 弹窗文字命中「$hit」：$joined")
+            return true
+        }
+        return false
+    }
+
+    /**
+     * 关掉「体力不足」提示框。
+     *
+     * 优先点弹窗自己的「取消」—— 不能让它去补充，也不能按 BACK
+     * （BACK 在这儿会退到上一页，把当前的副本页弄丢）。
+     */
+    private fun dismissNoPowerPrompt() {
+        for (t in NO_POWER_CANCEL_TEXTS) {
+            if (nav.clickTextAndVerify(t, CROP_POPUP_CENTER, pageChanged = false, maxRetries = 2)) {
+                note("已点「$t」关掉提示")
+                sleepInterruptible(SETTLE_MS)
+                return
+            }
+        }
+        // 兜底：弹窗通常自带取消按钮，交给通用弹窗处理
+        when (nav.dismissPopup("体力不足提示", force = true)) {
+            ScreenNavigator.PopupProbe.CANCELED ->
+                note("已用通用弹窗处理关掉提示")
+            ScreenNavigator.PopupProbe.EXIT_CONFIRM ->
+                note("发现了退出确认框，已点取消（保住游戏进程）")
+            ScreenNavigator.PopupProbe.NONE ->
+                Ln.w("$TAG: 体力不足提示没关掉，交给后续流程兜底")
+        }
     }
 
     /**

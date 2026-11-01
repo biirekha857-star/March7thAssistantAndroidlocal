@@ -657,6 +657,153 @@ object ImageUtils {
         }
     }
 
+    /**
+     * 统计区域内**接近某颜色**的像素占比（0.0~1.0）。
+     *
+     * ## 用途：判断「开关」这类纯图形控件的朝向/状态
+     *
+     * 开关只有两种样子（橙色胶囊 / 深色胶囊），但两者的**结构**其实是
+     * 镜像的（白圆在左 / 在右）。CCOEFF 是去均值的归一化相关，对整体
+     * 亮度偏移不敏感 —— 万一模板分数咬得很近，就靠"这块到底是不是橙的"
+     * 来兜底。
+     *
+     * @param src 整帧 BGR
+     * @param region 统计区域（null = 全图）
+     * @param bgr 目标颜色（**BGR** 顺序）
+     * @param toleranceSq 容差：三通道差的平方和上限（越大越宽松）
+     */
+    fun colorRatio(
+        src: Mat,
+        region: org.opencv.core.Rect?,
+        bgr: DoubleArray,
+        toleranceSq: Double = 3000.0,
+    ): Double {
+        if (src.empty()) return 0.0
+        val rx = (region?.x ?: 0).coerceIn(0, (src.cols() - 1).coerceAtLeast(0))
+        val ry = (region?.y ?: 0).coerceIn(0, (src.rows() - 1).coerceAtLeast(0))
+        val rw = (region?.width ?: src.cols()).coerceAtMost(src.cols() - rx)
+        val rh = (region?.height ?: src.rows()).coerceAtMost(src.rows() - ry)
+        if (rw <= 0 || rh <= 0) return 0.0
+
+        val roi = Mat(src, org.opencv.core.Rect(rx, ry, rw, rh)).clone()
+        return try {
+            val px = ByteArray(rw * rh * 3)
+            roi.get(0, 0, px)
+            var hit = 0
+            var i = 0
+            for (p in 0 until rw * rh) {
+                val db = (px[i].toInt() and 0xFF) - bgr[0]
+                val dg = (px[i + 1].toInt() and 0xFF) - bgr[1]
+                val dr = (px[i + 2].toInt() and 0xFF) - bgr[2]
+                if (db * db + dg * dg + dr * dr <= toleranceSq) hit++
+                i += 3
+            }
+            hit.toDouble() / (rw * rh)
+        } catch (t: Throwable) {
+            Ln.w("ImageUtils: colorRatio 失败：${t.message}")
+            0.0
+        } finally {
+            roi.release()
+        }
+    }
+
+    /**
+     * 找区域内**最大的**某颜色连通块，返回它的外接矩形。
+     *
+     * 和 [countColorBlobs] 同一套颜色二值化 + 洪水填充，只是不数数量，
+     * 而是把"这一块在哪儿"返回出来。
+     *
+     * ## 用途
+     *
+     * 点开关的时候需要知道开关**当前在哪儿** —— 体力不足时面板会整体
+     * 上移，写死坐标必然点歪。而开关上那个白色圆点足够大、足够亮，
+     * 是区域里最好认的东西，拿它的位置去点，点哪儿都对。
+     *
+     * @return 最大块的外接矩形；一块都没有返回 null
+     */
+    fun findColorBlob(
+        src: Mat,
+        region: org.opencv.core.Rect?,
+        bgr: DoubleArray,
+        toleranceSq: Double = 3000.0,
+        minArea: Int = 80,
+        maxArea: Int = 40000,
+    ): org.opencv.core.Rect? {
+        if (src.empty()) return null
+        val rx = (region?.x ?: 0).coerceIn(0, (src.cols() - 1).coerceAtLeast(0))
+        val ry = (region?.y ?: 0).coerceIn(0, (src.rows() - 1).coerceAtLeast(0))
+        val rw = (region?.width ?: src.cols()).coerceAtMost(src.cols() - rx)
+        val rh = (region?.height ?: src.rows()).coerceAtMost(src.rows() - ry)
+        if (rw <= 0 || rh <= 0) return null
+
+        val roi = Mat(src, org.opencv.core.Rect(rx, ry, rw, rh)).clone()
+        return try {
+            val px = ByteArray(rw * rh * 3)
+            roi.get(0, 0, px)
+
+            val mask = BooleanArray(rw * rh)
+            var i = 0
+            for (p in 0 until rw * rh) {
+                val db = (px[i].toInt() and 0xFF) - bgr[0]
+                val dg = (px[i + 1].toInt() and 0xFF) - bgr[1]
+                val dr = (px[i + 2].toInt() and 0xFF) - bgr[2]
+                mask[p] = db * db + dg * dg + dr * dr <= toleranceSq
+                i += 3
+            }
+
+            val visited = BooleanArray(rw * rh)
+            val stack = IntArray(rw * rh)
+            var best: org.opencv.core.Rect? = null
+            var bestArea = 0
+            for (start in 0 until rw * rh) {
+                if (!mask[start] || visited[start]) continue
+                var sp = 0
+                stack[sp++] = start
+                visited[start] = true
+                var area = 0
+                var x0 = Int.MAX_VALUE; var y0 = Int.MAX_VALUE
+                var x1 = Int.MIN_VALUE; var y1 = Int.MIN_VALUE
+                while (sp > 0) {
+                    val cur = stack[--sp]
+                    area++
+                    val cx = cur % rw
+                    val cy = cur / rw
+                    if (cx < x0) x0 = cx
+                    if (cx > x1) x1 = cx
+                    if (cy < y0) y0 = cy
+                    if (cy > y1) y1 = cy
+                    if (cx > 0) {
+                        val n = cur - 1
+                        if (mask[n] && !visited[n]) { visited[n] = true; stack[sp++] = n }
+                    }
+                    if (cx < rw - 1) {
+                        val n = cur + 1
+                        if (mask[n] && !visited[n]) { visited[n] = true; stack[sp++] = n }
+                    }
+                    if (cy > 0) {
+                        val n = cur - rw
+                        if (mask[n] && !visited[n]) { visited[n] = true; stack[sp++] = n }
+                    }
+                    if (cy < rh - 1) {
+                        val n = cur + rw
+                        if (mask[n] && !visited[n]) { visited[n] = true; stack[sp++] = n }
+                    }
+                }
+                if (area in minArea..maxArea && area > bestArea) {
+                    bestArea = area
+                    // 换算回**整帧**坐标（加回裁剪偏移）
+                    best = org.opencv.core.Rect(rx + x0, ry + y0, x1 - x0 + 1, y1 - y0 + 1)
+                }
+            }
+            best
+        } catch (t: Throwable) {
+            Ln.w("ImageUtils: findColorBlob 失败：${t.message}")
+            null
+        } finally {
+            roi.release()
+        }
+    }
+
     /** 清空模板缓存（换资源包时调用）。 */
     fun clearCache() {
         templateCache.values.forEach { (t, m) ->
