@@ -211,18 +211,24 @@ maa.r8=light
 5. **每个动作后确认界面状态**，不要连续盲操作
 6. **兜底点击只用安全空白位**，绝不碰返回键、头像、右侧功能列、底部主按钮
 
-## 相关项目
+## 相关项目与作者
 
-March7thAssistant Android Local 离不开以下开源项目的帮助，感谢所有维护者与贡献者：
+本项目不是从零写的 —— 导航层、任务逻辑、识别引擎都大量参考（部分直接移植）自下面这些项目，
+**代码是他们写的，功劳是他们的**。请优先给上游点 Star。
 
-- [March7thAssistant](https://github.com/moesnow/March7thAssistant) ：PC 版崩铁自动化工具，本项目的**任务逻辑参考来源**
-- [MAA-Meow](https://github.com/Aliothmoon/MAA-Meow) ：在 Android 上运行 MAA 的框架，本项目的**技术底座**（虚拟屏、特权服务、UI 框架）
-- [RapidOCR](https://github.com/RapidAI/RapidOCR) ：OCR 模型来源
-- [OpenCV](https://opencv.org/) ：模板匹配与图像处理
+| 项目 | 作者 | 在本项目里的用途 | 许可证 |
+|---|---|---|---|
+| [March7thAssistant](https://github.com/moesnow/March7thAssistant) | [@moesnow](https://github.com/moesnow) | 崩铁任务逻辑的来源：清体力、每日实训、忘却之庭等 | GPL-3.0 |
+| [MAA-Meow](https://github.com/Aliothmoon/MAA-Meow) | [@Aliothmoon](https://github.com/Aliothmoon) | 技术底座：虚拟屏采集、Shizuku 特权服务、Compose UI、任务链框架 | AGPL-3.0 |
+| [MaaAssistantArknights](https://github.com/MaaAssistantArknights/MaaAssistantArknights) | [@MistEO](https://github.com/MistEO) 与 MAA 开发组 | MAA 内核本体，MAA-Meow 的运行基础 | AGPL-3.0 |
+| [RapidOCR](https://github.com/RapidAI/RapidOCR) | RapidAI | OCR 模型 | Apache-2.0 |
+| [OpenCV](https://opencv.org/) | OpenCV 团队 | 模板匹配与图像处理 | Apache-2.0 |
 
 上游 MAA-Meow 是「在 Android 上跑**明日方舟**的 MAA」，本项目把内核**换成崩铁**：保留工程结构、虚拟屏采集、Shizuku / KernelSU 特权服务、Compose UI 与任务链框架；重写识别引擎、导航层与全部崩铁任务实现。
 
-**没有这两个项目就没有本项目，请优先给上游点 Star。**
+**没有这几个项目就没有本项目，请优先给上游点 Star。**
+
+
 
 ## 📄 免责声明
 

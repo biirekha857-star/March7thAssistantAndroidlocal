@@ -209,18 +209,25 @@ Adding a task or changing recognition logic? Read the [task development guide](d
 5. **Verify the screen after every action** — never chain blind taps
 6. **Only tap safe empty spots as a fallback** — never the back button, avatar, right-side dock or bottom primary button
 
-## Related Projects
+## Related Projects & Authors
 
-This project would not exist without the following open-source work:
+This project was not written from scratch — the navigation layer, task logic and recognition
+engine all draw heavily on (and in places are ported from) the projects below.
+**The code is theirs, the credit is theirs.** Please star the upstream repos first.
 
-- [March7thAssistant](https://github.com/moesnow/March7thAssistant) — PC automation for Honkai: Star Rail, the **source of task logic**
-- [MAA-Meow](https://github.com/Aliothmoon/MAA-Meow) — the Android MAA framework, the **technical foundation** (virtual display, privileged service, UI framework)
-- [RapidOCR](https://github.com/RapidAI/RapidOCR) — OCR models
-- [OpenCV](https://opencv.org/) — template matching and image processing
+| Project | Author | What we use it for | License |
+|---|---|---|---|
+| [March7thAssistant](https://github.com/moesnow/March7thAssistant) | [@moesnow](https://github.com/moesnow) | Source of the HSR task logic: stamina farming, daily training, Forgotten Hall | GPL-3.0 |
+| [MAA-Meow](https://github.com/Aliothmoon/MAA-Meow) | [@Aliothmoon](https://github.com/Aliothmoon) | Technical foundation: virtual display capture, Shizuku privileged service, Compose UI, task-chain framework | AGPL-3.0 |
+| [MaaAssistantArknights](https://github.com/MaaAssistantArknights/MaaAssistantArknights) | [@MistEO](https://github.com/MistEO) and the MAA team | The MAA core itself, which MAA-Meow runs on | AGPL-3.0 |
+| [RapidOCR](https://github.com/RapidAI/RapidOCR) | RapidAI | OCR models | Apache-2.0 |
+| [OpenCV](https://opencv.org/) | OpenCV team | Template matching and image processing | Apache-2.0 |
 
 MAA-Meow runs **Arknights** automation on Android; this project swaps the core for **Honkai: Star Rail**. The project structure, virtual display capture, Shizuku / KernelSU privileged service, Compose UI and task-chain framework are kept; the recognition engine, navigation layer and all game tasks were rewritten.
 
-**Please star the upstream projects first.**
+**Without these projects this one would not exist. Please star the upstream projects first.**
+
+
 
 ## 📄 Disclaimer
 
