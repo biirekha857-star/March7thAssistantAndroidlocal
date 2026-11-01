@@ -2614,17 +2614,49 @@ class ScreenNavigator(
         return false
     }
 
-    /** 等指南页出现（任意子标签）。 */
+    /** 画面变化后的高频观察窗口（毫秒）。页面淡入 + 加载一般 1~2 秒。 */
+    private val GUIDE_WATCH_MS = 2_000L
+
+    /** 观察窗口外的强制复查间隔（毫秒）。 */
+    private val GUIDE_IDLE_CHECK_MS = 1_000L
+
+    /**
+     * 等指南页出现（任意子标签）。
+     *
+     * ## 门控缺陷（0.6.0beta 实测踩中，11-01 08:07 那次）
+     *
+     * 旧实现是「画面变了才跑一次 OCR，跑完立刻把基准帧换成当前帧」。
+     * 日志原文：
+     *
+     * ```
+     * 08:07:39.365 点击区域 指南 (1193,990)
+     * 08:07:39.788 界面差异 26.0（阈值 8.0）⇒ 已变化   ← 唯一的 OCR 机会
+     * 08:07:40.944 界面差异 0.2（阈值 8.0）⇒ 未变化   ← 此后一直静止
+     * …… 整整 20 秒没有一次 OCR ……
+     * 08:07:59.664 指南页未打开（第 3 次）
+     * ```
+     *
+     * 那一次 OCR 正好踩在淡入动画的中间帧上，`guideTab()` 读到的是
+     * 半透明过渡画面 → 返回 null；随后页面加载完成、画面静止，
+     * `frameChanged` 恒为 false，OCR 再也不跑，硬等到超时。
+     *
+     * 而同一时刻导出的 `026_after_guide_click.jpg` 里，指南页已经
+     * 完全打开、停在「每日实训」标签、活跃度 200 清晰可见 ——
+     * 页面早就到位了，是判定逻辑自己闭上了眼睛。
+     *
+     * ## 修法（与 `PowerTask.waitForLeaveGuide()` 对齐）
+     *
+     * 1. 画面一变化就进入 2 秒高频观察期，观察期内**每轮都判**
+     * 2. 观察期外**每秒强制复查一次**，不再依赖画面变化
+     *
+     * 代价是页面没打开时每秒多一次全屏 OCR（约 1.5s），但比
+     * 白等 20 秒后误报失败要划算得多。
+     */
     private fun waitForGuidePage(timeoutSec: Int, pollMs: Long = 300L): Boolean {
-        // ## 优化：先比像素，变了才跑 OCR
-        //
-        // 原来是每 1.2 秒直接跑一次 `guideTab()`（全屏 OCR，约 1.5s），
-        // 光等一个页面就要 2.7 秒起步。
-        //
-        // 现在每 300ms 取一帧比像素差（几十毫秒），只有画面真的变了
-        // 才值得做一次 OCR 确认 —— 页面没切过来时完全不碰 OCR。
         val deadline = SystemClock.uptimeMillis() + timeoutSec * 1000L
         var baseline: org.opencv.core.Mat? = null
+        var lastCheck = 0L
+        var watchingUntil = 0L
         try {
             while (SystemClock.uptimeMillis() < deadline) {
                 val frame = grabFrameMat()
@@ -2639,16 +2671,19 @@ class ScreenNavigator(
                     SystemClock.sleep(pollMs)
                     continue
                 }
-                if (!frameChanged(base, frame)) {
-                    frame.release()
-                    SystemClock.sleep(pollMs)
-                    continue
+                val now = SystemClock.uptimeMillis()
+                if (frameChanged(base, frame)) {
+                    // 画面在动 → 开一个观察窗，窗内每轮都判
+                    watchingUntil = now + GUIDE_WATCH_MS
+                    base.release()
+                    baseline = frame.clone()
                 }
                 frame.release()
-                base.release()
-                baseline = null
-                // 画面变了 → 做一次 OCR 确认是不是指南页
-                if (guideTab() != null) return true
+                val shouldCheck = now < watchingUntil || now - lastCheck >= GUIDE_IDLE_CHECK_MS
+                if (shouldCheck) {
+                    lastCheck = now
+                    if (guideTab() != null) return true
+                }
                 SystemClock.sleep(pollMs)
             }
             return false

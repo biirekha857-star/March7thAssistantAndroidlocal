@@ -740,9 +740,29 @@ internal class DailyTask(
             return false
         }
 
-        // 在底部区域找「领取奖励」
-        val hit = nav.withFrameOcrRegion(CROP_DISPATCH_CLAIM) { mat, region ->
+        fun findClaim() = nav.withFrameOcrRegion(CROP_DISPATCH_CLAIM) { mat, region ->
             OcrEngine.findText(mat, "领取奖励", region)
+        }
+        fun findIdle() = nav.withFrameOcrRegion(CROP_DISPATCH_CLAIM) { mat, region ->
+            OcrEngine.findText(mat, TEXT_DISPATCH_IDLE, region)
+        }
+
+        // ## 页面切换有动画，一次采样不可靠
+        //
+        // 日志 11-01 08:08：点「委托」是 09.648，画面到 10.420 才真正
+        // 开始变（差异 28.4），而 [openDispatchPage] 里只固定等了 1 秒，
+        // 紧接着这次 OCR 正好落在过渡帧上 → 误报「未检测到可领取的委托奖励」。
+        //
+        // 手机上截图里左上角明明挂着「奖励可领取」的红点气泡。
+        // 给它 3 次机会，每次间隔 700ms，直到页面画出来。
+        var hit = findClaim()
+        if (hit == null) {
+            Thread.sleep(700)
+            hit = findClaim()
+        }
+        if (hit == null) {
+            Thread.sleep(700)
+            hit = findClaim()
         }
 
         if (hit != null) {
@@ -754,8 +774,10 @@ internal class DailyTask(
         }
 
         // 没找到「领取奖励」→ 看是不是"暂时没有可领"
-        val idle = nav.withFrameOcrRegion(CROP_DISPATCH_CLAIM) { mat, region ->
-            OcrEngine.findText(mat, TEXT_DISPATCH_IDLE, region)
+        var idle = findIdle()
+        if (idle == null) {
+            Thread.sleep(500)
+            idle = findIdle()
         }
         if (idle != null) {
             note("委托派遣中，暂无可领取奖励")
@@ -1019,17 +1041,48 @@ internal class DailyTask(
      * 读顶部当前活跃度（左侧大圆圈里的数字）。
      *
      * OCR 可能把它和里程牌的数字混在一起，所以只取最左边那个。
+     *
+     * ## 区域是实测重定的（0.6.0beta 修）
+     *
+     * 旧区域 `NormRect(0.10, 0.18, 0.10, 0.10)` 在 1920×1080 上等于
+     * x∈[192,384]、y∈[194,302]。但 `026_after_guide_click.jpg` 上量的
+     * 「200」实际占 **x∈[227,282]、y∈[315,347]** ——
+     * **下边界正好把数字切在外面**，区域里只剩下活跃度火焰图标的底半圈。
+     *
+     * 所以 08:08:34 那句「活跃度 = 未读到/500」不是 OCR 认不出，
+     * 是根本没让 OCR 看见数字。裁出那块区域单独看，里面一片火苗。
      */
     private fun readActivityScore(): Int? {
-        val region = ScreenNavigator.NormRect(0.10f, 0.18f, 0.10f, 0.10f)
-        val texts = nav.withFrameOcrRegion(region) { mat, r ->
-            OcrEngine.run(mat, r)
-        } ?: return null
-        return texts
-            .filter { o -> o.normalized().all { it.isDigit() } && o.normalized().isNotEmpty() }
-            .minByOrNull { it.cx }
-            ?.normalized()
-            ?.toIntOrNull()
+        val region = ScreenNavigator.NormRect(0.11f, 0.28f, 0.09f, 0.08f)
+        // 领奖刚结束，页面可能还在收动画，给 3 次机会
+        repeat(3) { attempt ->
+            if (attempt > 0) Thread.sleep(300)
+            val texts = nav.withFrameOcrRegion(region) { mat, r ->
+                OcrEngine.run(mat, r)
+            } ?: return@repeat
+            // 取最左边的纯数字：右边紧跟的「0」是另一项统计，不能要
+            val value = texts
+                .filter { digitsOnly(it.normalized()) != null }
+                .minByOrNull { it.cx }
+                ?.normalized()
+                ?.let { digitsOnly(it) }
+            if (value != null) return value.toIntOrNull()
+        }
+        return null
+    }
+
+    /**
+     * 把 OCR 结果里的"像数字的字符串"转成纯数字。
+     *
+     * 游戏里活跃度是描边字体，`0` 很容易被认成字母 `O`、`1` 认成 `l`，
+     * 旧实现要求 `all { it.isDigit() }` 会把 `2OO` 直接丢掉。
+     */
+    private fun digitsOnly(raw: String): String? {
+        val t = raw
+            .replace('O', '0').replace('o', '0')
+            .replace('l', '1').replace('I', '1').replace('|', '1')
+        if (t.isEmpty() || t.length > 4) return null
+        return if (t.all { it.isDigit() }) t else null
     }
 
     // ==================== 找「领取」按钮 ====================
