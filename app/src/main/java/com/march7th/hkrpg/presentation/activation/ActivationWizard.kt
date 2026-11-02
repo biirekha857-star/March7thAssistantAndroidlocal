@@ -9,6 +9,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Gavel
 import androidx.compose.material.icons.rounded.RocketLaunch
+import androidx.compose.material.icons.rounded.PlayCircleOutline
 import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material.icons.rounded.WavingHand
 import androidx.compose.material3.Button
@@ -53,6 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -522,6 +525,11 @@ private fun BackendPage(
                         available = available,
                         onClick = { onBackendChange(candidate) },
                     )
+                    // 教程紧跟在 Shizuku 下面：它是这一屏唯一需要"先学会再动手"的东西，
+                    // 放到页面底部用户不会往下翻。
+                    if (candidate == RemoteBackend.SHIZUKU) {
+                        ShizukuTutorialLink()
+                    }
                 }
             }
         },
@@ -534,6 +542,42 @@ private fun BackendPage(
             SecondaryAction(text = "返回", onClick = onBack)
         },
     )
+}
+
+/** Shizuku 的安装教程（B 站视频）。 */
+private const val SHIZUKU_TUTORIAL_URL =
+    "https://www.bilibili.com/video/BV1UrKazKEkC/?share_source=copy_web&vd_source=52cd6c0808394ce4393953d29d048fe9"
+
+/**
+ * 「不知道怎么装 Shizuku？看视频教程」。
+ *
+ * 用系统浏览器打开，不在应用内套 WebView —— 视频页要登录、要全屏、
+ * 要投屏控件，套壳播放体验只会更差。
+ */
+@Composable
+private fun ShizukuTutorialLink() {
+    val uriHandler = LocalUriHandler.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(AppDesignTokens.CornerRadius.card))
+            .clickable { uriHandler.openUri(SHIZUKU_TUTORIAL_URL) }
+            .padding(horizontal = AppDesignTokens.Spacing.sm, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.PlayCircleOutline,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(18.dp),
+        )
+        Text(
+            text = "不知道怎么装 Shizuku？看这个视频教程",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
 }
 
 @Composable
