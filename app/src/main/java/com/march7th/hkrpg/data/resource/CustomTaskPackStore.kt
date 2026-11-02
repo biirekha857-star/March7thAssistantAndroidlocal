@@ -53,8 +53,16 @@ object CustomTaskPackValidator {
         "stop",
     )
 
-    private const val MAX_STEPS = 200
-    private const val MAX_REPEAT = 20
+    /**
+     * 单条 `repeat` 的 times 上限。
+     *
+     * ⚠️ **总步数不再限制**（原来 200 步）。步骤数限制挡不住恶意流程
+     * （真想毁号 9 步就够），却会把正常的长流程误杀 —— 一个跑完日常、
+     * 领奖、再跑周常的包很容易超过 200 步。
+     *
+     * 这里保留的只是单条语法的 sanity check：`times` 写成 99999 多半是笔误。
+     */
+    private const val MAX_REPEAT = 500
 
     /**
      * 嵌套层数上限。和 [com.march7th.hkrpg.starrail.engine.PackSandbox.MAX_NEST_DEPTH]
@@ -133,7 +141,6 @@ object CustomTaskPackValidator {
 
         // ---- 步骤 ----
         if (pack.steps.isEmpty()) err("steps 不能为空")
-        if (pack.steps.size > MAX_STEPS) err("steps 超过 $MAX_STEPS 步")
 
         validateSteps(pack.steps, "steps", 1, paramKeys, availableAssets) { msg -> err(msg) }
 
@@ -152,7 +159,6 @@ object CustomTaskPackValidator {
             err("$path 嵌套超过 $MAX_NEST_DEPTH 层")
             return
         }
-        if (steps.size > MAX_STEPS) err("$path 步骤数超过 $MAX_STEPS")
 
         steps.forEachIndexed { i, s ->
             val at = "$path[$i]"
@@ -530,6 +536,7 @@ class CustomTaskPackStore(
             version = pack.version,
             description = pack.description,
             stepCount = pack.steps.size,
+            params = pack.params,
             dir = dir,
         )
     }
@@ -611,6 +618,7 @@ class CustomTaskPackStore(
             version = pack.version,
             description = pack.description,
             stepCount = pack.steps.size,
+            params = pack.params,
             dir = target,
         )
         return TaskPackInstallResult.Success(installed, upgraded)

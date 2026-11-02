@@ -154,6 +154,8 @@ data class InstalledTaskPack(
     val version: String,
     val description: String,
     val stepCount: Int,
+    /** 包声明的可调参数 —— 卡片里据此渲染表单，不需要再读一次 task.json */
+    val params: List<PackParam> = emptyList(),
     /** 包目录（App 侧绝对路径） */
     val dir: java.io.File,
 ) {

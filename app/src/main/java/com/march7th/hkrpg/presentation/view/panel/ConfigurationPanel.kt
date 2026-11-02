@@ -35,6 +35,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -69,6 +70,8 @@ import com.march7th.hkrpg.data.model.ForgottenHallConfig
 import com.march7th.hkrpg.data.model.CustomTaskConfig
 import com.march7th.hkrpg.data.model.InstalledTaskPack
 import com.march7th.hkrpg.data.resource.CustomTaskPackStore
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.march7th.hkrpg.data.model.PowerTaskConfig
@@ -1210,8 +1213,14 @@ private fun CustomTaskConfigPanel(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
                         .clickable {
+                            // 换包必须清掉旧参数：不同包的 key 完全没关系，
+                            // 留着只会在日志里出现莫名其妙的覆盖值
                             onConfigChange(
-                                config.copy(packId = pack.id, packName = pack.displayName)
+                                config.copy(
+                                    packId = pack.id,
+                                    packName = pack.displayName,
+                                    values = emptyMap(),
+                                )
                             )
                         }
                         .background(
@@ -1244,6 +1253,87 @@ private fun CustomTaskConfigPanel(
                         text = "v${pack.version} · ${pack.author} · ${pack.stepCount} 步",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        // ---- 参数表单 ----
+        //
+        // 包在 task.json 的 `params` 里声明 key / label / type / default，
+        // 这里按声明渲染控件。只写用户**改过**的值，没动过的键不落盘 ——
+        // 这样包升级调了默认值，用户的没改过的参数会跟着更新。
+        val selectedPack = packs.firstOrNull { it.id == config.packId }
+        if (selectedPack != null && selectedPack.params.isNotEmpty()) {
+            Text(
+                text = stringResource(R.string.panel_custom_params_title),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Medium
+            )
+            selectedPack.params.forEach { param ->
+                val fallback = runCatching {
+                    param.default?.jsonPrimitive?.contentOrNull
+                }.getOrNull().orEmpty()
+                val current = config.values[param.key] ?: fallback
+                val label = param.label.ifBlank { param.key }
+
+                when (param.type.lowercase()) {
+                    "bool" -> Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Switch(
+                            checked = current == "true",
+                            onCheckedChange = { on ->
+                                onConfigChange(
+                                    config.copy(values = config.values + (param.key to on.toString()))
+                                )
+                            },
+                        )
+                    }
+
+                    "int" -> ITextField(
+                        value = current,
+                        onValueChange = { v ->
+                            // 只收整数，避免用户敲了字母导致执行期替换出脏数据
+                            if (v.isEmpty() || v.toIntOrNull() != null) {
+                                onConfigChange(
+                                    config.copy(values = config.values + (param.key to v))
+                                )
+                            }
+                        },
+                        label = label,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        supportingText = {
+                            val range = when {
+                                param.min != null && param.max != null -> "${param.min} ~ ${param.max}"
+                                param.min != null -> "≥ ${param.min}"
+                                param.max != null -> "≤ ${param.max}"
+                                else -> null
+                            }
+                            if (range != null) {
+                                Text(range, style = MaterialTheme.typography.labelSmall)
+                            }
+                        },
+                    )
+
+                    else -> ITextField(
+                        value = current,
+                        onValueChange = { v ->
+                            onConfigChange(
+                                config.copy(values = config.values + (param.key to v))
+                            )
+                        },
+                        label = label,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }

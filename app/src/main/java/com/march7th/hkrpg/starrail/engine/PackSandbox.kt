@@ -34,19 +34,14 @@ import java.io.File
  */
 object PackSandbox {
 
-    /** 单次执行总时长上限。超过就中止 —— 卡死的流程不该无限点下去 */
-    const val MAX_TOTAL_MS = 20 * 60 * 1000L
-
     /**
-     * 单次执行的总步数预算（含循环展开）。
+     * `whileExpr` 单次最多循环多少轮。
      *
-     * 步骤上限 200 只是**静态**的，`repeat 20 × 嵌套 repeat 20` 就能到几万次。
-     * 这个预算按"实际执行到第几步"算，循环和分支都计入。
+     * ⚠️ **总步数与总时长已经不再限制**（见 [Budget] 的说明），这里只留
+     * 单条 `whileExpr` 的轮数上限 —— 它防的不是"任务包太长"，而是
+     * "一条语句条件恒真、原地空转"，那种情况下用户看不出在等什么。
      */
-    const val MAX_EXEC_STEPS = 5_000
-
-    /** `whileExpr` 单次最多循环多少轮 */
-    const val MAX_WHILE_ITER = 200
+    const val MAX_WHILE_ITER = 2_000
 
     /** 流程嵌套深度上限（导入时校验一次，运行期再拦一次） */
     const val MAX_NEST_DEPTH = 4
@@ -95,31 +90,38 @@ object PackSandbox {
      * 对象（Koin single），字段残留会让第二次执行一开始就超预算。
      */
     class Budget(private val isCancelled: () -> Boolean) {
-        private val startedAt = System.currentTimeMillis()
-        private var steps = 0
 
         /**
-         * 每执行一步调用一次。
+         * 每执行一步调用一次 —— **只检查用户是否按了停止**。
          *
-         * @throws Exceeded 预算用完 / 用户取消
+         * ## 为什么去掉了步数与时长上限
+         *
+         * 原来有「最多 5000 步 / 20 分钟」两道闸，理由是"防死循环"。但：
+         *
+         * - 真想毁号的话，9 步就够了，限制步数挡不住任何恶意流程；
+         * - 它挡住的反而是正常需求：长流程（几十个界面来回切）、
+         *   慢设备上的长时间等待，全被误杀成"执行预算耗尽"；
+         * - 死循环跑出来的现象是"一直在动"，用户一眼能看出来并按停止，
+         *   比"跑到一半突然报预算耗尽"更好理解。
+         *
+         * 所以现在只保留取消检查。真正的安全边界仍然是结构性的 ——
+         * 执行器没有任何启动 App / 执行代码 / 联网 / 越界读文件的能力
+         * （见本文件顶部那张表），那才是"不能借任务包干别的"的保证。
+         *
+         * @throws Exceeded 用户主动取消
          */
         fun tick() {
             if (isCancelled()) throw Exceeded("用户已停止")
-            if (++steps > MAX_EXEC_STEPS) {
-                throw Exceeded("任务包执行步数超过上限 $MAX_EXEC_STEPS（疑似死循环）")
-            }
-            val elapsed = System.currentTimeMillis() - startedAt
-            if (elapsed > MAX_TOTAL_MS) {
-                val min = MAX_TOTAL_MS / 60_000
-                throw Exceeded("任务包执行超过 $min 分钟，已强制中止")
-            }
         }
 
-        /** 剩余可用毫秒数，给轮询型 op 当作自己的 deadline 上限。 */
-        fun remainingMs(): Long {
-            val elapsed = System.currentTimeMillis() - startedAt
-            return (MAX_TOTAL_MS - elapsed).coerceAtLeast(0)
-        }
+        /**
+         * 剩余可用毫秒数。
+         *
+         * **总时长已经不再限制**，所以这里返回一个足够大的值，让各处
+         * `coerceAtMost(budget.remainingMs())` 自然失效 —— 每个 op 的超时
+         * 仍然由它自己的 `timeoutMs` 决定，不会变成无限等待。
+         */
+        fun remainingMs(): Long = 24L * 60 * 60 * 1000
     }
 
     /** 预算耗尽。执行器把它转成正常的失败结果，不当作崩溃。 */

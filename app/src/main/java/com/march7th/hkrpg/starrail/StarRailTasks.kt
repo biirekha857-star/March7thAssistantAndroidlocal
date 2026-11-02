@@ -9,6 +9,10 @@ import com.march7th.hkrpg.starrail.engine.ScreenNavigator
 import com.march7th.hkrpg.starrail.engine.ScriptedTaskRunner
 import com.march7th.hkrpg.starrail.engine.ShellAutomation
 import com.march7th.hkrpg.third.Ln
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * 崩铁任务实现。
@@ -368,11 +372,20 @@ class StarRailTasks(
      * 序列化进去会让配置膨胀几十 KB，而且每次改包还得重新存一次链。
      */
     private fun custom(params: String): TaskResult {
-        val packId = Regex("\"packId\"\\s*:\\s*\"([^\"]*)\"")
-            .find(params)?.groupValues?.get(1).orEmpty()
+        // params 形如 {"packId":"xxx","values":{"times":"3"}}
+        //
+        // values 是用户在卡片表单里改过的参数；没改的键不出现，
+        // 执行器会回落到包内 task.json 里声明的 default。
+        val root = runCatching { Json.parseToJsonElement(params).jsonObject }.getOrNull()
+        val packId = root?.get("packId")?.jsonPrimitive?.contentOrNull.orEmpty()
         if (packId.isBlank()) {
             return TaskResult("Custom", false, "没有选择任务包")
         }
+        val overrides: Map<String, String> = runCatching {
+            root?.get("values")?.jsonObject?.mapNotNull { (k, v) ->
+                v.jsonPrimitive.contentOrNull?.let { k to it }
+            }?.toMap()
+        }.getOrNull().orEmpty()
         val nav = navigator
             ?: return TaskResult("Custom", false, "导航层未就绪（采集没接上）")
 
@@ -383,7 +396,7 @@ class StarRailTasks(
             isCancelled = isCancelled,
             log = { msg -> Ln.i("$TAG[custom]: $msg") },
         )
-        val result = runner.run(packId)
+        val result = runner.run(packId, overrides)
         return TaskResult("Custom", result.ok, result.detail)
     }
 
