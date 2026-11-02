@@ -526,6 +526,7 @@ fun BackgroundTaskView(
                                             viewModel.onNodeConfigChange(nodeId, config)
                                         },
                                         onAddNode = viewModel::onAddNode,
+                                        onAddCustomPack = viewModel::onAddCustomPack,
                                         onRemoveNode = viewModel::onRemoveNode,
                                         onDuplicateNode = viewModel::onDuplicateNode,
                                         onRenameNode = viewModel::onRenameNode,

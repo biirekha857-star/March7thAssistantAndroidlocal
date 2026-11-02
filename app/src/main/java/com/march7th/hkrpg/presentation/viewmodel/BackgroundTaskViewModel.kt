@@ -412,6 +412,19 @@ class BackgroundTaskViewModel(
         }
     }
 
+    /**
+     * 添加一个已经绑定好任务包的「自定义任务」节点。
+     *
+     * 画廊里每个已安装的包占一格，点哪个加哪个 —— 这样链里可以同时挂
+     * 多个包，各自勾选、各自排顺序，定时策略里也能分开安排。
+     */
+    fun onAddCustomPack(packId: String, name: String) {
+        viewModelScope.launch {
+            val nodeId = chainState.addCustomNode(packId, name)
+            _state.update { it.copy(isAddingTask = false, selectedNodeId = nodeId) }
+        }
+    }
+
     fun onRemoveNode(nodeId: String) {
         viewModelScope.launch {
             chainState.removeNode(nodeId)

@@ -152,7 +152,21 @@ internal fun TaskConfigBody(
 }
 
 @Composable
-internal fun TaskGalleryView(onAddNode: (TaskTypeInfo) -> Unit) {
+internal fun TaskGalleryView(
+    onAddNode: (TaskTypeInfo) -> Unit,
+    onAddCustomPack: (packId: String, name: String) -> Unit,
+) {
+    val context = LocalContext.current
+    var customPacks by remember { mutableStateOf<List<InstalledTaskPack>>(emptyList()) }
+
+    LaunchedEffect(Unit) {
+        customPacks = withContext(Dispatchers.IO) {
+            runCatching {
+                CustomTaskPackStore { CustomTaskPackStore.appRootDir(context) }.list()
+            }.getOrDefault(emptyList())
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -171,26 +185,55 @@ internal fun TaskGalleryView(onAddNode: (TaskTypeInfo) -> Unit) {
             verticalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(bottom = 12.dp)
         ) {
-            // 隐藏任务（启动游戏）不提供手动添加：它已默认在链里且强制启用
-            items(TaskTypeInfo.entries.filter { !it.hidden }) { typeInfo ->
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier.clickable { onAddNode(typeInfo) }) {
-                    Box(
-                        modifier = Modifier.padding(12.dp), contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = taskTypeLabel(typeInfo),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium,
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+            // 隐藏任务（启动游戏）不提供手动添加：它已默认在链里且强制启用。
+            //
+            // 自定义任务单独处理：**一个已安装的任务包占一格**。
+            // 这样加出来的卡片天生绑定那个包，标题就是包名，不用先加一张
+            // 空白卡再进去选 —— 装了几个包，链里就能并排放几个板块。
+            items(TaskTypeInfo.entries.filter { !it.hidden && it != TaskTypeInfo.CUSTOM }) { typeInfo ->
+                TaskGalleryCell(taskTypeLabel(typeInfo)) { onAddNode(typeInfo) }
+            }
+            if (customPacks.isEmpty()) {
+                item {
+                    TaskGalleryCell(taskTypeLabel(TaskTypeInfo.CUSTOM)) {
+                        onAddNode(TaskTypeInfo.CUSTOM)
+                    }
+                }
+            } else {
+                items(customPacks) { pack ->
+                    TaskGalleryCell(pack.displayName) {
+                        onAddCustomPack(pack.id, pack.displayName)
                     }
                 }
             }
+        }
+    }
+}
+
+/** 画廊里的一格。文字可能很长（任务包名），所以允许两行。 */
+@Composable
+private fun TaskGalleryCell(text: String, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.clickable(onClick = onClick),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

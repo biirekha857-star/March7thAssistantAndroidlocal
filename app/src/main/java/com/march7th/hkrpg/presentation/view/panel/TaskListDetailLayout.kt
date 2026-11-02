@@ -77,6 +77,7 @@ fun TaskListDetailLayout(
     onToggleProfileMode: () -> Unit,
     onConfigChange: (TaskParamProvider) -> Unit,
     onAddNode: (TaskTypeInfo) -> Unit,
+    onAddCustomPack: (packId: String, name: String) -> Unit,
     onRemoveNode: (String) -> Unit,
     onDuplicateNode: (String) -> Unit,
     onRenameNode: (String, String) -> Unit,
@@ -137,7 +138,10 @@ fun TaskListDetailLayout(
                     onBack = onToggleAddingTask,
                 ) {
                     // 选中类型后 ViewModel 自己会把 isAddingTask 置回 false
-                    TaskGalleryView(onAddNode = onAddNode)
+                    TaskGalleryView(
+                        onAddNode = onAddNode,
+                        onAddCustomPack = onAddCustomPack,
+                    )
                 }
 
                 else -> TaskListPanel(

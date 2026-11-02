@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.march7th.hkrpg.data.model.CustomTaskConfig
 import com.march7th.hkrpg.data.model.InfrastConfig
 import com.march7th.hkrpg.data.model.MallConfig
 import com.march7th.hkrpg.data.model.RecruitConfig
@@ -221,6 +222,30 @@ class TaskChainState(
                 it.add(afterIndex + 1, node)
             }
             Timber.d("Added node: %s (%s)", node.name, typeInfo.name)
+            node.id
+        }
+        return nodeId
+    }
+
+    /**
+     * 添加一个「自定义任务」节点，直接绑定到指定任务包。
+     *
+     * 和 [addNode] 的区别只在于**预先填好包**、名字直接用包名：
+     * 「添加任务」画廊里每个已安装的包占一格，点哪个就加哪个，
+     * 不用先加一张空白卡再进卡片里选。
+     */
+    suspend fun addCustomNode(packId: String, packName: String): String {
+        val nodeId = mutate {
+            val name = packName.trim().ifBlank { defaultTaskName(TaskTypeInfo.CUSTOM) }
+            val node = TaskChainNode(
+                id = UUID.randomUUID().toString(),
+                // 卡片标题限长 20，长包名在这里就截断，免得用户一加就报错
+                name = name.take(20),
+                enabled = true,
+                config = CustomTaskConfig(packId = packId, packName = packName.trim()),
+            )
+            it.add(node)
+            Timber.d("Added custom node: %s (%s)", node.name, packId)
             node.id
         }
         return nodeId
@@ -698,9 +723,25 @@ class TaskChainState(
                 )
                 continue
             }
-            if (!seen.add(info.taskType)) {
+            // ## 自定义任务是唯一允许"同类型多份"的
+            //
+            // 其它任务（邮件、清体力…）在链里各占一格，重复没有意义。
+            // 但自定义任务包是**一个包一个板块**：用户装了三个包，就该能
+            // 在链里并排放三个节点，各自勾选、各自排序，定时策略里也才能
+            // 分开安排（早上跑包 A、晚上跑包 B）。
+            //
+            // 所以去重键对自定义任务取 `packId`：同包重复仍会去重，
+            // 不同包各留一份。packId 还空着的（刚添加、没选包）用节点 id
+            // 兜底，否则两个空白节点会互相删掉。
+            val dedupKey = if (info == TaskTypeInfo.CUSTOM) {
+                val packId = (node.config as? CustomTaskConfig)?.packId
+                "Custom#${packId?.takeIf { it.isNotBlank() } ?: node.id}"
+            } else {
+                info.taskType
+            }
+            if (!seen.add(dedupKey)) {
                 Timber.w(
-                    "任务链自愈：丢弃重复任务 %s（同类型只保留第一个）",
+                    "任务链自愈：丢弃重复任务 %s（同一个包只保留第一个）",
                     info.taskType,
                 )
                 continue
