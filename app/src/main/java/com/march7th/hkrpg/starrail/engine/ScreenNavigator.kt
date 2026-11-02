@@ -206,6 +206,15 @@ class ScreenNavigator(
     /** 菜单轮询间隔。 */
     private const val MENU_POLL_MS = 150L
 
+    /** 点手机图标后仍没打开菜单时，最多再试几次。 */
+    private const val MENU_OPEN_RETRIES = 2
+
+    /** 两次点击之间的间隔 —— 云游戏的输入延迟明显比本地大。 */
+    private const val MENU_RETRY_DELAY_MS = 1_200L
+
+    /** 加载遮罩（「画面恢复中…」）最长等多久。 */
+    private const val LOADING_WAIT_MS = 12_000L
+
     /** 打开邮件页的最长等待。 */
     /** 点完邮件图标后等多久再判页面（转场 + 列表渲染）。 */
     private const val MAIL_LOAD_MS = 1_000L
@@ -286,6 +295,15 @@ class ScreenNavigator(
          */
         private val CROP_BLANK_TAP_PROMPT = NormRect(
             0.10f, 0.62f, 0.80f, 0.36f,
+        )
+
+        /**
+         * 「画面恢复中…」这类加载遮罩的文字区域。
+         *
+         * 遮罩是半透明黑底 + 居中加载圈 + 一行字，文字大约在画面正中偏下。
+         */
+        private val CROP_LOADING_OVERLAY = NormRect(
+            0.24f, 0.30f, 0.52f, 0.46f,
         )
 
         /** 过场提示可能出现的文案（按命中优先级）。 */
@@ -1508,10 +1526,15 @@ class ScreenNavigator(
         val joined = texts.joinToString("|") { it.normalized() }
         val isExit = EXIT_CONFIRM_KEYWORDS.any { joined.contains(it) }
 
-        // 「取消 / 关闭 / 不了 / 稍后」都算安全出口
+        // 退出确认框的两个按钮是「继续游戏 / 退出游戏」，**没有「取消」**。
+        //
+        // 11-02 日志里连续 10 次都是：认出了「是否确认退出游戏」，却报
+        // 「没找到取消按钮，放弃自动处理」—— 因为这里只认"取消/关闭"，
+        // 而游戏根本不用这两个词。等于这套自救从来没生效过。
         val cancel = texts.firstOrNull { r ->
             val t = r.normalized()
-            t == "取消" || t == "关闭" || t.contains("取消")
+            t == "取消" || t == "关闭" || t.contains("取消") ||
+                t.contains("继续游戏") || t.contains("返回游戏")
         }
 
         if (isExit) {
@@ -1604,6 +1627,17 @@ class ScreenNavigator(
             //    第 1 轮只扫右上角，第 2 轮起全屏 —— 两轮都找不到可点的 ✕，
             //    说明这个画面不是靠按钮关掉的（或者压根不在子界面），继续重复
             //    同样的动作只是白等。认输返回，让上层重试整条链路。
+            // ③.5 找不到 ✕ 时先确认不是"加载遮罩盖着整屏"
+            //
+            //    遮罩期间点任何按钮都不会有反应，✕ 自然也找不到。以前这里
+            //    直接按 BACK，反而把退出确认框叠上来 —— 那才是真正卡死的原因。
+            if (isLoadingOverlay()) {
+                Ln.i("$TAG: 画面在加载（画面恢复中…），等它结束再判态")
+                if (awaitMain(LOADING_WAIT_MS)) return true
+                Ln.w("$TAG: 等了 ${LOADING_WAIT_MS}ms 仍在加载，放弃关闭")
+                return isAt(Screen.MAIN)
+            }
+
             trace("close_attempt${i + 1}")
             if (i >= 1) {
                 Ln.w("$TAG: 角落与全屏都没找到可点的 ✕，放弃关闭（不按 BACK）")
@@ -1974,33 +2008,47 @@ class ScreenNavigator(
             return true
         }
 
-        // ## 注入成功但菜单没出现 —— 先怀疑"有东西在吃输入"
+        // ## 注入成功但菜单没出现 —— 无条件再点几次
         //
-        // 这时的事件确实送达了（tap 返回 true），但界面毫无反应。
-        // 常见原因是有一层看不见的模态在拦：断线重连框、资源更新提示、
-        // 系统弹窗。它们在画面上未必明显，主界面在它下面仍然可见、可识别，
-        // 于是引擎会一次又一次地"点手机图标但未进入菜单"。
+        // `tap` 返回 true 只说明事件送到了，界面可能毫无反应。11-02 12:13
+        // 实测：云游戏刚进大厅，第一次点手机图标被吞，5 秒后再点就正常打开了
+        // —— 而当时的重试条件是"先探到遮挡弹窗才重试"，没有弹窗就直接失败，
+        // 整个「邮件」任务因此挂掉。
         //
-        // 处理办法：探一次居中弹窗，命中就点「取消」把它掀掉，再点一次图标。
-        // 只重试一次 —— 连续失败说明不是遮罩问题，早点返回让上层重试整条链路。
-        Ln.w("$TAG: 点了手机图标但未进入菜单，检查是否有遮挡弹窗")
-        if (dismissPopup("openPhoneMenu", force = true) != PopupProbe.NONE) {
-            Ln.i("$TAG: 掀掉了一个遮挡弹窗，重试打开菜单")
+        // 所以改成无条件重试：每轮先探一次居中弹窗（有就掀掉），再点图标。
+        // 游戏真卡住时也就多花两三秒，比任务直接失败划算。
+        repeat(MENU_OPEN_RETRIES) { attempt ->
+            Ln.w("$TAG: 点了手机图标但未进入菜单，第 ${attempt + 1} 次重试")
+            if (dismissPopup("openPhoneMenu-retry", force = false) != PopupProbe.NONE) {
+                Ln.i("$TAG: 掀掉了一个遮挡弹窗")
+            }
+            sleepInterruptible(MENU_RETRY_DELAY_MS)
+
+            // 重试前确认还在大厅：这一两秒里画面可能已经切走
+            if (!isAtMainLobby()) {
+                Ln.w("$TAG: 重试时已不在大厅，放弃打开手机菜单")
+                return false
+            }
             val again = findInRegion(Screen.MAIN.marker, ELEMENT_THRESHOLD, CROP_MENU_ICON)
-            if (again != null) {
-                val sf = ImageUtils.BASE_HEIGHT.toDouble() / auto.height
-                val ax = ((again.x + again.templateWidth * again.scale / 2) / sf).toInt()
-                val ay = ((again.y + again.templateHeight * again.scale / 2) / sf).toInt()
-                auto.tap(ax, ay)
-                val retryDeadline = SystemClock.uptimeMillis() + MENU_OPEN_TIMEOUT_MS
-                while (SystemClock.uptimeMillis() < retryDeadline) {
-                    if (isPhoneMenuByTemplate() || isAt(Screen.MENU)) {
-                        Ln.i("$TAG: 掀掉遮罩后菜单打开了")
-                        sleepInterruptible(MENU_SETTLE_MS)
-                        return true
-                    }
-                    sleepInterruptible(MENU_POLL_MS)
+            if (again == null) {
+                Ln.w("$TAG: 重试时手机图标不在画面上，放弃（不盲点）")
+                return false
+            }
+            val sf = ImageUtils.BASE_HEIGHT.toDouble() / auto.height
+            val ax = ((again.x + again.templateWidth * again.scale / 2) / sf).toInt()
+            val ay = ((again.y + again.templateHeight * again.scale / 2) / sf).toInt()
+            if (!auto.tap(ax, ay)) {
+                Ln.w("$TAG: 重试点击注入失败 —— ${auto.lastInputFailure}")
+                return@repeat
+            }
+            val retryDeadline = SystemClock.uptimeMillis() + MENU_OPEN_TIMEOUT_MS
+            while (SystemClock.uptimeMillis() < retryDeadline) {
+                if (isPhoneMenuByTemplate() || isAt(Screen.MENU)) {
+                    Ln.i("$TAG: 第 ${attempt + 1} 次重试打开了菜单")
+                    sleepInterruptible(MENU_SETTLE_MS)
+                    return true
                 }
+                sleepInterruptible(MENU_POLL_MS)
             }
         }
         return false
@@ -2972,6 +3020,20 @@ class ScreenNavigator(
         SystemClock.sleep(SETTLE_MS)
         return true
     }
+
+    /**
+     * 画面是不是停在「画面恢复中…」这类加载遮罩上。
+     *
+     * 11-02 10:59 实测：点完「退出关卡」后游戏进入加载，遮罩盖着整屏 ——
+     * 判态认不出大厅，也永远找不到可点的 ✕。旧代码就在这个状态下按 BACK
+     * 去"自救"，每次都把「是否退出游戏」叠上来，连按 6 轮全部落空。
+     *
+     * 遮罩期间点什么都没反应，唯一正确的动作是等。
+     */
+    fun isLoadingOverlay(): Boolean =
+        withFrameOcrRegion(CROP_LOADING_OVERLAY) { mat, region ->
+            OcrEngine.findText(mat, "画面恢复", region)
+        } != null
 
     /** 把当前整屏 OCR 结果写进日志 —— 卡住时的唯一有效证据。 */
     fun dumpCurrentScreenText(tag: String) {
