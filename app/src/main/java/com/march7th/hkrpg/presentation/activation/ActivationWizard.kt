@@ -60,6 +60,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.march7th.hkrpg.constant.M7aApi
 import com.march7th.hkrpg.data.permission.PermissionState
 import com.march7th.hkrpg.domain.models.RemoteBackend
 import com.march7th.hkrpg.theme.AppDesignTokens
@@ -544,10 +545,6 @@ private fun BackendPage(
     )
 }
 
-/** Shizuku 的安装教程（B 站视频）。 */
-private const val SHIZUKU_TUTORIAL_URL =
-    "https://www.bilibili.com/video/BV1UrKazKEkC/?share_source=copy_web&vd_source=52cd6c0808394ce4393953d29d048fe9"
-
 /**
  * 「不知道怎么装 Shizuku？看视频教程」。
  *
@@ -561,7 +558,7 @@ private fun ShizukuTutorialLink() {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(AppDesignTokens.CornerRadius.card))
-            .clickable { uriHandler.openUri(SHIZUKU_TUTORIAL_URL) }
+            .clickable { uriHandler.openUri(M7aApi.SHIZUKU_TUTORIAL) }
             .padding(horizontal = AppDesignTokens.Spacing.sm, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),

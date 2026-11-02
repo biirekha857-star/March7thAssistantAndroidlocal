@@ -118,6 +118,9 @@
     <string name="settings_language_en">English</string>
     <string name="settings_background_resolution_title">Background Resolution</string>
     <string name="settings_background_resolution_desc">Background mode only</string>
+        <string name="settings_shizuku_tutorial_title">Shizuku setup guide</string>
+    <string name="settings_shizuku_tutorial_desc">Not sure how to install it? Watch a short video</string>
+    <string name="settings_shizuku_tutorial_failed">Could not open a browser. Search for Shizuku setup manually.</string>
     <string name="settings_skip_shizuku_check">Skip Shizuku Check</string>
     <string name="settings_shizuku_launch_mode_title">Enable Shortcut</string>
     <string name="settings_shizuku_launch_mode_desc">Show a Shizuku launch button on Home for quick access</string>

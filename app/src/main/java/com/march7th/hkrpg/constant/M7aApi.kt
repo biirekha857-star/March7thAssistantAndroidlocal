@@ -68,6 +68,15 @@ object M7aApi {
      */
     const val SITE_BASE = "https://m7a.pages.dev/"
 
+    /**
+     * Shizuku 的安装教程（B 站视频）。
+     *
+     * 提权方式页和「设置 → 启动与运行」都指向这里 —— Shizuku 是这套方案里
+     * 唯一需要用户自己去装、去启动的东西，光写个名字很多人不知道下一步做什么。
+     */
+    const val SHIZUKU_TUTORIAL = "https://www.bilibili.com/video/BV1UrKazKEkC/" +
+        "?share_source=copy_web&vd_source=52cd6c0808394ce4393953d29d048fe9"
+
     /** 中文公告。 */
     const val ANNOUNCEMENT_ZH = "${SITE_BASE}announcement_zh.md"
 

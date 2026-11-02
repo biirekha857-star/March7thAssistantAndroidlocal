@@ -61,6 +61,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.march7th.hkrpg.R
+import com.march7th.hkrpg.constant.M7aApi
 import kotlinx.coroutines.delay
 import com.march7th.hkrpg.constant.Routes
 import com.march7th.hkrpg.data.preferences.AppSettingsManager
@@ -246,6 +247,23 @@ fun LaunchSettingsScreen(
                     checked = skipShizukuCheck,
                     enabled = startupBackend == RemoteBackend.SHIZUKU,
                     onCheckedChange = { viewModel.setSkipShizukuCheck(it) },
+                )
+                ListItemDivider()
+                // 向导里的教程入口只弹一次，装完就找不到了 —— 这里再放一份，
+                // 权限掉了回来修的时候还能看
+                SettingClickItem(
+                    title = stringResource(R.string.settings_shizuku_tutorial_title),
+                    description = stringResource(R.string.settings_shizuku_tutorial_desc),
+                    onClick = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse(M7aApi.SHIZUKU_TUTORIAL))
+                            )
+                        }.onFailure {
+                            Toast.makeText(context, R.string.settings_shizuku_tutorial_failed, Toast.LENGTH_SHORT)
+                                .show()
+                        }
+                    },
                 )
             }
         }
