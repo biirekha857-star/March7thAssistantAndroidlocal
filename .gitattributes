@@ -3,7 +3,3 @@
 site/taskpacks/index.json     -text
 site/taskpacks/index.json.sig -text
 *.m7atask                     -text
-
-# 脚本换行符：.sh 必须 LF（否则 Git Bash 报 bash\r），.bat 用 CRLF
-*.sh  text eol=lf
-*.bat text eol=crlf

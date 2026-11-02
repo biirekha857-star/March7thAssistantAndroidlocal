@@ -477,77 +477,12 @@ git push origin main
 > Gitee 的邀请链接形如 `gitee.com/<user>/<repo>/team_members/invite_link`，
 > 有效期有限，过期重新生成。
 
-### 9.3 代码怎么同步（重要）
+### 9.3 同步代码
 
-**默认不是自动的。** 改完代码要手动推一次，否则对方拉不到。
+改完代码**告诉 AI「提交并推送」**，它会把改动推到 `gitee/main`。
 
-#### 一条命令搞定
+不需要记命令，也别做成每次保存自动推 —— 那会把编不过的中间状态也推上去。
 
-```bash
-# 配一次全局别名（每台机器一次）
-git config --global alias.sync '!f() { git pull --rebase --autostash gitee main && git add -A && (git diff --cached --quiet || git commit -m "${1:-sync}") && git push gitee main; }; f'
-```
-
-之后：
-
-```bash
-git sync "改了任务包的参数表单"
-git sync-status          # 看本地和远端差几个提交
-```
-
-或者用仓库里的脚本（没配别名也能用）：
-
-```bash
-./scripts/sync.sh "改了参数表单"        # Git Bash / macOS / Linux
-scripts\sync.bat "改了参数表单"        # Windows CMD
-```
-
-它会依次做三件事：**拉取对方改动 → 提交你的改动 → 推送到 gitee/main**。
-先拉再推，是为了避免"对方已经推过、你被拒"这种最常见的冲突。
-
-#### 什么时候推
-
-| 时机 | 推不推 |
-|---|---|
-| 改到一半、编不过 | ❌ 别推 |
-| `compileDebugKotlin` 过了 | ✅ 推 |
-| 一个功能做完 | ✅ 推，commit message 写清楚 |
-| 发版前 | ✅ 再 `git push origin main` 同步到 GitHub |
-
-#### 为什么不建议做成"每次保存都自动推"
-
-有人会想用 git hook 在 commit 后自动 push。**不建议**，三个原因：
-
-1. **会卡编辑器**：Android Studio 提交时会等 hook 跑完，网络一慢整个界面卡住
-2. **会推半成品**：commit 不等于"改完了"，中途提交的报错状态也会被推上去
-3. **冲突时静默失败**：后台 push 被拒绝，没人看得到，你以为同步了其实没有
-
-如果确实想要全自动，正确做法是**定时同步**（比如每 30 分钟检查一次），而不是每次提交：
-
-```bash
-# Windows 任务计划程序，每 30 分钟跑一次
-schtasks /create /tn "m7a-sync" /tr "E://jyttu//m7a//scripts//sync.bat auto" /sc minute /mo 30
-```
-
-#### 两个人改同一处怎么办
-
-`git sync` 里的 `pull --rebase` 会先帮你合并。如果真撞了同一行，git 会停下来让你选：
-
-```bash
-git status          # 看哪些文件冲突
-# 手工改完那些文件后：
-git add <冲突的文件>
-git rebase --continue
-git push gitee main
-```
-
-**降低冲突的做法**：动 `ScreenNavigator.kt` 这种大文件前先说一声，或者开分支改完再合。
-
-### 9.2 沟通
-
-- 任务包格式问题：看 `docs/task-file.md`（含大白话版）
-- 源码层改动：看 `docs/TASK_DEVELOPMENT.md`
-- 卡住时最有效的做法：**导出日志 zip 发给对方**（App 内「设置 → 日志 → 导出」），里面包含引擎日志 + 截图 + 设备信息，比口头描述有用十倍
 
 ---
 
