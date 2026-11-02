@@ -6,67 +6,58 @@
 
 ## Current Version
 
-**1.0.0**
+**1.0.1**
 
 ---
 
 ## What's New
 
-⚠️ **This is a forced update**: older builds must install 1.0.0 to keep working.
-Same signing key, so you can install over the top — task configs and the redeemed
-code list are preserved.
+💡 **This is an optional update** — nothing forces you to install it. But do consider
+it: the fixes below are the kind that make the app look broken. Same signing key,
+so you can install over the top — task configs and the redeemed code list are preserved.
 
-### New · Custom tasks (task packs)
+### Fixed · Couldn't get back to the lobby after farming
 
-- **Settings → Data → Import task pack** — install a `.m7atask` file written by a
-  third-party author and run it like any built-in task
-- A task file is a **list of actions**, not code: template matching, OCR, colour
-  checks, conditionals, loops, variables and arithmetic — 24 primitives in total
-- At runtime it only gets "look at the screen" and "tap the screen": it cannot run
-  code, install or launch other apps, access the network, or read files outside
-  the pack
-- Hard budget: at most 5000 steps / 20 minutes per run, nesting up to 4 levels
-- **A disclaimer must be read for 8 seconds before import**: packs come from the
-  internet, we do not review their safety or legality, and any loss caused by
-  using one is on the user; report malicious content via feedback
-- Want to write one? See *Task File Specification* in Settings
+- After tapping "Exit stage" the game shows a loading overlay. The old build pressed
+  BACK there to "recover" — but in-game BACK never navigates back, it only raises the
+  "exit game" dialog
+- Worse: that recovery looked for a button called "Cancel", while the dialog's button
+  is "Continue game" — so it **never actually dismissed it**: recognised, never tapped,
+  yet treated as handled. Six rounds of nothing
+- BACK is gone entirely. When no ✕ is found, it now taps the back arrow at the top-left
+- The "Restoring screen…" overlay is waited out instead of being tapped through
 
-### New · Forgotten Hall (Memory of Chaos)
+### Fixed · Mail task failed right after entering the lobby on cloud gaming
 
-- Walks Mobile → Interastral Guide → Divergent Universe loot → Forgotten Hall →
-  Memory of Chaos, reads this cycle's progress, then clears floors one by one
-- Floors already at 3 stars are skipped; auto-battle is enabled in combat and
-  rewards are claimed after settlement
-- **No team selection** — it uses whatever team you already configured
+- The first tap on the phone icon got swallowed (cloud input latency). The old logic
+  only retried if it detected an obstructing dialog — no dialog meant giving up
+- It now retries twice unconditionally, 1.2 s apart
 
-### Redeem codes
+### New · Pick your client (4 options)
 
-- The site list is now a set of **permanent** codes, no expiry to worry about
-- One-tap redemption still skips codes you have already claimed
+- Official, Bilibili (`com.miHoYo.hkrpg.bilibili`), Global
+  (`com.HoYoverse.hkrpgoversea`) and cloud gaming — four options laid out flat in the
+  "Start game" card
+- The duplicate "choose client" step in the activation wizard has been removed
 
-### Fixed
+### New · Custom task packs
 
-- **Upscaled and cropped frames, *Tap to Enter* never appears** — when some
-  ROMs (e.g. HONOR MagicOS) move the game onto the 1920×1080 virtual display,
-  the system's size-compat scale factor (1.1774) is computed but the window
-  size is never shrunk to match. The app therefore renders at full size and the
-  system scales it again, zooming the canvas from the top-left corner and
-  pushing *Tap to Enter* outside the frame, so OCR reads nothing at all.
-  When the launch is still stuck after 51 seconds, the app now performs one
-  "home-screen round trip" to force a re-layout; recovery takes ~2.2 seconds
-- **Display anomalies are no longer silent** — a notification explains what
-  happened when the app self-heals. It is **a notice, not an error**: the task
-  keeps running to completion
-- **Interastral Guide occasionally undetectable** — OCR ran only once after the
-  screen changed, so a fade-in frame failed the check; now a 2-second observation
-  window plus a forced re-check every second
-- **Daily Training "activity" never read** — the OCR region only covered the
-  flame icon, cutting the number off
-- **Dispatch falsely reported as "not dispatched"** — the ~800 ms transition
-  after tapping could be caught mid-animation; now retried
-- **Trailblaze Power "quick refill" toggle never tapped** — template was 1.4×
-  larger than on device and the search region sat on the toggle's right edge;
-  replaced with an on-device template and a corrected region
+- **One pack, one card**: install three packs and you get three separate cards, each
+  with its own toggle and ordering. Previously everything shared a single node
+- Packs appear automatically after import
+- **Packs can declare parameters**: toggles, number fields and text fields render right
+  in the card. Out-of-range values are clamped to the declared bounds and logged
+- **Step and time limits removed** (the old 5000 steps / 20 minutes cap is gone)
+
+### New · Shizuku setup guide
+
+- A video guide is one tap away on the privilege screen and in Settings → Launch
+
+### Other
+
+- The bundled announcement is now the project's own (it used to show the upstream
+  Arknights announcement when the remote fetch failed)
+- A plain-language appendix was added to the task file specification
 
 ### Core Features
 
