@@ -1,0 +1,22 @@
+# 复制成 local.properties 后改成你自己的路径。
+# 这个文件是给新机器/新同事照着填的模板，真正的 local.properties 不进版本库。
+
+# ---- 必需：Android SDK 路径 ----
+# Windows 记得把反斜杠写成双反斜杠
+sdk.dir=C\:\\Users\\你的用户名\\AppData\\Local\\Android\\Sdk
+
+# ---- 可选：打 release 包时才需要 ----
+# 不填的话 assembleRelease 会产出一个未签名的包（装不上），但 assembleDebug 不受影响
+# KEYSTORE_PATH=C\:\\keys\\m7a.jks
+# KEYSTORE_PASSWORD=***
+# KEY_ALIAS=m7a
+# KEY_PASSWORD=***
+
+# ---- 可选：R8 混淆强度 ----
+# none  = 不混淆，编得最快（日常开发用这个）
+# light = 只混淆代码不压资源（开源发布默认）
+# full  = 全量混淆 + 资源压缩（上架商店，需要 16GB 内存）
+maa.r8=none
+
+# ---- 可选：只编一个 ABI，能省一半编译时间 ----
+# maa.abi=arm64-v8a

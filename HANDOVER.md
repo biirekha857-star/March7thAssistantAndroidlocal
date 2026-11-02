@@ -112,7 +112,29 @@ app/build/outputs/apk/debug/app-debug.apk
 app/build/outputs/apk/release/app-release.apk
 ```
 
-### 2.5 第一次构建大概率会踩的三个坑
+### 2.5 首次构建要下载什么（以及为什么没放进仓库）
+
+仓库里**已经**包含了全部源码和 Gradle Wrapper（`gradle/wrapper/gradle-wrapper.jar` 是入库的，
+所以 `./gradlew` 直接能用）。下面三样不适合入库，首次构建时才会下载：
+
+| 东西 | 体积 | 从哪来 | 说明 |
+|---|---|---|---|
+| Gradle 发行版 9.4.1 | ~150 MB | 已配腾讯镜像 | 只下一次，缓存在 `~/.gradle/wrapper` |
+| Maven 依赖 | 首次 ~800 MB | 已配阿里云 + 腾讯镜像 | `settings.gradle.kts` 里四条镜像源 |
+| NDK 29.0.14206865 | ~1 GB | Android SDK Manager | 编 `libbridge.so` 必需 |
+
+**为什么不放进仓库**：Gitee 单文件限制 100 MB、仓库建议控制在 500 MB 以内；
+这几样加起来 2 GB 且都是"可有可无的缓存"，塞进去会让 clone 变慢、仓库变死。
+
+**网络不好怎么办**（三条，按成本从低到高）：
+
+1. 先确认镜像生效 —— 项目已经写好阿里云/腾讯源，正常情况不用改任何配置
+2. NDK 单独下载：Google 官方 URL 换成国内镜像，或者让同事直接把
+   `<SDK>/ndk/29.0.14206865` 整个目录拷过来放进自己的 SDK 目录
+3. 依赖缓存拷贝：把同事的 `~/.gradle/caches` 打包拷过来解压，能省掉首次几百 MB 下载
+   （约 1.5 GB，走网盘，不要走 git）
+
+### 2.6 第一次构建大概率会踩的三个坑
 
 **① `NDK not configured` / `CMake not found`**
 NDK 版本必须正好是 `29.0.14206865`。装完执行一次 `./gradlew --stop` 再编。
