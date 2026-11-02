@@ -596,6 +596,19 @@ class ScreenNavigator(
         )
 
         /**
+         * 子界面左上角的「返回」。
+         *
+         * 崩铁所有二级界面的返回按钮**长得一样、位置也一样**（左上角），
+         * 所以不需要为每个页面单独裁模板 —— 直接点固定坐标即可。
+         *
+         * 它是 BACK 键的正确替代品：BACK 在游戏里只会弹「是否退出游戏」，
+         * 而这里点的是真按钮，点空最多是没反应，不会把游戏退掉。
+         */
+        val BACK_ARROW = NormRect(
+            24f / 1920f, 26f / 1080f, 68f / 1920f, 64f / 1080f,
+        )
+
+        /**
          * 手机菜单**名片右上角的「…」**（三个点）。
          *
          * ## 它是兑换码入口的前置
@@ -1638,9 +1651,22 @@ class ScreenNavigator(
                 return isAt(Screen.MAIN)
             }
 
+            // ③.6 还是找不到 ✕ —— 点左上角的「返回」
+            //
+            //    这里原本是 BACK 的位置。崩铁每个子界面的返回按钮都是同一个
+            //    位置（左上角），点它等于按 BACK 想做的事，但不会弹退出框。
+            //
+            //    只在第一轮点（第二轮已经全屏扫过 ✕，再点也没新信息）。
+            if (i == 0) {
+                Ln.i("$TAG: 未见可点的 ✕，点左上角「返回」")
+                clickCrop(Hotspot.BACK_ARROW, "左上返回")
+                if (awaitMain(SETTLE_MS)) return true
+                trace("close_back_arrow")
+            }
+
             trace("close_attempt${i + 1}")
             if (i >= 1) {
-                Ln.w("$TAG: 角落与全屏都没找到可点的 ✕，放弃关闭（不按 BACK）")
+                Ln.w("$TAG: 角落、全屏、左上返回都没能关掉，放弃（不按 BACK）")
                 return isAt(Screen.MAIN)
             }
         }
