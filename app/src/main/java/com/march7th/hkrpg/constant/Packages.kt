@@ -11,8 +11,10 @@ package com.march7th.hkrpg.constant
  */
 object Packages : Iterable<Map.Entry<String, String>> {
     private val packageName = mapOf(
-        // 国服
+        // 官服（国服）
         "Official" to "com.miHoYo.hkrpg",
+        // B 服（渠道服）
+        "Bilibili" to "com.miHoYo.hkrpg.bilibili",
         // 国际服
         "YoStarEN" to "com.HoYoverse.hkrpgoversea",
     )

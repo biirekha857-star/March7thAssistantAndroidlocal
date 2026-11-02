@@ -1152,6 +1152,10 @@ private fun StartUpConfigPanel(
 internal fun clientLabel(client: StartUpTaskConfig.GameClient): String = when (client) {
     StartUpTaskConfig.GameClient.LOCAL ->
         stringResource(R.string.panel_startup_client_local)
+    StartUpTaskConfig.GameClient.BILIBILI ->
+        stringResource(R.string.panel_startup_client_bilibili)
+    StartUpTaskConfig.GameClient.OVERSEA ->
+        stringResource(R.string.panel_startup_client_oversea)
     StartUpTaskConfig.GameClient.CLOUD ->
         stringResource(R.string.panel_startup_client_cloud)
 }

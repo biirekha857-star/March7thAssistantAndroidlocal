@@ -30,7 +30,6 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Gavel
 import androidx.compose.material.icons.rounded.RocketLaunch
 import androidx.compose.material.icons.rounded.Security
-import androidx.compose.material.icons.rounded.SportsEsports
 import androidx.compose.material.icons.rounded.WavingHand
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -86,7 +85,6 @@ import kotlinx.coroutines.delay
  * @param onRequestBattery 请求电池优化豁免
  * @param onRequestNotification 请求通知
  * @param onBackendChange 切换 Shizuku / Root
- * @param onClientChange 切换游戏客户端
  * @param onFinish 全部完成
  */
 @Composable
@@ -94,14 +92,12 @@ fun ActivationWizard(
     step: ActivationStep,
     permissionState: PermissionState,
     backend: RemoteBackend,
-    clientType: String,
     onStepChange: (ActivationStep) -> Unit,
     onRequestRemoteAccess: () -> Unit,
     onRequestOverlay: () -> Unit,
     onRequestBattery: () -> Unit,
     onRequestNotification: () -> Unit,
     onBackendChange: (RemoteBackend) -> Unit,
-    onClientChange: (String) -> Unit,
     onFinish: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -157,15 +153,8 @@ fun ActivationWizard(
                     onRequestOverlay = onRequestOverlay,
                     onRequestBattery = onRequestBattery,
                     onRequestNotification = onRequestNotification,
-                    onNext = { onStepChange(ActivationStep.CLIENT) },
-                    onBack = { onStepChange(ActivationStep.BACKEND) },
-                )
-
-                ActivationStep.CLIENT -> ClientPage(
-                    clientType = clientType,
-                    onClientChange = onClientChange,
                     onNext = { onStepChange(ActivationStep.DONE) },
-                    onBack = { onStepChange(ActivationStep.PERMISSION) },
+                    onBack = { onStepChange(ActivationStep.BACKEND) },
                 )
 
                 ActivationStep.DONE -> DonePage(
@@ -728,86 +717,7 @@ private fun PermissionRow(
     }
 }
 
-@Composable
-private fun ClientPage(
-    clientType: String,
-    onClientChange: (String) -> Unit,
-    onNext: () -> Unit,
-    onBack: () -> Unit,
-) {
-    StepScaffold(
-        icon = Icons.Rounded.SportsEsports,
-        title = "选择游戏客户端",
-        body = "选你实际安装的崩铁版本。国服和国际服是两个不同的应用。",
-        content = {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(AppDesignTokens.Spacing.sm),
-            ) {
-                ClientOption(
-                    label = "国服",
-                    pkg = "com.miHoYo.hkrpg",
-                    selected = clientType == "Official",
-                    onClick = { onClientChange("Official") },
-                )
-                ClientOption(
-                    label = "国际服",
-                    pkg = "com.HoYoverse.hkrpgoversea",
-                    selected = clientType == "YoStarEN",
-                    onClick = { onClientChange("YoStarEN") },
-                )
-            }
-        },
-        actions = {
-            PrimaryAction(text = "下一步", onClick = onNext)
-            SecondaryAction(text = "返回", onClick = onBack)
-        },
-    )
-}
 
-@Composable
-private fun ClientOption(
-    label: String,
-    pkg: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Card(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(AppDesignTokens.CornerRadius.card),
-        colors = CardDefaults.cardColors(
-            containerColor = if (selected) {
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
-            } else {
-                MaterialTheme.colorScheme.surface
-            }
-        ),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(AppDesignTokens.Spacing.md),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(AppDesignTokens.Spacing.sm),
-        ) {
-            RadioButton(selected = selected, onClick = onClick)
-            Column {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = pkg,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun DonePage(onFinish: () -> Unit) {

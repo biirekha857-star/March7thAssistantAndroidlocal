@@ -18,9 +18,13 @@ import kotlinx.serialization.Serializable
  *
  * ```
  * 启动游戏
- *   ○ 本地客户端    com.miHoYo.hkrpg
+ *   ○ 官服          com.miHoYo.hkrpg
+ *   ○ B 服          com.miHoYo.hkrpg.bilibili
+ *   ○ 国际服        com.HoYoverse.hkrpgoversea
  *   ● 云游戏        com.miHoYo.cloudgames.hkrpg
  * ```
+ *
+ * 四个选项**平铺**成一列，不套二级菜单 —— 一共就四种，藏起来只会让人多点两下。
  *
  * 默认选本地客户端，行为与以前完全一致。
  */
@@ -66,21 +70,46 @@ data class StartUpTaskConfig(
         get() = timeoutSec ?: client.defaultTimeoutSec
 
     /**
-     * 可选的游戏客户端。
+     * 可选的游戏客户端。**四种平铺**，不做二级选择。
      *
-     * @param wireName 传给内核的标识
+     * @param wireName 传给内核的标识（写进任务 params，改它会让旧配置失配）
+     * @param clientKey 对应的 [com.march7th.hkrpg.constant.Packages] key
      * @param packageName 应用包名
      * @param defaultTimeoutSec 默认启动超时
      */
     enum class GameClient(
         val wireName: String,
+        val clientKey: String,
         val packageName: String,
         val defaultTimeoutSec: Int,
     ) {
-        /** 本地客户端：直接安装运行，启动快。 */
+        /**
+         * 官服（国服）：直接安装运行，启动快。
+         *
+         * ⚠️ 枚举名保持 `LOCAL`：它会被 kotlinx.serialization 按名字写进
+         * DataStore，改成 OFFICIAL 会让老用户的配置反序列化失败。
+         * 只改显示文案（「本地客户端」→「官服」）不影响存量数据。
+         */
         LOCAL(
             wireName = "local",
+            clientKey = "Official",
             packageName = "com.miHoYo.hkrpg",
+            defaultTimeoutSec = 180,
+        ),
+
+        /** B 服（渠道服）。启动流程与官服完全一致，只是包名不同。 */
+        BILIBILI(
+            wireName = "bilibili",
+            clientKey = "Bilibili",
+            packageName = "com.miHoYo.hkrpg.bilibili",
+            defaultTimeoutSec = 180,
+        ),
+
+        /** 国际服。 */
+        OVERSEA(
+            wireName = "oversea",
+            clientKey = "YoStarEN",
+            packageName = "com.HoYoverse.hkrpgoversea",
             defaultTimeoutSec = 180,
         ),
 
@@ -91,6 +120,7 @@ data class StartUpTaskConfig(
          */
         CLOUD(
             wireName = "cloud",
+            clientKey = "Official",
             packageName = "com.miHoYo.cloudgames.hkrpg",
             defaultTimeoutSec = 300,
         );

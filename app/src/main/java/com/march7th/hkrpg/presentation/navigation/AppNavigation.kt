@@ -112,7 +112,6 @@ fun AppNavigation(
     // 跟崩铁移植无关，已整体删除。
     val activationDone by appSettings.activationCompleted.collectAsStateWithLifecycle()
     val permissionState by permissionManager.state.collectAsStateWithLifecycle()
-    val clientType by appSettings.clientType.collectAsStateWithLifecycle()
     val resourceInitState by resourceInitService.state.collectAsStateWithLifecycle()
     val resourceReady = resourceInitState is ResourceInitState.Ready
 
@@ -125,7 +124,6 @@ fun AppNavigation(
             step = activationStep,
             permissionState = permissionState,
             backend = permissionState.startupBackend,
-            clientType = clientType,
             onStepChange = { activationStep = it },
             onRequestRemoteAccess = { coroutineScope.launch { permissionManager.requestRemoteAccess() } },
             onRequestOverlay = { coroutineScope.launch { permissionManager.requestOverlay(context) } },
@@ -134,7 +132,6 @@ fun AppNavigation(
             onBackendChange = { backend ->
                 coroutineScope.launch { permissionManager.setStartupBackend(backend) }
             },
-            onClientChange = { type -> coroutineScope.launch { appSettings.setClientType(type) } },
             onFinish = { coroutineScope.launch { appSettings.markActivationCompleted() } },
         )
         return

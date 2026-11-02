@@ -12,6 +12,7 @@ import com.march7th.hkrpg.data.model.InfrastConfig
 import com.march7th.hkrpg.data.model.MallConfig
 import com.march7th.hkrpg.data.model.RecruitConfig
 import com.march7th.hkrpg.data.model.StarRailTaskConfig
+import com.march7th.hkrpg.data.model.StartUpTaskConfig
 import com.march7th.hkrpg.data.model.taskTypeOrNull
 import com.march7th.hkrpg.data.model.TaskChainNode
 import com.march7th.hkrpg.data.model.TaskParamProvider
@@ -85,8 +86,30 @@ class TaskChainState(
 
     private val persistOps = Channel<PersistOp>(Channel.UNLIMITED)
 
+    /**
+     * 当前操作的游戏客户端类型（`Packages` 的 key）。
+     *
+     * ## 优先跟随「启动游戏」任务里的选择
+     *
+     * 客户端只在「启动游戏」任务里选（官服 / B 服 / 国际服 / 云游戏），
+     * 全局设置里的 `clientType` 已经没有 UI 入口了。如果这里还读那份旧设置，
+     * 选了 B 服的用户就会拿着 `com.miHoYo.hkrpg` 去 force-stop / 启动 / 盯进程
+     * —— 引擎操作的根本不是他装的那个游戏。
+     *
+     * 所以顺序是：任务链里**已启用**的 StartUp 节点 → 旧设置 → 官服。
+     * 链里没有启动节点时（理论上不会，默认链一定带着）才回退。
+     */
     val clientType: String
-        get() = getClientTypeOrNull() ?: "Official"
+        get() = chainClientKey() ?: getClientTypeOrNull() ?: "Official"
+
+    /** 任务链里启用的「启动游戏」节点选了哪个客户端；没有就返回 null。 */
+    private fun chainClientKey(): String? = runCatching {
+        _chain.value.asSequence()
+            .filter { it.enabled }
+            .mapNotNull { (it.config as? StartUpTaskConfig)?.client?.clientKey }
+            .firstOrNull()
+    }.onFailure { Timber.w(it, "读取启动任务的客户端类型失败") }
+        .getOrNull()
 
     /** 最近一次成功启动的会话所用客户端；运行中即本次会话的服务器，不随切换 Profile 变 */
     val lastUsedClientType: String?
