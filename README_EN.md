@@ -205,7 +205,7 @@ Adding a task or changing recognition logic? Read the [task development guide](d
 1. **Prefer region-based recognition** — never scan the whole screen (5–20× slower)
 2. **Template matching beats OCR** whenever possible; OCR misreads and splits text
 3. **Hardcode coordinates for fixed buttons** — more reliable than recognition
-4. **BACK is a last resort**: tap ✕ or the dialog's own cancel first; after any BACK, check for the "exit game" dialog and cancel it
+4. **Never press BACK**: in-game BACK only raises the "exit game" dialog, it never navigates back — tap the screen's own ✕ / cancel instead
 5. **Verify the screen after every action** — never chain blind taps
 6. **Only tap safe empty spots as a fallback** — never the back button, avatar, right-side dock or bottom primary button
 
