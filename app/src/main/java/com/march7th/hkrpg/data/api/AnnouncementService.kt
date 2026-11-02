@@ -36,7 +36,15 @@ class AnnouncementService(
 ) {
     companion object {
         private const val TAG = "AnnouncementService"
-        private const val CACHE_DIR = "announcement"
+        /**
+         * 磁盘缓存目录。
+         *
+         * ⚠️ 目录名带 `_v2` 是**故意的**：1.0.0 以前的磁盘缓存里存的是上游
+         * MAA-Meow（明日方舟）的公告，而缓存优先级高于远程和内置资源。
+         * 直接沿用旧目录，老用户装上新版后仍然会看到方舟公告 —— 换个目录名，
+         * 旧缓存自然失效，不需要写迁移逻辑。
+         */
+        private const val CACHE_DIR = "announcement_v2"
         private const val ASSET_DIR = "announcement"
         private const val TIMEOUT_SEC = 10L
     }

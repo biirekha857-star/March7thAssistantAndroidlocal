@@ -1,92 +1,123 @@
-## Black Forest Money Farming
+# March7thAssistant Android Local
 
-~~The map is too complex, so here is a quick money-farming script first.~~ The auto-roguelike money-farming strategy is out now, but this one is still handy, so it stays.
-
-Location: Toolbox → Mini-games → Black Forest money farming
+**Honkai: Star Rail · Fully automated daily tasks on Android**
 
 ---
 
-## Runtime Notes
+## Current Version
 
-Do not use **eye-care mode** or **smart resolution** while MaaMeow is running, as they interfere with recognition.
-
-For auto-battle, enable high frame rate in-game and prefer high graphics quality to avoid recognition errors.
-
-Some Android 11 devices report "storage directory inaccessible". Follow the prompt to `Settings → Other → MaaCore data directory`, switch to the separate directory and restart. In that mode, viewing core logs requires the elevated service to be running, and uninstalling the app does not remove the separate directory; use the clear button next to it.
+**1.0.0**
 
 ---
 
-## User Guide (NEW!!!)
+## What's New
 
-**📖 Docs & FAQ**  
-When something goes wrong, check `Settings → About → FAQ` first. Most issues already have an answer there.
+⚠️ **This is a forced update**: older builds must install 1.0.0 to keep working.
+Same signing key, so you can install over the top — task configs and the redeemed
+code list are preserved.
 
-**🛟 When You Encounter Issues**  
-Go to `Settings → Logs` to review the task history and error logs and identify the cause.  
-Use `Settings → Logs → Export Log Archive` to generate a log package, then submit it via `Settings → About → Issue Report`.
+### New · Custom tasks (task packs)
 
-**⚠️ Feedback Guidelines**  
-After confirming the issue is not covered by the FAQ, file it on [GitHub](https://github.com/Aliothmoon/MAA-Meow/issues) following the [issue template](https://github.com/Aliothmoon/MAA-Meow/issues/new/choose), with the log archive attached.
+- **Settings → Data → Import task pack** — install a `.m7atask` file written by a
+  third-party author and run it like any built-in task
+- A task file is a **list of actions**, not code: template matching, OCR, colour
+  checks, conditionals, loops, variables and arithmetic — 24 primitives in total
+- At runtime it only gets "look at the screen" and "tap the screen": it cannot run
+  code, install or launch other apps, access the network, or read files outside
+  the pack
+- Hard budget: at most 5000 steps / 20 minutes per run, nesting up to 4 levels
+- **A disclaimer must be read for 8 seconds before import**: packs come from the
+  internet, we do not review their safety or legality, and any loss caused by
+  using one is on the user; report malicious content via feedback
+- Want to write one? See *Task File Specification* in Settings
 
-**💡 Contributing**  
-Contributions on [GitHub](https://github.com/Aliothmoon/MAA-Meow) are welcome. Code contributions are encouraged over issue reports.
+### New · Forgotten Hall (Memory of Chaos)
+
+- Walks Mobile → Interastral Guide → Divergent Universe loot → Forgotten Hall →
+  Memory of Chaos, reads this cycle's progress, then clears floors one by one
+- Floors already at 3 stars are skipped; auto-battle is enabled in combat and
+  rewards are claimed after settlement
+- **No team selection** — it uses whatever team you already configured
+
+### Redeem codes
+
+- The site list is now a set of **permanent** codes, no expiry to worry about
+- One-tap redemption still skips codes you have already claimed
+
+### Fixed
+
+- **Upscaled and cropped frames, *Tap to Enter* never appears** — when some
+  ROMs (e.g. HONOR MagicOS) move the game onto the 1920×1080 virtual display,
+  the system's size-compat scale factor (1.1774) is computed but the window
+  size is never shrunk to match. The app therefore renders at full size and the
+  system scales it again, zooming the canvas from the top-left corner and
+  pushing *Tap to Enter* outside the frame, so OCR reads nothing at all.
+  When the launch is still stuck after 51 seconds, the app now performs one
+  "home-screen round trip" to force a re-layout; recovery takes ~2.2 seconds
+- **Display anomalies are no longer silent** — a notification explains what
+  happened when the app self-heals. It is **a notice, not an error**: the task
+  keeps running to completion
+- **Interastral Guide occasionally undetectable** — OCR ran only once after the
+  screen changed, so a fade-in frame failed the check; now a 2-second observation
+  window plus a forced re-check every second
+- **Daily Training "activity" never read** — the OCR region only covered the
+  flame icon, cutting the number off
+- **Dispatch falsely reported as "not dispatched"** — the ~800 ms transition
+  after tapping could be caught mid-animation; now retried
+- **Trailblaze Power "quick refill" toggle never tapped** — template was 1.4×
+  larger than on device and the search region sat on the toggle's right edge;
+  replaced with an on-device template and a corrected region
+
+### Core Features
+
+- **Background execution via virtual display** — the game runs on a separate
+  virtual display, so you can keep using your phone
+- **Trailblaze Power** — Calyx (Golden/Crimson), Stagnant Shadow, Cavern of
+  Corrosion, Ornament Extraction, Echo of War
+- **Daily Training** — checkbox-driven: dispatch, photo, synthesizer,
+  technique, power consumption, claim rewards
+- **Forgotten Hall** — Memory of Chaos, floor by floor
+- **Start Game** — launches, skips announcements, enters the lobby
+  (local or cloud client)
+- **Mail / Redeem codes** — one-tap collection, batch code entry
+- **Custom tasks** — third-party task packs
+
+### Before You Start
+
+1. **Grant Shizuku or Root permission**
+2. **Disable battery optimization** for this app
+3. Make sure the game is logged in and sitting in the **lobby**
+
+### ⚠️ Important
+
+- Automation carries **account risk** — evaluate it yourself
+- **Do NOT discuss or promote this project in official communities**
+- Third-party task packs come from the internet; verifying their legality is up
+  to you, and **we accept no liability for any loss**
+- When reporting issues, always attach the **log archive**
+  (Settings → Logs → Export)
 
 ---
 
-## Update Explanation
+## Troubleshooting
 
-**App**: UI and feature updates for the application itself.  
-**MAA Resources**: Asset data updates, including new stage maps, drop icons, and operator tags for recruitment.  
-**Navigation Hot Update**: Triggered automatically to update event notices and stage entries.
+**Export logs**: Settings → Logs → Export Log Archive
 
-Each app release includes the latest resources at the time of release. If you don't need features requiring the latest resources, you can postpone updating; when needed, update resources in `Settings → Update`.
+The archive contains engine logs, timeout screenshots and device info.
+**Without logs it is very hard to diagnose anything.**
 
-**Download Source**: Choose GitHub or [MirrorChyan](https://mirrorchyan.com/?source=maameow-anno-en). With a CDK, MirrorChyan enables automatic updates for both the app and resources, with priority downloads via high-speed CDN.
+**Feedback channels**
 
-**Update Channel**: Switch between **Stable** and **Beta** in `Settings → Update → Update Channel` (beta versions have `-beta.x` in the version number). Beta builds may have more issues; Stable is recommended unless you have specific needs.
-
----
-
-## [MAA × MirrorChyan] Community Sponsorship Program
-
-MAA has integrated [MirrorChyan](https://mirrorchyan.com/?source=maa-anno-en). Revenue from MirrorChyan is used to maintain the [MAA Official Website](https://maa.plus/), [Copilot Station](https://prts.plus/), and servers. After deducting necessary operational costs, the MAA Team donates its share of revenue, along with additional sponsorship funds provided by MirrorChyan, **entirely** to support quality Arknights community projects. MAA does not participate in the internal operations of sponsored projects.
-
-Server costs are currently covered for the following community projects:
-
-- [Penguin Statistics](https://penguin-stats.cn/)
-- [Arknights Yituliu](https://ark.yituliu.cn/)
-- [ARKREC Wiki](https://wiki.arkrec.com/)
-- [Arknights Roguelike Tactics](https://arkrog.com/)
-- [PRTS.Map](https://map.ark-nights.com/)
-- [AmiyaBot](https://www.amiyabot.com/)
-- [Arknights Toolbox](https://arkntools.app/)
-- [Lungmen Dragons](https://lungmendragons.com/)
-- [ak-roster](https://www.krooster.com/)
-
-📜 [Full Announcement](https://github.com/MaaAssistantArknights/MaaAssistantArknights/issues/12328)
+- [GitHub Issues](https://github.com/biirekha857-star/March7thAssistantAndroidlocal/issues)
+- QQ Group: https://qm.qq.com/q/xG9yvDYFgc
+- Telegram: https://t.me/+1NJAK_tgLU81NmFl
 
 ---
 
-## Important Notice
+## License
 
-Please do not discuss any MAA-related content under **official posts** by Arknights and HyperGryph on any platform (including but not limited to: Skland, Bilibili, Weibo).
+Built on top of [MAA-Meow](https://github.com/Aliothmoon/MAA-Meow),
+licensed under **AGPL-3.0**.
 
-Do not participate in spreading insider information. It is strictly prohibited to share insider information in any MAA group.
-
----
-
-## Safe Download Reminder
-
-Recently, third parties have been found creating fake MAA repositories, tampering with source code, and bundling malicious programs (stealing personal information, planting trojans, etc.). Please be careful.
-
-MaaMeow is completely free and open-source. We **never** require "follow, like, share, and DM" to access the installer. Please download exclusively from **official channels**:
-
-- **GitHub Release**: [github.com/Aliothmoon/MAA-Meow](https://github.com/Aliothmoon/MAA-Meow/releases)
-- **Official QQ Group**: announcements and files within the group (join via `Settings → About → QQ Group`; do not join through other channels)
-- **MirrorChyan**: the officially supported mirror download service
-
-**Avoid downloading from network drives, forum posts, or any unofficial sources.**
-
-Be cautious with all-in-one packages, modified builds, or repackaged versions. Only use them if you fully trust the source and have completed your own security checks.
-
-Please stay vigilant about where your files come from to protect your account and device. Feel free to pass this along to friends to help them stay safe too.
+Task logic inspired by
+[March7thAssistant](https://github.com/moesnow/March7thAssistant).

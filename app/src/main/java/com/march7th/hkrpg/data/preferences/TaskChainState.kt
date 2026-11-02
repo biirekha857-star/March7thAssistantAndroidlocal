@@ -236,6 +236,15 @@ class TaskChainState(
      */
     suspend fun addCustomNode(packId: String, packName: String): String {
         val nodeId = mutate {
+            // 同一个包只留一个板块：覆盖升级、重复导入都不该叠出第二张卡。
+            // 已经存在就原样返回它的 id，调用方拿去高亮/展开即可。
+            val existing = it.firstOrNull { node ->
+                (node.config as? CustomTaskConfig)?.packId == packId
+            }
+            if (existing != null) {
+                Timber.d("Custom node already exists: %s (%s)", existing.name, packId)
+                return@mutate existing.id
+            }
             val name = packName.trim().ifBlank { defaultTaskName(TaskTypeInfo.CUSTOM) }
             val node = TaskChainNode(
                 id = UUID.randomUUID().toString(),

@@ -197,6 +197,21 @@ class SettingsViewModel(
                     _taskPacks.value = withContext(Dispatchers.IO) {
                         runCatching { taskPackStore.list() }.getOrDefault(emptyList())
                     }
+                    // 导入成功 → 顺手在任务链里放一个板块。
+                    //
+                    // 用户的心智是"导入一个包 = 任务列表里多一项"，不该还要自己
+                    // 去「添加任务」里翻。addCustomNode 对同 packId 去重，所以
+                    // 覆盖升级时不会叠出第二张卡，只是把节点还回来。
+                    //
+                    // 默认不勾选：跟其它任务一样，导入不等于要立刻跑。
+                    withContext(Dispatchers.IO) {
+                        runCatching {
+                            taskChainState.addCustomNode(
+                                result.pack.id,
+                                result.pack.displayName,
+                            )
+                        }.onFailure { Timber.w(it, "add custom node after import failed") }
+                    }
                     _settingsMessage.value = if (result.upgraded) {
                         uiTextOf(R.string.settings_taskpack_updated, result.pack.displayName)
                     } else {
