@@ -8,6 +8,7 @@ import com.march7th.hkrpg.utils.JsonUtils
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 
 /**
@@ -100,7 +101,7 @@ class ScriptedTaskRunner(
 
         this.packId = packId
         this.packRoot = packDir
-        this.params = buildParams(pack, overrides) + overrides
+        this.params = clampIntParams(pack, buildParams(pack, overrides) + overrides)
         this.vars.clear()
         this.budget = PackSandbox.Budget(isCancelled)
 
@@ -130,6 +131,50 @@ class ScriptedTaskRunner(
             }
             val raw = p.default?.let { (it as? JsonPrimitive)?.content }.orEmpty()
             out[p.key] = raw.ifBlank { if (p.type == "int") "1" else "" }
+        }
+        return out
+    }
+
+    /**
+     * 把 int 参数夹回作者声明的 `min` ~ `max`。
+     *
+     * ## 为什么在执行期夹，而不是在输入框里拦
+     *
+     * 输入框拦会让打字过程很难受 —— 想输 15，刚按下 1 就被弹成 10。
+     * 作者声明的范围是**流程能接受的边界**，不是输入格式，所以放在执行前
+     * 统一收口：用户想填什么填什么，跑的时候按边界值走。
+     *
+     * ⚠️ 夹了必须写日志。否则用户填了 999，流程实际只跑 10 次，
+     * 他会以为包写错了 —— 日志是唯一能解释清楚的地方。
+     *
+     * 非整数（比如空着或写了字母）回落到包里的 `default`，同样夹一次。
+     */
+    private fun clampIntParams(
+        pack: CustomTaskPack,
+        values: Map<String, String>,
+    ): Map<String, String> {
+        val out = LinkedHashMap(values)
+        pack.params.forEach { p ->
+            if (!p.type.equals("int", ignoreCase = true)) return@forEach
+            val lo = p.min
+            val hi = p.max
+            if (lo == null && hi == null) return@forEach
+            val key = p.key
+            if (key.isBlank() || key !in out) return@forEach
+
+            val raw = out.getValue(key).trim()
+            val parsed = raw.toIntOrNull()
+            val fallback = runCatching { p.default?.jsonPrimitive?.intOrNull }.getOrNull()
+            val base = parsed ?: fallback ?: return@forEach
+            val fixed = base.coerceIn(lo ?: Int.MIN_VALUE, hi ?: Int.MAX_VALUE)
+
+            when {
+                parsed == null -> log("参数 $key=「$raw」不是整数，按 $fixed 执行")
+                fixed != parsed -> log(
+                    "参数 $key=$parsed 超出 ${lo ?: "-∞"}~${hi ?: "+∞"}，按 $fixed 执行"
+                )
+            }
+            out[key] = fixed.toString()
         }
         return out
     }
