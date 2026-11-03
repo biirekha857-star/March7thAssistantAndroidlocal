@@ -4,6 +4,7 @@ import android.app.Application
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.SystemClock
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.ViewModel
@@ -347,6 +348,18 @@ class SettingsViewModel(
 
     fun setDebugMode(enabled: Boolean) {
         viewModelScope.launch {
+            // 关调试模式时顺手收掉坐标记录。
+            //
+            // 那个开关只对调试模式开放，调试模式一关就再没有入口去关它了 ——
+            // 留着一个一直在读触摸屏的后台线程，既费电又会让后续日志平白多出
+            // 一堆点击记录。
+            if (!enabled) {
+                appSettingsManager.setCoordinateTrace(false)
+                withContext(Dispatchers.IO) {
+                    runCatching { RemoteServiceManager.getInstanceOrNull()?.stopCoordinateTrace() }
+                        .onFailure { Timber.w(it, "coordinateTrace: stop failed") }
+                }
+            }
             appSettingsManager.setDebugMode(enabled)
             achievementReporter.reportDebugModeChanged(enabled)
             val state = RemoteServiceManager.state.value
@@ -356,6 +369,42 @@ class SettingsViewModel(
             if (enabled) {
                 Misc.restartApp(app)
             }
+        }
+    }
+
+    // ───────────────── 坐标记录 ─────────────────
+
+    val coordinateTrace: StateFlow<Boolean> = appSettingsManager.coordinateTrace
+
+    /**
+     * 开关「把点击坐标记进日志」。
+     *
+     * 真正的记录发生在提权进程里（`/dev/input` 只有它能读），这里只负责
+     * 下发指令 + 落盘开关状态。开启时用 [RemoteServiceManager.useRemoteService]
+     * 确保服务连上；关闭时只在已连接的情况下发一条，不为了关它去拉起服务。
+     */
+    fun setCoordinateTrace(enabled: Boolean) {
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    if (enabled) {
+                        RemoteServiceManager.useRemoteService(timeoutMs = 8_000L) { svc ->
+                            svc.startCoordinateTrace()
+                        }
+                    } else {
+                        RemoteServiceManager.getInstanceOrNull()?.stopCoordinateTrace()
+                    }
+                }.onFailure { Timber.w(it, "coordinateTrace: IPC failed") }.isSuccess
+            }
+
+            // 开启失败就别把开关留在"开"的位置 —— 用户会以为在记，其实一行都没有。
+            // 弹回去至少让人当场知道"没成"，而不是等他点了半天去日志里找才发现空的。
+            if (enabled && !ok) {
+                appSettingsManager.setCoordinateTrace(false)
+                Toast.makeText(app, R.string.settings_coord_trace_failed, Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            appSettingsManager.setCoordinateTrace(enabled)
         }
     }
 

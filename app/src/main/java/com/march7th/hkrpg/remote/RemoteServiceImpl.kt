@@ -15,6 +15,7 @@ import com.march7th.hkrpg.constant.DefaultDisplayConfig
 import com.march7th.hkrpg.constant.DisplayMode
 import com.march7th.hkrpg.core.InputControlUtils
 import com.march7th.hkrpg.remote.internal.ActivityUtils
+import com.march7th.hkrpg.remote.internal.CoordinateTracer
 import com.march7th.hkrpg.remote.internal.CoreDataStore
 import com.march7th.hkrpg.remote.internal.DiagDumper
 import com.march7th.hkrpg.remote.internal.GameAudioMuteController
@@ -300,6 +301,15 @@ class RemoteServiceImpl : RemoteService.Stub() {
     }
 
     override fun clearCoreData(): Boolean = coreData.clear().also { Ln.i("$TAG: clearCoreData ok=$it") }
+
+    // ───────────────── 坐标记录 ─────────────────
+    //
+    // 触摸屏节点只有提权进程能读，所以记录逻辑必须留在这一侧。
+    // 用户导出日志时会带上 engine.log，坐标就在里面。
+
+    override fun startCoordinateTrace() = CoordinateTracer.start()
+
+    override fun stopCoordinateTrace() = CoordinateTracer.stop()
 
     override fun screencap(width: Int, height: Int) {
     }

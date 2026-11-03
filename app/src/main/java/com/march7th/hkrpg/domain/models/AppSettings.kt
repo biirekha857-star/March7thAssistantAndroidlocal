@@ -20,6 +20,15 @@ data class AppSettings(
     @PrefKey(default = "false")
     val debugMode: String = "false",
 
+    /**
+     * 坐标记录：开启后把用户的真实点击换算成 0~1 的比例写进引擎日志。
+     *
+     * 只对调试模式开放 —— 平时开着没有意义，还会让日志多出一堆点击。
+     * 提权进程重启后不会自动恢复（App 侧开启时才下发），避免上次忘了关。
+     */
+    @PrefKey(default = "false")
+    val coordinateTrace: String = "false",
+
     @PrefKey(default = "true")
     val autoCheckUpdate: String = "true",
 

@@ -675,6 +675,7 @@ fun LogSettingsScreen(
     viewModel: SettingsViewModel = koinViewModel(),
 ) {
     val debugMode by viewModel.debugMode.collectAsStateWithLifecycle()
+    val coordinateTrace by viewModel.coordinateTrace.collectAsStateWithLifecycle()
     var showExportSheet by remember { mutableStateOf(false) }
     var showDebugModeConfirm by remember { mutableStateOf(false) }
 
@@ -722,6 +723,16 @@ fun LogSettingsScreen(
                             viewModel.setDebugMode(false)
                         }
                     },
+                )
+                ListItemDivider()
+                // 坐标记录只对调试模式开放：平时开着没有意义，还会让日志多出一堆点击。
+                // 关掉调试模式时由 ViewModel 自动把它收掉。
+                SettingSwitchItem(
+                    title = stringResource(R.string.settings_coord_trace_title),
+                    description = stringResource(R.string.settings_coord_trace_desc),
+                    checked = coordinateTrace,
+                    enabled = debugMode,
+                    onCheckedChange = { viewModel.setCoordinateTrace(it) },
                 )
             }
         }

@@ -58,6 +58,9 @@
     <string name="log_export_save_success">Saved: %1$s</string>
     <string name="log_export_failed">Export failed — make sure there are logs to export</string>
     <string name="log_export_in_progress">Exporting…</string>
+    <string name="settings_coord_trace_failed">Cannot reach the privileged service, so coordinate logging was not started</string>
+    <string name="settings_coord_trace_title">Log tap coordinates</string>
+    <string name="settings_coord_trace_desc">Tap the spots you want to calibrate in the game; every tap is logged. Search for tap in the exported log (needs Shizuku / Root connected)</string>
     <string name="settings_debug_mode_title">Debug Mode</string>
     <string name="settings_debug_mode_desc">Record detailed log information when enabled</string>
     <string name="settings_section_display">Display</string>

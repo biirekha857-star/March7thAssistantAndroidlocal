@@ -280,6 +280,9 @@
     <string name="log_export_save_success">已保存：%1$s</string>
     <string name="log_export_failed">导出失败，请确认有可导出的日志</string>
     <string name="log_export_in_progress">正在导出…</string>
+    <string name="settings_coord_trace_failed">没连上提权服务，坐标记录没有开启</string>
+    <string name="settings_coord_trace_title">把点击坐标记进日志</string>
+    <string name="settings_coord_trace_desc">开启后回游戏里逐个点想校准的位置，每次点击都会记一行坐标。导出日志后搜 tap 就能找到（需 Shizuku / Root 已连接）</string>
     <string name="settings_debug_mode_title">调试模式</string>
     <string name="settings_debug_mode_desc">启用后记录详细日志信息</string>
 
