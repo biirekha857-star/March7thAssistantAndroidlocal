@@ -77,11 +77,27 @@ class ScreenNavigator(
      */
     private val CROP_CLOSE_CORNER = NormRect(0.88f, 0.00f, 0.12f, 0.14f)
 
-    /** 关闭按钮的候选模板（通用关闭、手机界面关闭）。 */
+    /** 关闭按钮的候选模板（通用关闭、手机界面关闭、指南页的 ✕）。 */
     private val CLOSE_TEMPLATES = listOf(
         "zh_CN/base/click_close.png",
         "share/plot/close_phone.png",
+        // 「星际和平指南」右上角那个 ✕：四段斜线 + 中心圆点。
+        //
+        // 它和上面两个模板**不是同一个图形**，所以 11-03 的日志里明明画面上
+        // 就有 ✕，`closeCurrent` 却一路报"未见可点的 ✕"→ 点左上返回（指南页
+        // 左侧没有返回）→ 认输。实测这个模板在指南页上 0.874，稳稳过 0.80。
+        "screen/close_x.png",
     )
+
+    /**
+     * 「指南子标签 → 第几格」的实测结果，进程内记住。
+     *
+     * 标签栏靠写死的坐标点，一旦游戏改了布局（11-03 就在最左边加了
+     * 「新手教程」那格，全部右移一位），写死的 index 就整体错位，
+     * 点下去画面纹丝不动。所以位置必须实测，且结果要缓存 ——
+     * 一次任务里会反复切标签，不能每次都试六格。
+     */
+    private val guideTabSlot = java.util.concurrent.ConcurrentHashMap<GuideTab, Int>()
 
     /** 等大厅时重新判态的间隔。 */
     private const val MAIN_POLL_MS = 120L
@@ -1366,23 +1382,32 @@ class ScreenNavigator(
     }
 
     /**
-     * 星际和平指南的子标签。顺序与顶部 tab 从左到右一致。
+     * 星际和平指南的子标签。
      *
-     * ## ⚠️ 这里有 5 个 tab，不是 4 个
+     * ## 最左边那格是新手教程，**一直在**
      *
-     * 实机截图（1920×1080）上从左到右依次是：
-     * 每日实训 / 生存索引 / **模拟宇宙** / 逐光捡金 / 旷宇纷争。
+     * 崩铁在 2026-11 的版本里给指南页加了一格「新手教程奖励」放在最左边：
+     * 做完了不会消失，只是**再打开指南时游戏会自动跳过它**、落到别的标签上。
+     * 格子本身还在，所以位置是固定的 6 格：
      *
-     * 早期版本漏了「模拟宇宙」，导致 `RELICS` 的 index 是 2 ——
-     * 点下去落在第 3 个 tab（模拟宇宙）上，`gotoGuide4()` 永远失败。
-     * [index] 必须和屏幕上的物理位置一一对应，漏一个就整体错位。
+     * ```
+     * [新手教程] [每日实训] [生存索引] [模拟宇宙] [逐光捡金] [旷宇纷争]
+     *      0          1          2          3          4          5
+     * ```
+     *
+     * 老版本按 5 格写死（每日实训 = 0、生存索引 = 1），遇上这版就整体
+     * 左错一格 —— 点「生存索引」落到「每日实训」上，点三次画面纹丝不动，
+     * 11-03 的清体力就是这么连续失败的。
+     *
+     * [index] 现在是实测值，但 [switchGuideTab] 仍会逐格验证兜底：
+     * 游戏再动标签栏时，写死的数一定还会错，能自己找回来比改一行代码快。
      */
     enum class GuideTab(val label: String, val index: Int) {
-        DAILY("每日实训", 0),
-        SURVIVAL("生存索引", 1),
-        SU("模拟宇宙", 2),
-        RELICS("逐光捡金", 3),
-        WAR("旷宇纷争", 4),
+        DAILY("每日实训", 1),
+        SURVIVAL("生存索引", 2),
+        SU("模拟宇宙", 3),
+        RELICS("逐光捡金", 4),
+        WAR("旷宇纷争", 5),
     }
 
     /**
@@ -1419,6 +1444,15 @@ class ScreenNavigator(
         /** tab 栏中心 y（像素，1080 高基准）。 */
         const val CENTER_Y = 172f
 
+        /**
+         * 逐格试探时最多点到第几格。
+         *
+         * 当前是 6 格（新手教程 / 每日实训 / 生存索引 / 模拟宇宙 / 逐光捡金 /
+         * 旷宇纷争），留到 7 是余量 —— 这一段只在写死的 index 全落空时才走到，
+         * 多试一格只多花 1.5 秒，少试一格则会漏掉目标。
+         */
+        const val MAX_TABS = 7
+
         /** 基准帧尺寸。 */
         const val BASE_W = 1920f
         const val BASE_H = 1080f
@@ -1427,31 +1461,87 @@ class ScreenNavigator(
     /**
      * 切到指定子标签。
      *
+     * ## 为什么要逐格验证，而不是点一下就走
+     *
+     * tab 栏是**纯图标、没有文字**，OCR 指不到；图标之间又长得像，模板匹配
+     * 也认不准，只能按格子点 —— 而格子位置是靠写死的坐标算的，游戏一加
+     * 标签就全错。11-03 那次（指南页最左边多了一格新手教程）就是这么崩的：
+     * 点「生存索引」落在「每日实训」上，画面纹丝不动，重试三次全落空。
+     *
+     * 所以点完必须用 [guideTab] 的 OCR 结果验收，不对就换下一格，
+     * 命中的位置记进 [guideTabSlot]，同一进程内后面直接用它。
+     *
      * @return 切换后确实处于目标标签（**用 OCR 复核**，不看点击返回值）
      */
     fun switchGuideTab(target: GuideTab): Boolean {
-        if (guideTab() == target) {
+        val before = guideTab()
+        if (before == target) {
             Ln.i("$TAG: 已在指南子标签「${target.label}」")
             return true
         }
-        repeat(3) { attempt ->
-            // 按基准坐标折算到当前帧（虚拟屏固定 1920×1080，折算比恒为 1）
-            val sx = auto.width / GuideBar.BASE_W
-            val sy = auto.height / GuideBar.BASE_H
-            val cx = ((GuideBar.LEFT + GuideBar.TAB_W * (target.index + 0.5f)) * sx).toInt()
-            val cy = (GuideBar.CENTER_Y * sy).toInt()
-            Ln.i("$TAG: 点指南子标签「${target.label}」@($cx,$cy)（第 ${attempt + 1} 次）")
-            auto.tap(cx, cy)
-            sleepInterruptible(SETTLE_MS)
-            val now = guideTab()
-            if (now == target) {
-                Ln.i("$TAG: 已切换到「${target.label}」")
+
+        val candidates = buildList {
+            guideTabSlot[target]?.let { add(it) }
+            add(target.index)
+            // 兜底：标签栏再被改动时（加一格、顺序变了）靠这个自己找回来
+            for (slot in 0 until GuideBar.MAX_TABS) add(slot)
+        }.filter { it in 0 until GuideBar.MAX_TABS }.distinct()
+
+        for (slot in candidates) {
+            val landed = tapGuideSlot(slot, target, before)
+            if (landed == target) {
+                Ln.i("$TAG: 已切换到「${target.label}」（第 ${slot + 1} 格）")
                 return true
             }
-            Ln.w("$TAG: 切换后仍在「${now?.label ?: "未知页"}」，重试")
+            // 点完认不出是哪个标签，可能已经被踹出指南页了。
+            // 再往下点就是在别的界面上瞎点。
+            if (landed == null) {
+                Ln.w("$TAG: 第 ${slot + 1} 格点完已经不在指南页，停止试探")
+                return false
+            }
         }
-        Ln.w("$TAG: 切换指南子标签「${target.label}」失败")
+
+        Ln.w("$TAG: 切换指南子标签「${target.label}」失败（${GuideBar.MAX_TABS} 格都试过了）")
         return false
+    }
+
+    /**
+     * 点第 [slot] 格，返回点完之后判定到的标签。
+     *
+     * 同一格最多点两次：第一次没换页多半是点击被吞（云游戏的输入延迟明显
+     * 比本地大，实测有整次 tap 不生效的情况），再点一次才算数。
+     *
+     * @param before 点之前停留在哪个标签，用来区分"被吞"和"这格就是当前页"
+     * @return 命中目标时返回 [target]；否则返回实际落到的标签；
+     *         **null 表示认不出页面**（多半已经被踹出指南页）
+     */
+    private fun tapGuideSlot(slot: Int, target: GuideTab, before: GuideTab?): GuideTab? {
+        var last: GuideTab? = null
+        repeat(2) { attempt ->
+            val sx = auto.width / GuideBar.BASE_W
+            val sy = auto.height / GuideBar.BASE_H
+            val cx = ((GuideBar.LEFT + GuideBar.TAB_W * (slot + 0.5f)) * sx).toInt()
+            val cy = (GuideBar.CENTER_Y * sy).toInt()
+            Ln.i("$TAG: 点指南第 ${slot + 1} 格 @($cx,$cy)（第 ${attempt + 1} 次）")
+            if (!auto.tap(cx, cy)) return last
+            sleepInterruptible(SETTLE_MS)
+
+            val landed = guideTab()
+            last = landed
+            if (landed == target) {
+                guideTabSlot[target] = slot
+                return target
+            }
+            // 顺手记下"这格是什么"，后面找别的标签能少试几次
+            if (landed != null) guideTabSlot[landed] = slot
+            // 认不出页面 —— 不在指南页了，别再点
+            if (landed == null) return null
+            // 换到了别的标签：这格确实不是目标
+            if (landed != before) return landed
+            // 停在原地：可能是点击被吞，再给一次机会
+            if (attempt == 0) Ln.w("$TAG: 第 ${slot + 1} 格点完没变化，再点一次")
+        }
+        return last
     }
 
     /**
