@@ -120,7 +120,9 @@ data class StartUpTaskConfig(
          */
         CLOUD(
             wireName = "cloud",
-            clientKey = "Official",
+            // 云游戏有独立的包名，不能复用官服的 —— 静音、AppOps、进程监控
+            // 全都要按这个 key 去查 Packages，复用会让它们去操作一个没装的包
+            clientKey = "Cloud",
             packageName = "com.miHoYo.cloudgames.hkrpg",
             defaultTimeoutSec = 300,
         );

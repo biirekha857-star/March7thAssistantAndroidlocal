@@ -17,6 +17,10 @@ object Packages : Iterable<Map.Entry<String, String>> {
         "Bilibili" to "com.miHoYo.hkrpg.bilibili",
         // 国际服
         "YoStarEN" to "com.HoYoverse.hkrpgoversea",
+        // 云游戏。它和官服是**两个包**，静音 / AppOps / 进程监控都按包名走，
+        // 之前偷懒让云游戏共用 "Official"，于是云游戏跑起来满日志都是
+        // "com.miHoYo.hkrpg not found"。
+        "Cloud" to "com.miHoYo.cloudgames.hkrpg",
     )
 
     operator fun get(type: String): String? = packageName[type]

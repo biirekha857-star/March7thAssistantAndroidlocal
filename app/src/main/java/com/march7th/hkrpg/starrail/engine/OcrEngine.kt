@@ -294,15 +294,29 @@ object OcrEngine {
     /**
      * 找出包含指定文字的框。三级匹配：完全相同 → 包含 → 被包含。
      *
-     * 之所以要「被包含」这级：OCR 会把相邻符号一起框进来
-     * （比如 `拟造花萼（金） x12`），完全相等就永远命不中。
+     * 之所以要「被包含」这级：OCR 会把文字读不全（「退出关卡」只读出
+     * 「退出关」），只做前面两级会永远命不中。
+     *
+     * ## ⚠️ 「被包含」这一级有长度下限，否则会点错按钮
+     *
+     * 11-03 实测：退副本时依次试「退出关卡」→「退出挑战」，画面停在
+     * **副本准备页**（上面只有一个「挑战」按钮）。旧的第三级是
+     * `length >= 2 && 目标.contains(页面文字)`，「挑战」满足
+     * `"退出挑战".contains("挑战")` —— 于是它照着「挑战」按了下去，
+     * 等于**重新进了一次副本**，然后整条链路卡死三分钟。
+     *
+     * 所以下限提到 3 个字：OCR 漏字通常只漏一两个，短于 3 字的碎片
+     * （「挑战」「确定」这种）不足以证明它就是目标。
+     * 漏点最多重试一次，错点会改变游戏状态 —— 两者代价不对等。
      */
     fun findText(image: Mat, target: String, region: Rect? = null): OcrResult? {
         val norm = target.replace(" ", "").replace("\u3000", "")
         val all = run(image, region)
         return all.firstOrNull { it.normalized() == norm }
             ?: all.firstOrNull { it.normalized().contains(norm) }
-            ?: all.firstOrNull { it.normalized().length >= 2 && norm.contains(it.normalized()) }
+            ?: all.firstOrNull {
+                it.normalized().length >= 3 && norm.contains(it.normalized())
+            }
     }
 
     /**
@@ -314,7 +328,8 @@ object OcrEngine {
         val norm = target.replace(" ", "").replace("\u3000", "")
         return run(image, region).filter {
             val t = it.normalized()
-            t == norm || t.contains(norm) || (t.length >= 2 && norm.contains(t))
+            // 第三级的 3 字下限同 [findText]：短碎片会误命中别的按钮
+            t == norm || t.contains(norm) || (t.length >= 3 && norm.contains(t))
         }
     }
 
