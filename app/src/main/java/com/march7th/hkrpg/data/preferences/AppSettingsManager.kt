@@ -168,15 +168,6 @@ class AppSettingsManager internal constructor(
         }
     }
 
-    // 坐标记录（调试用）
-    val coordinateTrace: StateFlow<Boolean> = setting { it.coordinateTrace.toBooleanStrictOrNull() ?: false }
-
-    suspend fun setCoordinateTrace(enabled: Boolean) {
-        with(AppSettingsSchema) {
-            context.dataStore.edit { it[coordinateTrace] = enabled.toString() }
-        }
-    }
-
     // 启动时自动检查更新
     val autoCheckUpdate: StateFlow<Boolean> = setting { it.autoCheckUpdate.toBooleanStrictOrNull() ?: true }
 

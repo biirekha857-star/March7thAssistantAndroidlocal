@@ -2,7 +2,9 @@ package com.march7th.hkrpg.presentation.viewmodel
 
 import android.app.Application
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatDelegate
@@ -16,6 +18,7 @@ import com.march7th.hkrpg.data.api.message
 import com.march7th.hkrpg.constant.DefaultDisplayConfig
 import com.march7th.hkrpg.constant.OFFICIAL_SHIZUKU_PACKAGE
 import com.march7th.hkrpg.data.model.update.UpdateChannel
+import com.march7th.hkrpg.data.config.CorePathConfig
 import com.march7th.hkrpg.data.preferences.AppSettingsManager
 import com.march7th.hkrpg.data.preferences.ConfigBackupManager
 import com.march7th.hkrpg.data.preferences.TaskChainState
@@ -61,6 +64,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import timber.log.Timber
+import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
 import kotlin.time.Duration.Companion.milliseconds
@@ -90,6 +94,7 @@ class SettingsViewModel(
     private val yituliuApiService: YituliuApiService,
     private val taskPackStore: CustomTaskPackStore,
     private val remoteTaskPackService: RemoteTaskPackService,
+    private val corePathConfig: CorePathConfig,
 ) : ViewModel() {
 
     // ========== 导入导出 ==========
@@ -348,18 +353,6 @@ class SettingsViewModel(
 
     fun setDebugMode(enabled: Boolean) {
         viewModelScope.launch {
-            // 关调试模式时顺手收掉坐标记录。
-            //
-            // 那个开关只对调试模式开放，调试模式一关就再没有入口去关它了 ——
-            // 留着一个一直在读触摸屏的后台线程，既费电又会让后续日志平白多出
-            // 一堆点击记录。
-            if (!enabled) {
-                appSettingsManager.setCoordinateTrace(false)
-                withContext(Dispatchers.IO) {
-                    runCatching { RemoteServiceManager.getInstanceOrNull()?.stopCoordinateTrace() }
-                        .onFailure { Timber.w(it, "coordinateTrace: stop failed") }
-                }
-            }
             appSettingsManager.setDebugMode(enabled)
             achievementReporter.reportDebugModeChanged(enabled)
             val state = RemoteServiceManager.state.value
@@ -372,41 +365,56 @@ class SettingsViewModel(
         }
     }
 
-    // ───────────────── 坐标记录 ─────────────────
+    // ───────────────── 坐标取点 ─────────────────
 
-    val coordinateTrace: StateFlow<Boolean> = appSettingsManager.coordinateTrace
+    /** 取点对话框里显示的截图；null 表示对话框关着。 */
+    private val _pickFrame = MutableStateFlow<Bitmap?>(null)
+    val pickFrame: StateFlow<Bitmap?> = _pickFrame.asStateFlow()
 
     /**
-     * 开关「把点击坐标记进日志」。
+     * 截一张当前游戏画面，交给「取坐标」对话框。
      *
-     * 真正的记录发生在提权进程里（`/dev/input` 只有它能读），这里只负责
-     * 下发指令 + 落盘开关状态。开启时用 [RemoteServiceManager.useRemoteService]
-     * 确保服务连上；关闭时只在已连接的情况下发一条，不为了关它去拉起服务。
+     * ## 为什么用截图取点，而不是读用户的真实点击
+     *
+     * 游戏跑在**虚拟屏**（1920×1080）上，任务包里的 tap 用的就是这套坐标；
+     * 而用户手指点的永远是**物理屏**（这台机器是 1264×2780）。两者宽高比
+     * 不同（16:9 vs 20:9），游戏在两块屏上会把 UI 摆在不同的相对位置 ——
+     * 归一化之后也对不上，照抄进任务包一定点偏。
+     *
+     * 截图是虚拟屏的原始帧（1920×1080），用户在这张图上点哪里，换算出来
+     * 就直接是任务包能用的坐标，中间不需要任何跨屏映射。
      */
-    fun setCoordinateTrace(enabled: Boolean) {
+    fun captureForCoordinatePick() {
         viewModelScope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                runCatching {
-                    if (enabled) {
-                        RemoteServiceManager.useRemoteService(timeoutMs = 8_000L) { svc ->
-                            svc.startCoordinateTrace()
-                        }
-                    } else {
-                        RemoteServiceManager.getInstanceOrNull()?.stopCoordinateTrace()
-                    }
-                }.onFailure { Timber.w(it, "coordinateTrace: IPC failed") }.isSuccess
+            val bitmap = withContext(Dispatchers.IO) { captureEngineFrame() }
+            if (bitmap == null) {
+                Toast.makeText(app, R.string.settings_coord_pick_failed, Toast.LENGTH_SHORT).show()
+            } else {
+                _pickFrame.value = bitmap
             }
-
-            // 开启失败就别把开关留在"开"的位置 —— 用户会以为在记，其实一行都没有。
-            // 弹回去至少让人当场知道"没成"，而不是等他点了半天去日志里找才发现空的。
-            if (enabled && !ok) {
-                appSettingsManager.setCoordinateTrace(false)
-                Toast.makeText(app, R.string.settings_coord_trace_failed, Toast.LENGTH_SHORT).show()
-                return@launch
-            }
-            appSettingsManager.setCoordinateTrace(enabled)
         }
     }
+
+    fun closeCoordinatePick() {
+        _pickFrame.value = null
+    }
+
+    /** 让提权进程抓一帧再读回来。失败返回 null。 */
+    private suspend fun captureEngineFrame(): Bitmap? = runCatching {
+        val saved = RemoteServiceManager.useRemoteService(timeoutMs = 8_000L) { svc ->
+            svc.captureFramePng(corePathConfig.coreDebugScreenshotsDir)
+        } ?: return@runCatching null
+
+        // 跨进程只能走 openCoreDebugFile：截图落在 core 的 debug/screenshots 下，
+        // App 身份不一定读得到（core 分离时在 /data/local/tmp）
+        val pfd = RemoteServiceManager.getInstanceOrNull()
+            ?.openCoreDebugFile("screenshots/${File(saved).name}")
+            ?: return@runCatching null
+
+        ParcelFileDescriptor.AutoCloseInputStream(pfd).use { input ->
+            BitmapFactory.decodeStream(input)
+        }
+    }.onFailure { Timber.w(it, "captureForCoordinatePick failed") }.getOrNull()
 
     val autoCheckUpdate: StateFlow<Boolean> = appSettingsManager.autoCheckUpdate
         .stateIn(

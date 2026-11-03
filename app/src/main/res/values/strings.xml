@@ -280,9 +280,17 @@
     <string name="log_export_save_success">已保存：%1$s</string>
     <string name="log_export_failed">导出失败，请确认有可导出的日志</string>
     <string name="log_export_in_progress">正在导出…</string>
-    <string name="settings_coord_trace_failed">没连上提权服务，坐标记录没有开启</string>
-    <string name="settings_coord_trace_title">把点击坐标记进日志</string>
-    <string name="settings_coord_trace_desc">开启后回游戏里逐个点想校准的位置，每次点击都会记一行坐标。导出日志后搜 tap 就能找到（需 Shizuku / Root 已连接）</string>
+    <string name="settings_coord_pick_action">截一张图取坐标</string>
+    <string name="settings_coord_pick_action_desc">在游戏画面上点你要的位置，直接得到能填进任务包的坐标</string>
+    <string name="settings_coord_pick_need_debug">先开启上面的「调试模式」</string>
+    <string name="settings_coord_pick_failed">截图失败 —— 让游戏先跑起来、画面出来了再试</string>
+    <string name="settings_coord_pick_title">取坐标</string>
+    <string name="settings_coord_pick_hint">在图上点你想校准的位置，下面会列出坐标。可以连着点多下。</string>
+    <string name="settings_coord_pick_empty">还没取点 —— 点一下图上任意位置试试</string>
+    <string name="settings_coord_pick_count">已取 %1$d 个</string>
+    <string name="settings_coord_pick_copy">复制全部</string>
+    <string name="settings_coord_pick_clear">清空</string>
+    <string name="settings_coord_pick_copied">已复制到剪贴板</string>
     <string name="settings_debug_mode_title">调试模式</string>
     <string name="settings_debug_mode_desc">启用后记录详细日志信息</string>
 

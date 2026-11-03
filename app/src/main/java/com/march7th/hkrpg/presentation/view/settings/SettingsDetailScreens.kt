@@ -675,7 +675,8 @@ fun LogSettingsScreen(
     viewModel: SettingsViewModel = koinViewModel(),
 ) {
     val debugMode by viewModel.debugMode.collectAsStateWithLifecycle()
-    val coordinateTrace by viewModel.coordinateTrace.collectAsStateWithLifecycle()
+    val pickFrame by viewModel.pickFrame.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     var showExportSheet by remember { mutableStateOf(false) }
     var showDebugModeConfirm by remember { mutableStateOf(false) }
 
@@ -725,14 +726,22 @@ fun LogSettingsScreen(
                     },
                 )
                 ListItemDivider()
-                // 坐标记录只对调试模式开放：平时开着没有意义，还会让日志多出一堆点击。
-                // 关掉调试模式时由 ViewModel 自动把它收掉。
-                SettingSwitchItem(
-                    title = stringResource(R.string.settings_coord_trace_title),
-                    description = stringResource(R.string.settings_coord_trace_desc),
-                    checked = coordinateTrace,
-                    enabled = debugMode,
-                    onCheckedChange = { viewModel.setCoordinateTrace(it) },
+                // 取坐标：截一张游戏画面，在图上点哪就得到哪儿的 0~1 坐标。
+                // 只对调试模式开放 —— 它是给写任务包的人校准用的，不是日常功能。
+                SettingClickItem(
+                    title = stringResource(R.string.settings_coord_pick_action),
+                    description = stringResource(R.string.settings_coord_pick_action_desc),
+                    onClick = {
+                        if (debugMode) {
+                            viewModel.captureForCoordinatePick()
+                        } else {
+                            Toast.makeText(
+                                context,
+                                R.string.settings_coord_pick_need_debug,
+                                Toast.LENGTH_SHORT,
+                            ).show()
+                        }
+                    },
                 )
             }
         }
@@ -752,6 +761,11 @@ fun LogSettingsScreen(
             dismissText = stringResource(R.string.common_cancel),
             icon = Icons.Rounded.Build,
         )
+    }
+
+    // 取坐标对话框：截图铺满屏幕，点哪儿记哪儿
+    pickFrame?.let { frame ->
+        CoordinatePickerDialog(bitmap = frame, onDismiss = { viewModel.closeCoordinatePick() })
     }
 }
 

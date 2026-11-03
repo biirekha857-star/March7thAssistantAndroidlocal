@@ -16,20 +16,6 @@ internal class TouchStreamParser {
     private val _strokes = mutableListOf<TouchStroke>()
     val strokes: List<TouchStroke> get() = _strokes
 
-    /**
-     * 取走并清空已完成的轨迹。
-     *
-     * 一次性的录制（解锁手势）读完 [strokes] 就收工，无所谓内存；
-     * 但持续记录坐标时轨迹会一直累积，必须边读边清。
-     * 内部的 MAX_STROKES 是防爆的硬上限，清空后才继续接收新的。
-     */
-    fun drainStrokes(): List<TouchStroke> {
-        if (_strokes.isEmpty()) return emptyList()
-        val out = ArrayList<TouchStroke>(_strokes)
-        _strokes.clear()
-        return out
-    }
-
     private var slot = 0
 
     /** 第一个按下的 slot 即主触点；驱动未必从 slot 0 起手 */

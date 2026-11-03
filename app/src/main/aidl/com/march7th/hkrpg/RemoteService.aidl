@@ -116,9 +116,4 @@ interface RemoteService {
 
     boolean clearCoreData() = 50;
 
-    // 坐标记录：开启后把用户每次真实点击换算成 0~1 的比例写进引擎日志。
-    // 触摸屏只在提权进程里可读，所以必须放在这一侧。
-    oneway void startCoordinateTrace() = 51;
-
-    oneway void stopCoordinateTrace() = 52;
 }
