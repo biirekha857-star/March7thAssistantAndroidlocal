@@ -405,10 +405,24 @@ class SettingsViewModel(
             svc.captureFramePng(corePathConfig.coreDebugScreenshotsDir)
         } ?: return@runCatching null
 
-        // 跨进程只能走 openCoreDebugFile：截图落在 core 的 debug/screenshots 下，
-        // App 身份不一定读得到（core 分离时在 /data/local/tmp）
+        // ## 直接读文件，不要走 openCoreDebugFile
+        //
+        // 截图落在 App 自己的 external files 下
+        // （`.../files/Maa/debug/screenshots/`），App 本来就能读。
+        //
+        // 而 `openCoreDebugFile` 查的是**提权进程的 core 目录**
+        // （`/data/local/tmp/maameow/debug`）—— 两个地方！11-03 实测就是
+        // 卡在这：截图明明存下来了，读取却永远返回 null，一路报"截图失败"。
+        val file = File(saved)
+        BitmapFactory.decodeFile(saved)?.let { bitmap ->
+            // 取点用的临时截图，读出来就没用了，别在手机上越堆越多
+            runCatching { file.delete() }
+            return@runCatching bitmap
+        }
+
+        // core 真的分离、截图落在 /data/local/tmp 时，App 读不到，只能走 PFD
         val pfd = RemoteServiceManager.getInstanceOrNull()
-            ?.openCoreDebugFile("screenshots/${File(saved).name}")
+            ?.openCoreDebugFile("screenshots/${file.name}")
             ?: return@runCatching null
 
         ParcelFileDescriptor.AutoCloseInputStream(pfd).use { input ->
