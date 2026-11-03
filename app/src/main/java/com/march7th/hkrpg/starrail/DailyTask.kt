@@ -125,11 +125,26 @@ internal class DailyTask(
         private const val TEMPLATE_RECEIVE = "daily/btn_receive.png"
 
         /** 「获得物品」弹窗的搜索区（标题在正中上方）。 */
-        private val CROP_REWARD_TITLE = ScreenNavigator.NormRect(0.35f, 0.10f, 0.30f, 0.12f)
 
         /** 奖励弹窗的关闭点击位置（「点击空白处关闭」，点屏幕下方空白）。 */
         private const val REWARD_DISMISS_X = 960
         private const val REWARD_DISMISS_Y = 950
+
+        /**
+         * 奖励弹窗上的特征文字，**任一条命中**就认为弹窗还开着。
+         *
+         * 崩铁不止一种奖励弹窗：领活跃度是「获得物品」，委托奖励的标题
+         * 不一样，底部则统一写着「点击空白处关闭」。只认一个标题的话，
+         * 遇到另一种就判成"没有弹窗"，一次都不点 —— 弹窗留在屏幕上，
+         * 后面找 ✕ 全被它挡住，任务卡在"关不掉委托页"。
+         */
+        private val REWARD_POPUP_HINTS = listOf(
+            "获得物品",
+            "获得奖励",
+            "委托奖励",
+            "点击空白处",
+            "点击任意处",
+        )
 
         /** 单次领奖循环最多跑几轮（防止死循环）。 */
         private const val MAX_CLAIM_ROUNDS = 8
@@ -709,12 +724,19 @@ internal class DailyTask(
     }
 
     /** 关掉「获得物品」弹窗（可能连续弹多个）。 */
+    /**
+     * 关掉奖励弹窗。
+     *
+     * 崩铁的奖励展示是**两层**：先是一张「获得物品」的图，点一下收起，
+     * 收完底下的结算框还在，再点一下才真正关掉。所以必须循环点，
+     * 点一次就走会留下半个弹窗，把右上角的 ✕ 挡死。
+     */
     private fun dismissRewardPopup() {
-        repeat(3) {
-            if (!isRewardPopupOpen()) return@repeat
-            note("关闭「获得物品」弹窗")
+        repeat(4) {
+            if (!isRewardPopupOpen()) return
+            note("关闭奖励弹窗")
             auto.tap(REWARD_DISMISS_X, REWARD_DISMISS_Y, durationMs = 80L)
-            Thread.sleep(800)
+            Thread.sleep(900)
         }
     }
 
@@ -1112,11 +1134,18 @@ internal class DailyTask(
     // ==================== 奖励弹窗 ====================
 
     /** 屏幕中央是否出现了「获得物品」弹窗。 */
+    /**
+     * 奖励弹窗是否还开着 —— 按**任一条特征文字**判断，不只认「获得物品」。
+     *
+     * 用全屏 OCR 而不是固定区域：委托奖励的弹窗比活跃度的矮，
+     * 标题也不在同一个高度，框死了会漏判。这个方法只在领奖后调几次，
+     * 每次几百毫秒可以接受。
+     */
     private fun isRewardPopupOpen(): Boolean {
-        val hit = nav.withFrameOcrRegion(CROP_REWARD_TITLE) { mat, r ->
-            OcrEngine.findText(mat, "获得物品", r)
-        }
-        return hit != null
+        val texts = nav.readAllText().map { it.normalized() }
+        if (texts.isEmpty()) return false
+        val all = texts.joinToString("|")
+        return REWARD_POPUP_HINTS.any { all.contains(it) }
     }
 
     // ==================== 里程碑奖励 ====================
@@ -1142,11 +1171,7 @@ internal class DailyTask(
             if (isRewardPopupOpen()) {
                 count++
                 note("里程碑 @($x,$y) 领到奖励")
-                repeat(3) {
-                    if (!isRewardPopupOpen()) return@repeat
-                    auto.tap(REWARD_DISMISS_X, REWARD_DISMISS_Y, durationMs = 80L)
-                    Thread.sleep(700)
-                }
+                dismissRewardPopup()
             }
         }
         return count
