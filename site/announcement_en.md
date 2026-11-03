@@ -6,58 +6,44 @@
 
 ## Current Version
 
-**1.0.1**
+**1.0.2**
 
 ---
 
 ## What's New
 
-💡 **This is an optional update** — nothing forces you to install it. But do consider
-it: the fixes below are the kind that make the app look broken. Same signing key,
-so you can install over the top — task configs and the redeemed code list are preserved.
+⚠️ **This is an optional update** — nothing forces you to install it. But do consider it: every item below can leave a task stuck mid-run.
 
-### Fixed · Couldn't get back to the lobby after farming
+**Fixed · couldn't get back to the lobby after farming**
 
-- After tapping "Exit stage" the game shows a loading overlay. The old build pressed
-  BACK there to "recover" — but in-game BACK never navigates back, it only raises the
-  "exit game" dialog
-- Worse: that recovery looked for a button called "Cancel", while the dialog's button
-  is "Continue game" — so it **never actually dismissed it**: recognised, never tapped,
-  yet treated as handled. Six rounds of nothing
-- BACK is gone entirely. When no ✕ is found, it now taps the back arrow at the top-left
-- The "Restoring screen…" overlay is waited out instead of being tapped through
+- The Guide page gained a new tab on the far left (starter rewards), shifting every tab one slot right. The old build tapped "Survival Index" but landed on "Daily Training" — the screen never changed, three retries all missed
+- The ✕ on that same page was never recognised either: its shape differs from both bundled templates, so the log said "no ✕ found" while one was clearly on screen, then tapped a back arrow that this page doesn't have
+- Both fixed. Tab positions are now **measured** at runtime: tap a slot, check what it landed on, move to the next if wrong — so a future tab reshuffle won't break it again
 
-### Fixed · Mail task failed right after entering the lobby on cloud gaming
+**Fixed · exiting a stage tapped "Challenge" and re-entered it**
 
-- The first tap on the phone icon got swallowed (cloud input latency). The old logic
-  only retried if it detected an obstructing dialog — no dialog meant giving up
-- It now retries twice unconditionally, 1.2 s apart
+- Exiting tries "Exit stage" then "Exit challenge". On the preparation screen the "Challenge" button matched the fuzzy search — which re-entered the stage, and the run never recovered
+- Fuzzy matching now has a length floor: fragments under 3 characters are no longer accepted as a target
 
-### New · Pick your client (4 options)
+**Fixed · reward popup after claiming dispatch rewards wouldn't close**
 
-- Official, Bilibili (`com.miHoYo.hkrpg.bilibili`), Global
-  (`com.HoYoverse.hkrpgoversea`) and cloud gaming — four options laid out flat in the
-  "Start game" card
-- The duplicate "choose client" step in the activation wizard has been removed
+- That popup's title differs from the activity one, while the check only looked for "Items obtained" — so it decided there was no popup and never tapped
+- The popup then covered the ✕, and the task stalled on "can't close the dispatch page"
+- Now several marker texts are accepted (including the "tap blank area" hint), and it taps twice — the reward display has two layers
 
-### New · Custom task packs
+**Fixed · muting didn't work on cloud gaming**
 
-- **One pack, one card**: install three packs and you get three separate cards, each
-  with its own toggle and ordering. Previously everything shared a single node
-- Packs appear automatically after import
-- **Packs can declare parameters**: toggles, number fields and text fields render right
-  in the card. Out-of-range values are clamped to the declared bounds and logged
-- **Step and time limits removed** (the old 5000 steps / 20 minutes cap is gone)
+- Cloud gaming and the official client are two different packages; they shared one, so mute and AppOps were applied to a package that isn't installed
 
-### New · Shizuku setup guide
+**New · pick coordinates from a screenshot (debug mode)**
 
-- A video guide is one tap away on the privilege screen and in Settings → Launch
+- No more measuring by hand: Settings → Logs & diagnostics → enable Debug Mode → "Pick coordinates from a screenshot"
+- Tap the spot on the captured frame and it gives you the numbers to paste into `task.json`; pick several in a row and copy them all at once
 
-### Other
+**Upgrade notes**
 
-- The bundled announcement is now the project's own (it used to show the upstream
-  Arknights announcement when the remote fetch failed)
-- A plain-language appendix was added to the task file specification
+- Same signing key, installs over the top — task configs, redeemed codes and imported packs are preserved
+- If it still says "update available" after installing, you installed an old file; grab it again from the link below
 
 ### Core Features
 

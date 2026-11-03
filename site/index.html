@@ -890,7 +890,7 @@
     <p class="tagline">崩坏：星穹铁道 · 全自动日常助手</p>
 
     <div class="pills">
-      <span class="pill live"><i></i>最新 <b id="ver">1.0.1</b></span>
+      <span class="pill live"><i></i>最新 <b id="ver">1.0.2</b></span>
       <span class="pill">Shizuku / Root</span>
       <span class="pill">Android 8.0+</span>
       <span class="pill">开源免费</span>
@@ -1011,40 +1011,42 @@
     <section class="section" id="changelog">
       <div class="sec-head reveal">
         <span class="kicker">Changelog</span>
-        <h2>本次更新 <em id="ver-title">1.0.1</em></h2>
+        <h2>本次更新 <em id="ver-title">1.0.2</em></h2>
         <p>内容直接读站点上的 <code style="font-size:13.5px;color:#c99b3f">update.md</code>，和 App 里弹窗显示的是同一份。</p>
       </div>
 
       <div class="release reveal">
         <div class="release-head">
           <span class="tag"><i style="width:6px;height:6px;border-radius:50%;background:#7ee2a6;display:inline-block"></i>最新版本</span>
-          <span class="ver" id="ver-big">1.0.1</span>
+          <span class="ver" id="ver-big">1.0.2</span>
           <span class="tag" id="release-tag">自由更新</span>
           <span class="date" id="release-date">2026-11-03</span>
         </div>
 
         <!-- 静态兜底：update.md 拉取失败时显示这段，不会空白 -->
         <div class="md" id="changelog-body">
-          <p><strong>1.0.1</strong>：把几处「卡住」的问题修掉了，另外给了任务包更多自由</p>
-          <p>💡 <strong>这次是自由更新</strong>：不强制，装不装都能继续用。但建议升级，下面是几个会让人以为「程序坏了」的问题。</p>
-          <p><strong>修复 · 清体力结束后回不到大厅</strong></p>
+          <p><strong>1.0.2</strong>：把几个「点了没反应」的问题修掉了</p>
+          <p>💡 <strong>这次是自由更新</strong>：不强制，装不装都能继续用。但建议升级 —— 下面每一条都会让任务卡在半路。</p>
+          <p><strong>修复 · 清体力打完后回不到大厅</strong></p>
           <ul>
-            <li>旧版本在加载画面上按 BACK「自救」—— 但游戏内 BACK 只弹退出确认框，从不返回上一级</li>
-            <li>而且那套自救认的按钮叫「取消」，退出框上实际叫「继续游戏」，所以它<b>一次都没有真的点掉过</b></li>
-            <li>现在 BACK 已整个删掉：找不到 ✕ 就点左上角「返回」；加载遮罩会先等它结束</li>
+            <li>游戏更新后指南页最左边多了一格（新手教程），所有标签右移一位：旧版本点「生存索引」实际落在「每日实训」上，画面纹丝不动</li>
+            <li>同一页右上角的 ✕ 也一直识别不到 —— 它的图形和代码里的两个模板都不一样，于是「找不到 ✕ → 点左上返回（这页没有）→ 认输」</li>
+            <li>两处都修了。标签位置现在会<b>实测</b>：点一格看一眼，不对就换下一格，以后再动标签栏也能自己找回来</li>
           </ul>
-          <p><strong>修复 · 云游戏刚进大厅，邮件任务直接失败</strong></p>
-          <ul><li>第一次点手机图标被吞时，现在会无条件重试 2 次</li></ul>
-          <p><strong>新增 · 启动客户端四选一</strong></p>
-          <ul><li>官服 / B 服 / 国际服 / 云游戏，四个选项平铺在「启动游戏」卡片里</li></ul>
-          <p><strong>新增 · 自定义任务包</strong></p>
+          <p><strong>修复 · 退副本时误点「挑战」，又进了一次副本</strong></p>
           <ul>
-            <li><b>一个包一个板块</b>：装几个包就有几张卡，可分别勾选、分别排序，导入后自动出现</li>
-            <li>包可以声明参数，卡片里直接填（开关 / 数字 / 文本）；超范围不报错，按边界执行并写日志</li>
-            <li>步数与时长不再限制（原来的 5000 步 / 20 分钟已去掉）</li>
+            <li>停在准备页时，页面上的「挑战」被模糊匹配命中 —— 等于重新进了一次副本，之后再也回不到大厅</li>
+            <li>模糊匹配现在有长度下限，短于 3 个字的碎片不再被当成目标</li>
           </ul>
-          <p><strong>其他</strong></p>
-          <ul><li>Shizuku 安装教程入口（向导 + 设置）；内置公告换成项目自己的内容</li></ul>
+          <p><strong>修复 · 领完委托，弹窗关不掉</strong></p>
+          <ul>
+            <li>委托奖励弹窗的标题和活跃度那个不一样，判态只认「获得物品」，于是判成「没有弹窗」，一次都没点</li>
+            <li>弹窗挡住右上角的 ✕，任务卡在「关不掉委托页」。现在按多条特征判断，并且会连点两次</li>
+          </ul>
+          <p><strong>修复 · 云游戏静音不生效</strong></p>
+          <ul><li>云游戏和官服是两个包名，之前共用一个，静音和 AppOps 全作用在没装的包上</li></ul>
+          <p><strong>新增 · 截一张图取坐标（调试模式）</strong></p>
+          <ul><li>在截图上点你要的按钮，直接给出能填进 task.json 的数字，可以连着点好几个一次性复制</li></ul>
         </div>
       </div>
     </section>
