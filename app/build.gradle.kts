@@ -42,7 +42,15 @@ val gitVersionCode: Int by lazy {
 }
 
 val gitVersionName: String by lazy {
-    "1.0.1"
+    // 测试包后缀：local.properties 里写 maa.versionSuffix=dev，
+    // 「设置 → 关于」就会显示 1.0.1-dev，和正式版一眼区分。
+    //
+    // 为什么要这么绕：调试包和正式包的好几个版本都叫 1.0.1，
+    // 装到手机上根本分不清是新的还是上次那个。源码里的正式版本号
+    // 不动，只在本地加个后缀，发版时把这个键删掉就恢复干净。
+    val suffix = (findProperty("maa.versionSuffix") as String?)?.trim().orEmpty()
+        .ifEmpty { localProperties.getProperty("maa.versionSuffix", "").trim() }
+    if (suffix.isEmpty()) "1.0.1" else "1.0.1-$suffix"
 }
 
 // 本机默认只编 arm64、关 LTO；CI=true 保持双 ABI + LTO
