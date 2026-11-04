@@ -1,5 +1,19 @@
 {
   "schemaVersion": 1,
-  "updatedAt": "2026-11-01",
-  "packs": []
+  "updatedAt": "2026-11-04",
+  "packs": [
+    {
+      "id": "org.community.currency-wars-android",
+      "name": "货币战争 · 进入/对局/领奖",
+      "author": "Community",
+      "version": "20.5.2",
+      "description": "备战为主：底色判费布阵（占位即替换）→ 后续每次买经验/买角色 → 收奖励 → 出战；其余为进出备战的前后流程。",
+      "stepCount": 100,
+      "url": "https://m7a.pages.dev/taskpacks/org.community.currency-wars-android.m7atask",
+      "urlFallback": "https://raw.githubusercontent.com/biirekha857-star/March7thAssistantAndroidlocal/main/site/taskpacks/org.community.currency-wars-android.m7atask",
+      "sha256": "06feab237d97f0e77e4de869a0d185843b6593fa1b71da7fd277d0075d8960a7",
+      "size": 953581,
+      "minAppVersionCode": 11
+    }
+  ]
 }
