@@ -488,9 +488,19 @@ class CustomTaskPackStore(
         /** 子目录名，与 [com.march7th.hkrpg.remote.CoreDataDir.TASKPACKS_DIR] 同源 */
         const val DIR_NAME = com.march7th.hkrpg.remote.CoreDataDir.TASKPACKS_DIR
 
-        /** 单包上限：20MB。模板图几百 KB 就够，超过基本是打错包了 */
-        private const val MAX_TOTAL_BYTES = 20L * 1024 * 1024
-        private const val MAX_ENTRY_BYTES = 6L * 1024 * 1024
+        /**
+         * 单包上限（解压后总大小）。
+         *
+         * 原来 20MB，理由同上 —— 但带整段录屏或几十张高清模板的包会超。
+         * 放到 500MB 与远端下载上限对齐，避免「同一份包，在线能装、本地装不上」。
+         */
+        private const val MAX_TOTAL_BYTES = 500L * 1024 * 1024
+
+        /** 单个文件上限。模板图、录音都不会有 64MB，超过基本是打错包了 */
+        private const val MAX_ENTRY_BYTES = 64L * 1024 * 1024
+
+        /** 安装时的临时目录前缀。`.tmp-xxx`，装完改名成正式目录 */
+        private const val STAGING_PREFIX = ".tmp-"
         private const val MAX_ENTRIES = 200
 
         private val ZIP_MAGIC = byteArrayOf(0x50, 0x4B, 0x03, 0x04)
@@ -557,80 +567,103 @@ class CustomTaskPackStore(
             return TaskPackInstallResult.Invalid(listOf("文件是空的（0 字节）"))
         }
 
-        val jsonBytes: ByteArray
-        val assets: Map<String, ByteArray>
-
-        if (bytes.size >= 4 && bytes.copyOfRange(0, 4).contentEquals(ZIP_MAGIC)) {
-            val unpacked = runCatching { unzip(bytes) }.getOrElse { e ->
-                return TaskPackInstallResult.Invalid(listOf("解压失败：${e.message ?: "不是有效的 zip"}"))
+        // ## 边解压边落盘，不要先全读进内存
+        //
+        // 原来是「整个 zip 读进内存 → 每个 entry 解到内存 Map → 校验 → 写盘」，
+        // 峰值内存 ≈ 包体积 × 2。单包上限 20MB 时看不出问题，
+        // 一放宽到 500MB 就会直接 OOM —— 而且 OOM 是进程被系统杀掉，
+        // 用户看到的是"点了安装，App 没了"，连个错误提示都没有。
+        //
+        // 现在解压直接写临时目录，内存里只留 task.json（几百 KB）。
+        // 「校验通过才落盘」的保证没变：校验在**改名前**做，
+        // 失败的包只会留下临时目录，清理掉就干净了。
+        val staging = File(packsDir, "$STAGING_PREFIX${System.nanoTime()}")
+        try {
+            if (!staging.mkdirs()) {
+                return TaskPackInstallResult.Invalid(
+                    listOf("无法创建临时目录 ${staging.absolutePath}（检查存储权限与剩余空间）")
+                )
             }
-            jsonBytes = unpacked.first
-                ?: return TaskPackInstallResult.Invalid(
+
+            val isZip = bytes.size >= 4 && bytes.copyOfRange(0, 4).contentEquals(ZIP_MAGIC)
+            if (isZip) {
+                runCatching { unzipTo(bytes, staging) }.getOrElse { e ->
+                    return TaskPackInstallResult.Invalid(
+                        listOf("解压失败：${e.message ?: "不是有效的 zip"}")
+                    )
+                }
+            } else {
+                File(staging, "task.json").writeBytes(bytes)
+            }
+
+            val jsonFile = File(staging, "task.json")
+            if (!jsonFile.isFile) {
+                return TaskPackInstallResult.Invalid(
                     listOf("压缩包里没有 task.json（必须放在根目录）")
                 )
-            assets = unpacked.second
-        } else {
-            jsonBytes = bytes
-            assets = emptyMap()
-        }
-
-        val pack = runCatching {
-            json.decodeFromString(
-                CustomTaskPack.serializer(),
-                jsonBytes.toString(Charsets.UTF_8),
-            )
-        }.getOrElse { e ->
-            return TaskPackInstallResult.Invalid(
-                listOf("task.json 解析失败：${e.message?.lineSequence()?.firstOrNull() ?: "JSON 格式不对"}")
-            )
-        }
-
-        val errors = CustomTaskPackValidator.validate(pack, appVersionCode, assets.keys)
-        if (errors.isNotEmpty()) return TaskPackInstallResult.Invalid(errors)
-
-        // ---- 落盘 ----
-        val target = File(packsDir, pack.id)
-        val upgraded = target.isDirectory
-        val staging = File(packsDir, "${pack.id}.staging")
-        runCatching {
-            staging.deleteRecursively()
-            if (!staging.mkdirs()) error("无法创建目录 ${staging.absolutePath}")
-            File(staging, "task.json").writeBytes(jsonBytes)
-            assets.forEach { (rel, data) ->
-                val f = File(staging, rel)
-                f.parentFile?.mkdirs()
-                f.writeBytes(data)
             }
-            if (!staging.renameTo(target)) {
-                // 覆盖升级时目标目录已存在，renameTo 在 ext4 上会失败：先删再改名
-                target.deleteRecursively()
+            val jsonBytes = jsonFile.readBytes()
+
+            val pack = runCatching {
+                json.decodeFromString(
+                    CustomTaskPack.serializer(),
+                    jsonBytes.toString(Charsets.UTF_8),
+                )
+            }.getOrElse { e ->
+                return TaskPackInstallResult.Invalid(
+                    listOf("task.json 解析失败：${e.message?.lineSequence()?.firstOrNull() ?: "JSON 格式不对"}")
+                )
+            }
+
+            // 校验只需要"有哪些素材文件"，不需要内容
+            val assets = staging.walkTopDown()
+                .filter { it.isFile }
+                .map { it.relativeTo(staging).path.replace('\\', '/') }
+                .filter { it != "task.json" }
+                .toSet()
+
+            val errors = CustomTaskPackValidator.validate(pack, appVersionCode, assets)
+            if (errors.isNotEmpty()) return TaskPackInstallResult.Invalid(errors)
+
+            // ---- 落盘：临时目录直接改名 ----
+            val target = File(packsDir, pack.id)
+            val upgraded = target.isDirectory
+            runCatching {
+                if (upgraded) target.deleteRecursively()
                 if (!staging.renameTo(target)) error("无法写入 ${target.absolutePath}")
+            }.onFailure { e ->
+                return TaskPackInstallResult.Invalid(
+                    listOf("写入失败：${e.message}（检查存储权限与剩余空间）")
+                )
             }
-        }.onFailure { e ->
-            staging.deleteRecursively()
-            return TaskPackInstallResult.Invalid(listOf("写入失败：${e.message}（检查存储权限与剩余空间）"))
-        }
 
-        val installed = InstalledTaskPack(
-            id = pack.id,
-            name = pack.name,
-            author = pack.author,
-            version = pack.version,
-            description = pack.description,
-            stepCount = pack.steps.size,
-            params = pack.params,
-            dir = target,
-        )
-        return TaskPackInstallResult.Success(installed, upgraded)
+            val installed = InstalledTaskPack(
+                id = pack.id,
+                name = pack.name,
+                author = pack.author,
+                version = pack.version,
+                description = pack.description,
+                stepCount = pack.steps.size,
+                params = pack.params,
+                dir = target,
+            )
+            return TaskPackInstallResult.Success(installed, upgraded)
+        } finally {
+            // 成功时已经改名走了，这里删的是不存在的路径；失败时负责收尸
+            runCatching { staging.deleteRecursively() }
+        }
     }
 
-    /** 返回 (task.json 内容, 其余文件表)。路径已做穿越防护。 */
-    private fun unzip(bytes: ByteArray): Pair<ByteArray?, Map<String, ByteArray>> {
-        var taskJson: ByteArray? = null
-        val assets = LinkedHashMap<String, ByteArray>()
+    /**
+     * 把 zip 流式解到 [dest]。
+     *
+     * 单个 entry 边读边写，超限立刻抛 —— 不把整包攒在内存里。
+     * 路径穿越（绝对路径、`..`）在这里挡掉，别等写出去再检查。
+     */
+    private fun unzipTo(bytes: ByteArray, dest: File) {
         var total = 0L
         var entries = 0
-
+        val buf = ByteArray(64 * 1024)
         ZipInputStream(bytes.inputStream()).use { zip ->
             while (true) {
                 val entry = zip.nextEntry ?: break
@@ -638,36 +671,30 @@ class CustomTaskPackStore(
                 if (++entries > MAX_ENTRIES) error("压缩包内文件超过 $MAX_ENTRIES 个")
 
                 val name = entry.name.replace('\\', '/').removePrefix("./")
-                // 路径穿越：绝对路径、..、以 / 开头一律拒绝
                 if (name.startsWith("/") || name.split('/').any { it == ".." } || name.isBlank()) {
                     error("压缩包内含非法路径：$name")
                 }
 
-                val data = zip.readEntryCapped(MAX_ENTRY_BYTES, name)
-                total += data.size
-                if (total > MAX_TOTAL_BYTES) error("压缩包解压后超过 20MB")
-
-                when {
-                    name == "task.json" -> taskJson = data
-                    name.startsWith("assets/") -> assets[name] = data
-                    // README.md / LICENSE 之类直接忽略，不报错
-                    else -> Unit
+                val out = File(dest, name)
+                out.parentFile?.mkdirs()
+                out.outputStream().use { os ->
+                    var written = 0L
+                    while (true) {
+                        val n = zip.read(buf)
+                        if (n <= 0) break
+                        written += n
+                        total += n
+                        if (written > MAX_ENTRY_BYTES) {
+                            error("$name 超过 ${MAX_ENTRY_BYTES / 1024 / 1024}MB")
+                        }
+                        if (total > MAX_TOTAL_BYTES) {
+                            error("压缩包解压后超过 ${MAX_TOTAL_BYTES / 1024 / 1024}MB")
+                        }
+                        os.write(buf, 0, n)
+                    }
                 }
             }
         }
-        return taskJson to assets
     }
 
-    private fun ZipInputStream.readEntryCapped(limit: Long, name: String): ByteArray {
-        val out = ByteArrayOutputStream()
-        val buf = ByteArray(16 * 1024)
-        var n: Int
-        while (true) {
-            n = read(buf)
-            if (n <= 0) break
-            out.write(buf, 0, n)
-            if (out.size() > limit) error("$name 超过 ${limit / 1024 / 1024}MB")
-        }
-        return out.toByteArray()
-    }
 }

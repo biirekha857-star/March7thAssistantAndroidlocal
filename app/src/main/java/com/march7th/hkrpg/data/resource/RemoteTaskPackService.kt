@@ -109,7 +109,14 @@ class RemoteTaskPackService(
         private const val MAX_INDEX_BYTES = 512L * 1024
 
         /** 和 [CustomTaskPackStore] 的单包上限对齐 */
-        private const val MAX_PACK_BYTES = 20L * 1024 * 1024L
+        /**
+         * 单个任务包上限。
+         *
+         * 原来卡在 20MB，理由是「模板图几百 KB 就够」—— 但带了整段录屏、
+         * 十几个界面的高清模板、或者内嵌 OCR 资源的包很容易超。
+         * 上限放到 500MB，够任何正常包，同时仍能挡住误传的整包资源。
+         */
+        private const val MAX_PACK_BYTES = 500L * 1024 * 1024L
     }
 
     private val json = Json(JsonUtils.common) { ignoreUnknownKeys = true }

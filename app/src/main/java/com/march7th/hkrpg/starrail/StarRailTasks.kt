@@ -282,11 +282,15 @@ class StarRailTasks(
         /**
          * 等「点击进入」多久还没出现，就强制游戏重新布局一次（「主屏往返」）。
          *
-         * 正常启动 40~50 秒内必然出现该按钮（实测 42s 左右）。留到 50 秒
+         * 正常启动 40~50 秒内必然出现该按钮（实测 42s 左右）。留到 60 秒
          * 说明不是"加载慢"，而是画面本身有问题 —— 典型是荣耀类 ROM 的速启
          * 让游戏带着物理屏的图形环境进来，UI 被放大裁切到画框外。
+         *
+         * 从 50 秒放宽到 60 秒：云游戏建流 + 首次加载本来就慢，
+         * 50 秒偶尔会把"真的在加载"误判成"画面坏了"，白踢一次重排。
+         * 总上限 [TOTAL_LIMIT_MS] 是 180 秒，留出 120 秒给重排后重新加载，够。
          */
-        private const val RELAYOUT_KICK_AFTER_SEC = 50L
+        private const val RELAYOUT_KICK_AFTER_SEC = 60L
 
         // ---- 区域常量（全部只搜一小块，避免全屏开销）----
 
@@ -434,10 +438,30 @@ class StarRailTasks(
         val client = StartUpTaskConfig.GameClient.fromWire(
             Regex("\"client\"\\s*:\\s*\"([^\"]*)\"").find(params)?.groupValues?.get(1),
         )
-        val effectivePkg = Regex("\"packageName\"\\s*:\\s*\"([^\"]*)\"")
+        val declaredPkg = Regex("\"packageName\"\\s*:\\s*\"([^\"]*)\"")
             .find(params)?.groupValues?.get(1)
             ?.takeIf { it.isNotBlank() }
             ?: client.packageName
+
+        // ## 别去拉一个没装的包
+        //
+        // 任务链里的「启动游戏」节点会被重置回默认的官服 —— 画面校准、链自愈、
+        // 或者用户误点都可能。而手机上装的可能是云游戏，于是启动超时后它会
+        // 认认真真地去拉 com.miHoYo.hkrpg：拉不起来 → 重试 → 再失败，
+        // 用户只看到"一直启动不了"，日志里也只是普通的启动超时。
+        //
+        // `pkg` 是外层通过 setPackage 传进来的**本次会话目标包**，和
+        // force-stop、画面漂移检测用的是同一个，比任务参数更可信。
+        // 所以：声明的包没装、而会话包装了，就改用会话包，并明确记一笔。
+        val effectivePkg = if (declaredPkg != pkg &&
+            !GameLauncher.isInstalled(declaredPkg) &&
+            GameLauncher.isInstalled(pkg)
+        ) {
+            Ln.w("$TAG: 启动任务声明 $declaredPkg 但没装，改用本次会话的目标包 $pkg")
+            pkg
+        } else {
+            declaredPkg
+        }
         val timeoutOverride = Regex("\"timeoutSec\"\\s*:\\s*(\\d+)")
             .find(params)?.groupValues?.get(1)?.toIntOrNull()
 
