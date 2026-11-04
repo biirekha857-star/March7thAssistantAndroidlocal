@@ -674,7 +674,9 @@ internal class DailyTask(
     private fun claimAll(): Int {
         var claimed = 0
         repeat(MAX_CLAIM_ROUNDS) { round ->
-            val hit = findReceiveButton() ?: return@repeat
+            // 没找到就收工 —— `return@repeat` 是 continue，会白跑满 8 轮，
+            // 每轮 findReceiveButton 还要再截 5 次帧
+            val hit = findReceiveButton() ?: return claimed
             note("第 ${round + 1} 轮：点「领取」@(${hit.first},${hit.second})")
             auto.tap(hit.first, hit.second, durationMs = 100L)
             Thread.sleep(1_200)
@@ -731,13 +733,16 @@ internal class DailyTask(
      * 收完底下的结算框还在，再点一下才真正关掉。所以必须循环点，
      * 点一次就走会留下半个弹窗，把右上角的 ✕ 挡死。
      */
-    private fun dismissRewardPopup() {
+    private fun dismissRewardPopup(): Boolean {
+        var closed = false
         repeat(4) {
-            if (!isRewardPopupOpen()) return
+            if (!isRewardPopupOpen()) return closed
             note("关闭奖励弹窗")
             auto.tap(REWARD_DISMISS_X, REWARD_DISMISS_Y, durationMs = 80L)
             Thread.sleep(900)
+            closed = true
         }
+        return closed
     }
 
     // ==================== 委托（派遣）====================
@@ -1168,10 +1173,11 @@ internal class DailyTask(
         for (x in xs) {
             auto.tap(x, y, durationMs = 80L)
             Thread.sleep(900)
-            if (isRewardPopupOpen()) {
+            // 直接交给 dismissRewardPopup 判 —— 它内部本来就要判一次，
+            // 外面再判一次等于对同一帧跑两遍全屏 OCR
+            if (dismissRewardPopup()) {
                 count++
                 note("里程碑 @($x,$y) 领到奖励")
-                dismissRewardPopup()
             }
         }
         return count

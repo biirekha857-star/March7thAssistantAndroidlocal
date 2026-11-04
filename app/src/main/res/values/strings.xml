@@ -2832,5 +2832,6 @@ MAA 不会因为取消勾选此选项而提前在局内结束探索</string>
     <string name="taskpack_disclaimer_title">导入前请先读这一页</string>
     <string name="taskpack_disclaimer_body">任务包由第三方开发者编写，内容来源于网络，非本应用官方提供。我们未审核其安全性、合法性或完整性，也无法保证它的行为符合你的预期。\n\n【请你自行判断】\n· 它会在游戏画面上代替你点击、长按、滑动，写错一步就会真的点歪，可能误触并消耗你的游戏内资源\n· 使用第三方自动化工具可能违反游戏用户协议，是否合规、账号会不会被处罚，请你自行核验并承担\n· 如发现任务包内含恶意步骤或异常行为，请通过「设置 → 关于 → 问题反馈」或 GitHub Issue 告知我们，我们会核实并下架相关条目\n· 因使用第三方任务包造成的账号损失、数据丢失或其他任何后果，本应用及开发者概不负责\n\n【它不能做的事】\n· 不能执行任何代码，也不能安装或唤起别的应用\n· 不能联网，不能读写任务包以外的文件\n\n【它能做的事，都是真的】\n· 按文件里写的坐标点击屏幕，可连续执行多次，直到流程结束或你手动停止\n· 读取屏幕截图做颜色和区域判断\n\n请只导入你信任来源的任务包。运行中觉得不对，立刻停止任务。</string>
     <string name="taskpack_disclaimer_wait">请先阅读（%1$d 秒）</string>
+    <string name="taskpack_disclaimer_dont_show_again">我已了解风险，以后不再提示</string>
     <string name="taskpack_disclaimer_agree">我已阅读并同意</string>
 </resources>

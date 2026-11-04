@@ -17,8 +17,14 @@ object LogConfig {
     /** 崩溃日志最大文件数 */
     const val MAX_CRASH_LOG_FILES = 10
 
-    /** 日志批量刷新间隔（毫秒） */
-    const val LOG_FLUSH_INTERVAL_MS = 75L
+    /**
+     * 日志批量刷新间隔（毫秒）。
+     *
+     * 原来 75ms：任务跑起来每秒 13 次真实磁盘 flush，外加 13 次
+     * `_logs` 列表替换，整页跟着重组。日志是给人回放看的，
+     * 250ms 的延迟完全感觉不到，CPU 和 IO 却少了一大半。
+     */
+    const val LOG_FLUSH_INTERVAL_MS = 250L
 
     /** 导出时 gui / schedule / error_logs / crash_logs 仅保留近 N 天 */
     const val EXPORT_ROLLING_LOG_DAYS = 7

@@ -20,6 +20,15 @@ data class AppSettings(
     @PrefKey(default = "false")
     val debugMode: String = "false",
 
+    /**
+     * 导入任务包时是否跳过免责声明。
+     *
+     * 用户勾了「不再提示」才置位。免责声明本身还在（设置页那一条的描述里
+     * 写着来源和风险），只是不再每次挡一道 8 秒的倒计时。
+     */
+    @PrefKey(default = "false")
+    val taskPackDisclaimerSkipped: String = "false",
+
     @PrefKey(default = "true")
     val autoCheckUpdate: String = "true",
 

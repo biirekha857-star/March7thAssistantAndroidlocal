@@ -99,6 +99,14 @@ class SettingsViewModel(
 
     // ========== 导入导出 ==========
 
+    /** 导入任务包时是否跳过免责声明 */
+    val taskPackDisclaimerSkipped: StateFlow<Boolean> = appSettingsManager.taskPackDisclaimerSkipped
+
+    fun setTaskPackDisclaimerSkipped(skipped: Boolean) {
+        viewModelScope.launch { appSettingsManager.setTaskPackDisclaimerSkipped(skipped) }
+    }
+
+
     private val _settingsMessage = MutableStateFlow<UiText?>(null)
     val settingsMessage: StateFlow<UiText?> = _settingsMessage.asStateFlow()
 

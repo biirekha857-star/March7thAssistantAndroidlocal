@@ -169,6 +169,16 @@ class AppSettingsManager internal constructor(
     }
 
     // 启动时自动检查更新
+    /** 导入任务包时跳过免责声明（用户勾过「不再提示」） */
+    val taskPackDisclaimerSkipped: StateFlow<Boolean> =
+        setting { it.taskPackDisclaimerSkipped.toBooleanStrictOrNull() ?: false }
+
+    suspend fun setTaskPackDisclaimerSkipped(skipped: Boolean) {
+        with(AppSettingsSchema) {
+            context.dataStore.edit { it[taskPackDisclaimerSkipped] = skipped.toString() }
+        }
+    }
+
     val autoCheckUpdate: StateFlow<Boolean> = setting { it.autoCheckUpdate.toBooleanStrictOrNull() ?: true }
 
     suspend fun setAutoCheckUpdate(enabled: Boolean) {

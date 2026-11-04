@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -818,6 +820,8 @@ fun DataSettingsScreen(
 
     /** 导入前先过免责声明，同意后才打开文件选择器 */
     var showTaskPackDisclaimer by rememberSaveable { mutableStateOf(false) }
+    // 用户勾过「不再提示」就不再弹，直接开文件选择器
+    val skipTaskPackDisclaimer by viewModel.taskPackDisclaimerSkipped.collectAsStateWithLifecycle()
 
     settingsMessage?.let { msg ->
         Toast.makeText(context, msg.resolve(context), Toast.LENGTH_SHORT).show()
@@ -850,8 +854,13 @@ fun DataSettingsScreen(
                 SettingClickItem(
                     title = stringResource(R.string.settings_taskpack_import_title),
                     description = stringResource(R.string.settings_taskpack_import_desc),
-                    // 先弹免责声明，读完才能继续选文件
-                    onClick = { showTaskPackDisclaimer = true },
+                    onClick = {
+                        if (skipTaskPackDisclaimer) {
+                            taskPackLauncher.launch(TASK_PACK_MIME_TYPES)
+                        } else {
+                            showTaskPackDisclaimer = true
+                        }
+                    },
                 )
                 ListItemDivider()
                 SettingClickItem(
@@ -915,16 +924,10 @@ fun DataSettingsScreen(
 
     if (showTaskPackDisclaimer) {
         TaskPackDisclaimerDialog(
-            onAgree = {
+            onAgree = { dontShowAgain ->
                 showTaskPackDisclaimer = false
-                // `.m7atask` 没有注册 MIME，只能放开类型、靠内容（zip 魔数）判断
-                taskPackLauncher.launch(
-                    arrayOf(
-                        "application/json",
-                        "application/zip",
-                        "application/octet-stream",
-                    )
-                )
+                if (dontShowAgain) viewModel.setTaskPackDisclaimerSkipped(true)
+                taskPackLauncher.launch(TASK_PACK_MIME_TYPES)
             },
             onDismiss = { showTaskPackDisclaimer = false },
         )
@@ -1204,10 +1207,11 @@ private fun openTaskFileSpec(context: android.content.Context) {
  */
 @Composable
 private fun TaskPackDisclaimerDialog(
-    onAgree: () -> Unit,
+    onAgree: (dontShowAgain: Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var left by remember { mutableStateOf(DISCLAIMER_SECONDS) }
+    var dontShowAgain by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         while (left > 0) {
@@ -1232,10 +1236,29 @@ private fun TaskPackDisclaimerDialog(
                     color = MaterialTheme.colorScheme.onSurface,
                     lineHeight = 20.sp,
                 )
+
+                // 勾了就不再弹。放在正文下面而不是按钮行里：
+                // 按钮行只有一个"同意"，把选项塞进按钮旁边会让人以为是两个互斥的按钮。
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { dontShowAgain = !dontShowAgain },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = dontShowAgain,
+                        onCheckedChange = { dontShowAgain = it },
+                    )
+                    Text(
+                        text = stringResource(R.string.taskpack_disclaimer_dont_show_again),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = onAgree, enabled = left <= 0) {
+            TextButton(onClick = { onAgree(dontShowAgain) }, enabled = left <= 0) {
                 Text(
                     if (left > 0) {
                         stringResource(R.string.taskpack_disclaimer_wait, left)
@@ -1252,6 +1275,17 @@ private fun TaskPackDisclaimerDialog(
         },
     )
 }
+
+/**
+ * 选任务包时开放的文件类型。
+ *
+ * `.m7atask` 没有注册 MIME，只能放开这几种、最后靠内容（zip 魔数）判断。
+ */
+private val TASK_PACK_MIME_TYPES = arrayOf(
+    "application/json",
+    "application/zip",
+    "application/octet-stream",
+)
 
 /** 免责声明倒计时秒数。文案偏长（来源/合法性/免责三块），6 秒读不完，给 8 秒。 */
 private const val DISCLAIMER_SECONDS = 8

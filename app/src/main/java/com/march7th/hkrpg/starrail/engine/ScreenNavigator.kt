@@ -100,7 +100,7 @@ class ScreenNavigator(
     private val guideTabSlot = java.util.concurrent.ConcurrentHashMap<GuideTab, Int>()
 
     /** 等大厅时重新判态的间隔。 */
-    private const val MAIN_POLL_MS = 120L
+    private const val MAIN_POLL_MS = 250L
 
     /** 点完设置齿轮后，等设置页渲染完成。 */
     private const val SETTINGS_LOAD_MS = 1_200L
@@ -1487,8 +1487,10 @@ class ScreenNavigator(
             for (slot in 0 until GuideBar.MAX_TABS) add(slot)
         }.filter { it in 0 until GuideBar.MAX_TABS }.distinct()
 
-        for (slot in candidates) {
-            val landed = tapGuideSlot(slot, target, before)
+        for ((index, slot) in candidates.withIndex()) {
+            // 第一个候选（缓存或默认索引）最可能就中，保留"防吞点击"的重试；
+            // 后面是试探，每格只点一次 —— 反正马上换下一格
+            val landed = tapGuideSlot(slot, target, before, allowRetry = index == 0)
             if (landed == target) {
                 Ln.i("$TAG: 已切换到「${target.label}」（第 ${slot + 1} 格）")
                 return true
@@ -1515,9 +1517,16 @@ class ScreenNavigator(
      * @return 命中目标时返回 [target]；否则返回实际落到的标签；
      *         **null 表示认不出页面**（多半已经被踹出指南页）
      */
-    private fun tapGuideSlot(slot: Int, target: GuideTab, before: GuideTab?): GuideTab? {
+    private fun tapGuideSlot(
+        slot: Int,
+        target: GuideTab,
+        before: GuideTab?,
+        allowRetry: Boolean = true,
+    ): GuideTab? {
         var last: GuideTab? = null
-        repeat(2) { attempt ->
+        // 试探阶段不重试：反正下一步就要换格子，被吞一次点击的代价
+        // 远小于多跑一次全屏 OCR
+        repeat(if (allowRetry) 2 else 1) { attempt ->
             val sx = auto.width / GuideBar.BASE_W
             val sy = auto.height / GuideBar.BASE_H
             val cx = ((GuideBar.LEFT + GuideBar.TAB_W * (slot + 0.5f)) * sx).toInt()
@@ -2880,13 +2889,14 @@ class ScreenNavigator(
      * 失败先关掉回大厅，不在原地连点（原地连点是早期误触「梦境护照」的原因）。
      */
     private fun gotoGuideTab(target: GuideTab): Boolean {
-        // 已经在目标页
-        if (guideTab() == target) {
+        // 只判一次态 —— guideTab() 是一次全屏 OCR（0.5~1.5 秒），
+        // 原来这里连着调两次，等于对同一帧跑了两遍完全相同的识别
+        val onGuide = guideTab()
+        if (onGuide == target) {
             Ln.i("$TAG: 已在${target.label}")
             return true
         }
         // 已在指南页（任一子标签），直接切 tab，不用再走一遍菜单
-        val onGuide = guideTab()
         if (onGuide != null) {
             Ln.i("$TAG: 已在指南页「${onGuide.label}」，直接切到${target.label}")
             if (switchGuideTab(target)) return true
@@ -3204,7 +3214,7 @@ class ScreenNavigator(
      * 代价是页面没打开时每秒多一次全屏 OCR（约 1.5s），但比
      * 白等 20 秒后误报失败要划算得多。
      */
-    private fun waitForGuidePage(timeoutSec: Int, pollMs: Long = 300L): Boolean {
+    private fun waitForGuidePage(timeoutSec: Int, pollMs: Long = 500L): Boolean {
         val deadline = SystemClock.uptimeMillis() + timeoutSec * 1000L
         var baseline: org.opencv.core.Mat? = null
         var lastCheck = 0L
