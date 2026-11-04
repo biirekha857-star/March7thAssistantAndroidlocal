@@ -890,7 +890,7 @@
     <p class="tagline">崩坏：星穹铁道 · 全自动日常助手</p>
 
     <div class="pills">
-      <span class="pill live"><i></i>最新 <b id="ver">1.0.2</b></span>
+      <span class="pill live"><i></i>最新 <b id="ver">1.0.3</b></span>
       <span class="pill">Shizuku / Root</span>
       <span class="pill">Android 8.0+</span>
       <span class="pill">开源免费</span>
@@ -1011,42 +1011,42 @@
     <section class="section" id="changelog">
       <div class="sec-head reveal">
         <span class="kicker">Changelog</span>
-        <h2>本次更新 <em id="ver-title">1.0.2</em></h2>
+        <h2>本次更新 <em id="ver-title">1.0.3</em></h2>
         <p>内容直接读站点上的 <code style="font-size:13.5px;color:#c99b3f">update.md</code>，和 App 里弹窗显示的是同一份。</p>
       </div>
 
       <div class="release reveal">
         <div class="release-head">
           <span class="tag"><i style="width:6px;height:6px;border-radius:50%;background:#7ee2a6;display:inline-block"></i>最新版本</span>
-          <span class="ver" id="ver-big">1.0.2</span>
+          <span class="ver" id="ver-big">1.0.3</span>
           <span class="tag" id="release-tag">自由更新</span>
-          <span class="date" id="release-date">2026-11-03</span>
+          <span class="date" id="release-date">2026-11-04</span>
         </div>
 
         <!-- 静态兜底：update.md 拉取失败时显示这段，不会空白 -->
         <div class="md" id="changelog-body">
-          <p><strong>1.0.2</strong>：把几个「点了没反应」的问题修掉了</p>
-          <p>💡 <strong>这次是自由更新</strong>：不强制，装不装都能继续用。但建议升级 —— 下面每一条都会让任务卡在半路。</p>
-          <p><strong>修复 · 清体力打完后回不到大厅</strong></p>
+          <p><strong>1.0.3</strong>：大任务包能装了，启动也不会再认错游戏</p>
+          <p>💡 <strong>自由更新</strong>，不强制。但这版修了两个会让人以为「程序坏了」的问题。</p>
+          <p><strong>修复 · 任务包上限 20MB → 500MB</strong></p>
           <ul>
-            <li>游戏更新后指南页最左边多了一格（新手教程），所有标签右移一位：旧版本点「生存索引」实际落在「每日实训」上，画面纹丝不动</li>
-            <li>同一页右上角的 ✕ 也一直识别不到 —— 它的图形和代码里的两个模板都不一样，于是「找不到 ✕ → 点左上返回（这页没有）→ 认输」</li>
-            <li>两处都修了。标签位置现在会<b>实测</b>：点一格看一眼，不对就换下一格，以后再动标签栏也能自己找回来</li>
+            <li>以前超过 20MB 的包直接装不上，带录屏或几十张高清模板的包根本传不上去</li>
+            <li>光把数字改大不行：原来的解压是把整个包读进内存再展开到另一块，峰值是体积两倍，大包会把 App 直接撑爆（不是报错，是闪退）</li>
+            <li>现在边解压边写盘，内存只留几百 KB；校验仍在落盘前做。单个文件上限 6MB → 64MB</li>
           </ul>
-          <p><strong>修复 · 退副本时误点「挑战」，又进了一次副本</strong></p>
+          <p><strong>修复 · 启动游戏去拉了一个没装的包</strong></p>
           <ul>
-            <li>停在准备页时，页面上的「挑战」被模糊匹配命中 —— 等于重新进了一次副本，之后再也回不到大厅</li>
-            <li>模糊匹配现在有长度下限，短于 3 个字的碎片不再被当成目标</li>
+            <li>「启动游戏」的客户端选择会被重置回默认官服，而机器上装的可能是云游戏 —— 于是超时后它认认真真去拉 <code>com.miHoYo.hkrpg</code>，拉不起来、重试、再失败</li>
+            <li>日志里只显示普通的「启动超时」，完全看不出是包名错了。现在启动前会核对并回退</li>
           </ul>
-          <p><strong>修复 · 领完委托，弹窗关不掉</strong></p>
+          <p><strong>调整 · 画面异常自愈 50 秒 → 60 秒</strong></p>
+          <ul><li>云游戏建流本来就慢，50 秒偶尔把「真的在加载」误判成「画面坏了」，白踢一次重排</li></ul>
+          <p><strong>调整 · 导入提示可以不再弹</strong></p>
+          <ul><li>免责声明底部加了「我已了解风险，以后不再提示」</li></ul>
+          <p><strong>优化 · 卡顿</strong></p>
           <ul>
-            <li>委托奖励弹窗的标题和活跃度那个不一样，判态只认「获得物品」，于是判成「没有弹窗」，一次都没点</li>
-            <li>弹窗挡住右上角的 ✕，任务卡在「关不掉委托页」。现在按多条特征判断，并且会连点两次</li>
+            <li>任务执行：修掉 6 处重复的全屏 OCR 与过密轮询（同一帧识别两遍、找不到按钮还白跑 8 轮、日志每秒 13 次落盘）</li>
+            <li>界面：触摸标记不再触发整页重组（拖虚拟屏时最明显）、屏保不再每秒重组 4 次</li>
           </ul>
-          <p><strong>修复 · 云游戏静音不生效</strong></p>
-          <ul><li>云游戏和官服是两个包名，之前共用一个，静音和 AppOps 全作用在没装的包上</li></ul>
-          <p><strong>新增 · 截一张图取坐标（调试模式）</strong></p>
-          <ul><li>在截图上点你要的按钮，直接给出能填进 task.json 的数字，可以连着点好几个一次性复制</li></ul>
         </div>
       </div>
     </section>

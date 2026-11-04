@@ -6,44 +6,38 @@
 
 ## Current Version
 
-**1.0.2**
+**1.0.3**
 
 ---
 
 ## What's New
 
-⚠️ **This is an optional update** — nothing forces you to install it. But do consider it: every item below can leave a task stuck mid-run.
+**1.0.3** — bigger task packs work, and launching no longer grabs the wrong game.
 
-**Fixed · couldn't get back to the lobby after farming**
+⚠️ **Optional update.** But two of these fix things that look like "the app is broken".
 
-- The Guide page gained a new tab on the far left (starter rewards), shifting every tab one slot right. The old build tapped "Survival Index" but landed on "Daily Training" — the screen never changed, three retries all missed
-- The ✕ on that same page was never recognised either: its shape differs from both bundled templates, so the log said "no ✕ found" while one was clearly on screen, then tapped a back arrow that this page doesn't have
-- Both fixed. Tab positions are now **measured** at runtime: tap a slot, check what it landed on, move to the next if wrong — so a future tab reshuffle won't break it again
+**Fixed · task pack limit 20MB → 500MB**
 
-**Fixed · exiting a stage tapped "Challenge" and re-entered it**
+- Packs over 20MB simply wouldn't install. Raising the number alone wasn't enough — unpacking used to read the whole archive into memory and expand it into a second buffer, so a large pack would kill the app outright (not an error, a crash)
+- Unpacking now streams to disk, keeping only a few hundred KB in memory. Validation still happens before anything lands on disk. Per-file limit 6MB → 64MB
 
-- Exiting tries "Exit stage" then "Exit challenge". On the preparation screen the "Challenge" button matched the fuzzy search — which re-entered the stage, and the run never recovered
-- Fuzzy matching now has a length floor: fragments under 3 characters are no longer accepted as a target
+**Fixed · launching pulled a game that isn't installed**
 
-**Fixed · reward popup after claiming dispatch rewards wouldn't close**
+- The client choice in "Launch game" can get reset to the default official build, while the phone actually has cloud gaming installed — so after a timeout it would dutifully launch `com.miHoYo.hkrpg`, fail, retry, fail again, and the log only ever said "launch timed out"
+- It now cross-checks: if the declared package isn't installed but this session's target is, it uses that and says so in the log
 
-- That popup's title differs from the activity one, while the check only looked for "Items obtained" — so it decided there was no popup and never tapped
-- The popup then covered the ✕, and the task stalled on "can't close the dispatch page"
-- Now several marker texts are accepted (including the "tap blank area" hint), and it taps twice — the reward display has two layers
+**Changed · screen-anomaly repair threshold 50s → 60s**
 
-**Fixed · muting didn't work on cloud gaming**
+- Cloud gaming takes a while to set up its stream; 50s occasionally mistook "still loading" for "the picture is broken" and forced a pointless relayout
 
-- Cloud gaming and the official client are two different packages; they shared one, so mute and AppOps were applied to a package that isn't installed
+**Changed · import notice can be dismissed permanently**
 
-**New · pick coordinates from a screenshot (debug mode)**
+- A "don't show this again" checkbox at the bottom of the disclaimer
 
-- No more measuring by hand: Settings → Logs & diagnostics → enable Debug Mode → "Pick coordinates from a screenshot"
-- Tap the spot on the captured frame and it gives you the numbers to paste into `task.json`; pick several in a row and copy them all at once
+**Performance**
 
-**Upgrade notes**
-
-- Same signing key, installs over the top — task configs, redeemed codes and imported packs are preserved
-- If it still says "update available" after installing, you installed an old file; grab it again from the link below
+- Task execution: 6 spots where the same frame was OCR'd twice, or polling was tighter than the work itself
+- UI: touch markers no longer recompose the whole screen; the screensaver no longer recomposes 4× per second
 
 ### Core Features
 
