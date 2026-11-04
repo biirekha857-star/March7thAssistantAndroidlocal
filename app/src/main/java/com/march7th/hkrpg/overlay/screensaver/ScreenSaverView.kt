@@ -64,6 +64,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.march7th.hkrpg.R
 import com.march7th.hkrpg.domain.service.CoreSessionLogger
 import com.march7th.hkrpg.theme.ScreenSaverDimens
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalTime
@@ -74,8 +76,17 @@ fun ScreenSaverView(
     sessionLogger: CoreSessionLogger,
     onUnlock: () -> Unit
 ) {
-    val logs by sessionLogger.logs.collectAsStateWithLifecycle()
-    val latestLog = logs.lastOrNull()?.content ?: stringResource(R.string.screensaver_waiting_task)
+    // 只要最后一条的内容，不要把整个 750 条列表 collect 进来 ——
+    // 日志每 250ms flush 一次，订阅全量等于屏保整棵树每秒重组 4 次，
+    // 而这个界面的目的恰恰是静止省电。distinctUntilChanged 后，
+    // 内容没变就不会再触发重组。
+    val latestLogFlow = remember(sessionLogger) {
+        sessionLogger.logs
+            .map { logs -> logs.lastOrNull()?.content }
+            .distinctUntilChanged()
+    }
+    val latestLogText by latestLogFlow.collectAsStateWithLifecycle<String?>(initialValue = null)
+    val latestLog = latestLogText ?: stringResource(R.string.screensaver_waiting_task)
 
     val batteryState = rememberBatteryState()
     var currentTime by remember { mutableStateOf(LocalTime.now()) }

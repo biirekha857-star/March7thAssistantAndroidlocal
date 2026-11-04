@@ -177,7 +177,6 @@ fun BackgroundTaskView(
     val isTaskActive = maaState != TaskExecutionState.IDLE && maaState != TaskExecutionState.ERROR
     val runMode by appSettingsManager.runMode.collectAsStateWithLifecycle()
     val permissionState by permissionManager.state.collectAsStateWithLifecycle()
-    val markers by viewModel.markers.collectAsStateWithLifecycle()
     val displayResolution by compositionService.displayResolution.collectAsStateWithLifecycle()
     val pipOnHome by appSettingsManager.pipOnHome.collectAsStateWithLifecycle()
     val isChainLoaded by viewModel.chainState.isLoaded.collectAsStateWithLifecycle()
@@ -358,12 +357,15 @@ fun BackgroundTaskView(
                             }
                         }, modifier = Modifier.fillMaxSize()
                     )
-                    // 必须重新读，movableContent 是 remember 出来的，捕获外层 val 会拿到陈旧值
-                    if (!LocalIsInPip.current && markers.isNotEmpty()) TouchPreviewOverlay(
-                        markers = markers,
-                        displayResolution = displayResolution,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    // 触摸标记单独一层：它按触摸事件频率更新，在这里直接 collect
+                    // 会让整页跟着重组（详见 TouchPreviewLayer 的注释）
+                    if (!LocalIsInPip.current) {
+                        TouchPreviewLayer(
+                            viewModel = viewModel,
+                            displayResolution = displayResolution,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                     val gameFps by viewModel.gameFps.collectAsStateWithLifecycle()
                     gameFps?.let { fps ->
                         Text(
@@ -1363,6 +1365,37 @@ private fun RunDurationInputDialog(
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 }
 
+
+
+/**
+ * 触摸标记层。
+ *
+ * ## 为什么必须单独抽成一个 Composable
+ *
+ * `markers` 是按**触摸事件**频率更新的 —— 拖动虚拟屏时最高 120Hz，
+ * 另外 [com.march7th.hkrpg.presentation.viewmodel.TouchPreviewController]
+ * 还有个 100ms 的清理任务在改它。
+ *
+ * 如果在 `BackgroundTaskView` 根部 collect，每次更新都会让整页重组：
+ * 虚拟屏 SurfaceView、任务列表、日志卡全跟着走一遍。而这时候恰恰是
+ * 用户正在拖画面、最需要帧率的时候。
+ *
+ * 把 collect 收进这个小函数，重组范围就只有这层 overlay 自己。
+ */
+@Composable
+private fun TouchPreviewLayer(
+    viewModel: BackgroundTaskViewModel,
+    displayResolution: DefaultDisplayConfig.Resolution,
+    modifier: Modifier = Modifier,
+) {
+    val markers by viewModel.markers.collectAsStateWithLifecycle()
+    if (markers.isEmpty()) return
+    TouchPreviewOverlay(
+        markers = markers,
+        displayResolution = displayResolution,
+        modifier = modifier,
+    )
+}
 @Composable
 private fun RunDurationRemainingRow(deadline: Long) {
     val remainingMs by produceState(deadline - SystemClock.elapsedRealtime(), deadline) {

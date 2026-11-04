@@ -35,6 +35,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -141,7 +142,12 @@ fun LogPanel(
                 }
             }
 
-            if (listState.canScrollForward && logs.isNotEmpty()) {
+            // canScrollForward 在滚动过程中会反复翻转，直接读会让整个 Box（含
+            // LazyColumn 子树）反复重组；包一层 derivedStateOf，只有布尔值真变才重组
+            val showJumpButton by remember {
+                derivedStateOf { listState.canScrollForward }
+            }
+            if (showJumpButton && logs.isNotEmpty()) {
                 IconButton(
                     onClick = { isAutoScroll = true },
                     modifier = Modifier

@@ -823,7 +823,10 @@ fun DataSettingsScreen(
     // 用户勾过「不再提示」就不再弹，直接开文件选择器
     val skipTaskPackDisclaimer by viewModel.taskPackDisclaimerSkipped.collectAsStateWithLifecycle()
 
-    settingsMessage?.let { msg ->
+    // 组合期不能做副作用：原来这里直接弹 Toast + 清 state，
+    // 等于在绘制期间回写状态，必然多触发一轮重组（还可能同一帧弹两次）
+    LaunchedEffect(settingsMessage) {
+        val msg = settingsMessage ?: return@LaunchedEffect
         Toast.makeText(context, msg.resolve(context), Toast.LENGTH_SHORT).show()
         viewModel.clearSettingsMessage()
     }
