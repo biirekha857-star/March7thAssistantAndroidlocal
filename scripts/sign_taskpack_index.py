@@ -34,7 +34,25 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_INDEX = ROOT / "site" / "taskpacks" / "index.json"
-DEFAULT_KEY = ROOT.parent / "m7a-keystore" / "taskpack-signing-key.pem"
+def _default_key() -> Path:
+    """私钥位置。
+
+    优先读 `local.properties` 的 `maa.taskpackKey` —— 项目目录搬过一次之后，
+    「仓库同级的 m7a-keystore」就指不到了，而私钥为了签名链稳定是不能搬的。
+    没配时才回退到原来的默认位置。
+    """
+    props = ROOT / "local.properties"
+    if props.exists():
+        for line in props.read_text(encoding="utf-8").splitlines():
+            s = line.strip()
+            if s.startswith("maa.taskpackKey="):
+                v = s.split("=", 1)[1].strip()
+                if v:
+                    return Path(v)
+    return ROOT.parent / "m7a-keystore" / "taskpack-signing-key.pem"
+
+
+DEFAULT_KEY = _default_key()
 
 
 def sha256_of(path: Path) -> str:
