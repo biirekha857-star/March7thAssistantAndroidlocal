@@ -27,6 +27,19 @@
       "sha256": "7deaef8dd132956cbaeab4fcd02d359f8402f8493206a1630036e5da6584d38a",
       "size": 5145,
       "minAppVersionCode": 11
+    },
+    {
+      "id": "qs.reduceimagequality",
+      "name": "降画质",
+      "author": "浅帅",
+      "version": "1.0.4.6",
+      "description": "一个降画质的任务包，目的是让跑自动任务不会因为卡顿而异常退出",
+      "stepCount": 13,
+      "url": "https://m7a.pages.dev/taskpacks/qs.reduceimagequality.m7atask",
+      "urlFallback": "https://raw.githubusercontent.com/biirekha857-star/March7thAssistantAndroidlocal/main/site/taskpacks/qs.reduceimagequality.m7atask",
+      "sha256": "c947bf25ecc39dbe6fb83d9b54e11c958178b5143edb7fd048c93a746d80ca6b",
+      "size": 1326,
+      "minAppVersionCode": 11
     }
   ]
 }
