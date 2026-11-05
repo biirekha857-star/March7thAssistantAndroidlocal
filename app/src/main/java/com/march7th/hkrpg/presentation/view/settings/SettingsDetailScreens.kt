@@ -1279,11 +1279,7 @@ private fun TaskPackDisclaimerDialog(
     )
 }
 
-/**
- * 选任务包时开放的文件类型。
- *
- * `.m7atask` 没有注册 MIME，只能放开这几种、最后靠内容（zip 魔数）判断。
- */
+/** 选任务包时开放的类型。.m7atask 没有注册 MIME，最终靠内容判断。 */
 private val TASK_PACK_MIME_TYPES = arrayOf(
     "application/json",
     "application/zip",

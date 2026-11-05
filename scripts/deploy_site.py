@@ -2,33 +2,18 @@
 # -*- coding: utf-8 -*-
 """把 site/ 部署到 Cloudflare Pages。
 
-用法（在仓库根目录执行）：
+    python scripts/deploy_site.py            上传并验证
+    python scripts/deploy_site.py --check    只看线上现状
 
-    python scripts/deploy_site.py             # 上传并验证
-    python scripts/deploy_site.py --check     # 只看线上现状，不上传
-    python scripts/deploy_site.py --dir site  # 换目录
+凭据读 local.properties（该文件在 .gitignore 里）：
+    maa.cfDeployToken / maa.cfAccountId / maa.cfProject
 
-凭据从 `local.properties` 读（该文件在 .gitignore 里，不会进版本库）：
+走 wrangler 而不是直接 POST 上传接口：那个接口要求先交 manifest
+（路径到内容哈希的映射），文档没写清哈希算法和文件字段格式，
+自己拼 multipart 会返回 400。
 
-    maa.cfDeployToken=cfut_xxx      # 用户级 API 令牌，权限 Account/Pages/Edit
-    maa.cfAccountId=xxxxxxxx        # 账户 ID
-    maa.cfProject=m7a               # Pages 项目名
-
-## 为什么调 wrangler 而不是直接 POST API
-
-Pages 的直接上传接口要求先交一份 `manifest`（路径 → 内容哈希），
-但官方 API 文档只写了这个字段"必填"，没写哈希算法、路径格式、以及
-文件本身挂在哪个 form 字段下。自己拼 multipart 会得到：
-
-    400  A "manifest" field was expected in the request body
-
-wrangler 内部实现了这套细节，一条命令绕过去。
-
-## 为什么部署完还要回读
-
-`wrangler` 说 Success 只代表文件传完了。真正要确认的是：
-线上那份 `index.json` 里是不是你想要的那几个包 —— 少一次回读，
-就可能出现"部署成功但用户看不到新包"的情况。
+部署后回读线上 index.json 与本地比对。wrangler 报 Success 只代表
+文件传完了，不代表用户能看到新包。
 """
 
 from __future__ import annotations

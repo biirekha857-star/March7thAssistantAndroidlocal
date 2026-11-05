@@ -443,16 +443,8 @@ class StarRailTasks(
             ?.takeIf { it.isNotBlank() }
             ?: client.packageName
 
-        // ## 别去拉一个没装的包
-        //
-        // 任务链里的「启动游戏」节点会被重置回默认的官服 —— 画面校准、链自愈、
-        // 或者用户误点都可能。而手机上装的可能是云游戏，于是启动超时后它会
-        // 认认真真地去拉 com.miHoYo.hkrpg：拉不起来 → 重试 → 再失败，
-        // 用户只看到"一直启动不了"，日志里也只是普通的启动超时。
-        //
-        // `pkg` 是外层通过 setPackage 传进来的**本次会话目标包**，和
-        // force-stop、画面漂移检测用的是同一个，比任务参数更可信。
-        // 所以：声明的包没装、而会话包装了，就改用会话包，并明确记一笔。
+        // 「启动游戏」节点里的客户端可能被重置回默认官服，而机器上装的是别的服。
+        // 声明的包没装、会话目标包（setPackage 传入）装了，就用会话包。
         val effectivePkg = if (declaredPkg != pkg &&
             !GameLauncher.isInstalled(declaredPkg) &&
             GameLauncher.isInstalled(pkg)

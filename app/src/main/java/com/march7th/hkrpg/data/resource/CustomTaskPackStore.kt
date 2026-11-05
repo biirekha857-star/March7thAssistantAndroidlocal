@@ -488,15 +488,10 @@ class CustomTaskPackStore(
         /** 子目录名，与 [com.march7th.hkrpg.remote.CoreDataDir.TASKPACKS_DIR] 同源 */
         const val DIR_NAME = com.march7th.hkrpg.remote.CoreDataDir.TASKPACKS_DIR
 
-        /**
-         * 单包上限（解压后总大小）。
-         *
-         * 原来 20MB，理由同上 —— 但带整段录屏或几十张高清模板的包会超。
-         * 放到 500MB 与远端下载上限对齐，避免「同一份包，在线能装、本地装不上」。
-         */
+        /** 单包上限（解压后总大小），与远端下载上限一致。 */
         private const val MAX_TOTAL_BYTES = 500L * 1024 * 1024
 
-        /** 单个文件上限。模板图、录音都不会有 64MB，超过基本是打错包了 */
+        /** 单个文件上限。 */
         private const val MAX_ENTRY_BYTES = 64L * 1024 * 1024
 
         /** 安装时的临时目录前缀。`.tmp-xxx`，装完改名成正式目录 */
@@ -567,16 +562,8 @@ class CustomTaskPackStore(
             return TaskPackInstallResult.Invalid(listOf("文件是空的（0 字节）"))
         }
 
-        // ## 边解压边落盘，不要先全读进内存
-        //
-        // 原来是「整个 zip 读进内存 → 每个 entry 解到内存 Map → 校验 → 写盘」，
-        // 峰值内存 ≈ 包体积 × 2。单包上限 20MB 时看不出问题，
-        // 一放宽到 500MB 就会直接 OOM —— 而且 OOM 是进程被系统杀掉，
-        // 用户看到的是"点了安装，App 没了"，连个错误提示都没有。
-        //
-        // 现在解压直接写临时目录，内存里只留 task.json（几百 KB）。
-        // 「校验通过才落盘」的保证没变：校验在**改名前**做，
-        // 失败的包只会留下临时目录，清理掉就干净了。
+        // 解压直接写临时目录，不整包读进内存。全部读入时峰值约是包体积的两倍，
+        // 单包上限放宽到 500MB 后会 OOM。校验仍在改名前做，失败只留临时目录。
         val staging = File(packsDir, "$STAGING_PREFIX${System.nanoTime()}")
         try {
             if (!staging.mkdirs()) {
