@@ -8,6 +8,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.RocketLaunch
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.ui.Alignment
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -38,6 +40,7 @@ fun AppUpdateDialog(
     prompt: AppUpdatePrompt,
     onUpdate: () -> Unit,
     onLater: () -> Unit,
+    onIgnore: () -> Unit,
 ) {
     val forced = prompt.forced
 
@@ -85,6 +88,20 @@ fun AppUpdateDialog(
                             lineHeight = MaterialTheme.typography.bodySmall.lineHeight * 1.15f,
                         ),
                     )
+                }
+
+                // 强制更新不给这个入口；断网兜底时 versionCode 为 0，也跳过
+                if (!forced && prompt.versionCode > 0) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    TextButton(
+                        onClick = onIgnore,
+                        modifier = Modifier.align(Alignment.End),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.update_dialog_ignore_version),
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
                 }
             }
         },

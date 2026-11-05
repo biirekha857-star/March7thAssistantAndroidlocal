@@ -286,6 +286,12 @@
     <string name="settings_coord_pick_failed">截图失败 —— 让游戏先跑起来、画面出来了再试</string>
     <string name="settings_coord_pick_title">取坐标</string>
     <string name="settings_coord_pick_hint">在图上点你想校准的位置，下面会列出坐标。可以连着点多下。</string>
+    <string name="coord_pick_mode_tap">点</string>
+    <string name="coord_pick_gen_code">生成代码</string>
+    <string name="coord_pick_mode_swipe">滑动</string>
+    <string name="coord_pick_mode_region">框选</string>
+    <string name="coord_pick_hint_swipe">在图上按住拖一条线，给出滑动的起止坐标</string>
+    <string name="coord_pick_hint_region">在图上拖一个矩形，给出 region 用的四元组</string>
     <string name="settings_coord_pick_empty">还没取点 —— 点一下图上任意位置试试</string>
     <string name="settings_coord_pick_count">已取 %1$d 个</string>
     <string name="settings_coord_pick_copy">复制全部</string>
@@ -761,6 +767,7 @@
     <string name="update_dialog_title">发现新版本 %1$s</string>
     <string name="update_dialog_title_forced">需要更新后才能继续使用</string>
     <string name="update_dialog_update_now">立即更新</string>
+    <string name="update_dialog_ignore_version">忽略此版本</string>
     <string name="update_dialog_version_line">当前 %1$s → 最新 %2$s</string>
     <string name="update_dialog_forced_hint">此版本已停止支持，请更新到最新版本后继续使用。</string>
     <string name="dialog_update_failed_title">更新失败</string>

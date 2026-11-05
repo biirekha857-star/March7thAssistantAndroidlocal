@@ -14,6 +14,8 @@ package com.march7th.hkrpg.data.model.update
  */
 data class AppUpdatePrompt(
     val versionName: String,
+    /** 新版本的 versionCode，「忽略此版本」用它做标记。断网兜底时为 0。 */
+    val versionCode: Int = 0,
     val currentVersion: String,
     val changelog: String,
     val downloadUrl: String,

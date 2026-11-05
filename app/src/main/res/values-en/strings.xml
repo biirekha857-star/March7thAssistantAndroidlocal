@@ -64,6 +64,12 @@
     <string name="settings_coord_pick_failed">Capture failed — start the game and try again once a frame is showing</string>
     <string name="settings_coord_pick_title">Pick coordinates</string>
     <string name="settings_coord_pick_hint">Tap the spot you want to calibrate; the coordinate shows up below. You can tap several spots in a row.</string>
+    <string name="coord_pick_mode_tap">Tap</string>
+    <string name="coord_pick_gen_code">Generate code</string>
+    <string name="coord_pick_mode_swipe">Swipe</string>
+    <string name="coord_pick_mode_region">Region</string>
+    <string name="coord_pick_hint_swipe">Drag a line on the frame to get the swipe start and end</string>
+    <string name="coord_pick_hint_region">Drag a rectangle to get the four numbers for region</string>
     <string name="settings_coord_pick_empty">Nothing yet — tap anywhere on the image</string>
     <string name="settings_coord_pick_count">%1$d picked</string>
     <string name="settings_coord_pick_copy">Copy all</string>
@@ -531,6 +537,7 @@
     <string name="update_dialog_title">Version %1$s available</string>
     <string name="update_dialog_title_forced">Update required</string>
     <string name="update_dialog_update_now">Update now</string>
+    <string name="update_dialog_ignore_version">Skip this version</string>
     <string name="update_dialog_version_line">%1$s → %2$s</string>
     <string name="update_dialog_forced_hint">This version is no longer supported. Please update to continue.</string>
     <string name="dialog_update_failed_title">Update Failed</string>

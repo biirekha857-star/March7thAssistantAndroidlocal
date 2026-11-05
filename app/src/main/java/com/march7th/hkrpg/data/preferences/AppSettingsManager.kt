@@ -169,6 +169,16 @@ class AppSettingsManager internal constructor(
     }
 
     // 启动时自动检查更新
+    /** 已忽略的更新版本；versionCode 不高于它的更新不再提示。 */
+    val ignoredUpdateVersionCode: StateFlow<Int> =
+        setting { it.ignoredUpdateVersionCode.toIntOrNull() ?: 0 }
+
+    suspend fun setIgnoredUpdateVersionCode(code: Int) {
+        with(AppSettingsSchema) {
+            context.dataStore.edit { it[ignoredUpdateVersionCode] = code.toString() }
+        }
+    }
+
     /** 导入任务包时跳过免责声明（用户勾过「不再提示」） */
     val taskPackDisclaimerSkipped: StateFlow<Boolean> =
         setting { it.taskPackDisclaimerSkipped.toBooleanStrictOrNull() ?: false }

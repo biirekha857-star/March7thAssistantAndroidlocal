@@ -226,9 +226,12 @@ class UpdateViewModel(
                 Timber.w("收到强制更新要求，本地锁定 versionCode >= ${manifest.versionCode}")
             }
 
-            val prompt = when {
+            val ignored = appSettingsManager.ignoredUpdateVersionCode.value
+
+            var prompt = when {
                 manifest != null -> AppUpdatePrompt(
                     versionName = manifest.versionName,
+                    versionCode = manifest.versionCode,
                     currentVersion = BuildConfig.VERSION_NAME,
                     changelog = manifest.changelog,
                     downloadUrl = manifest.apkUrl,
@@ -242,6 +245,13 @@ class UpdateViewModel(
                 )
 
                 else -> null
+            }
+
+            // 用户点过「忽略此版本」：不高于那个版本的更新不再打扰。
+            // 强制更新不受影响 —— 那种情况本来就不给跳过的入口。
+            if (prompt != null && !prompt.forced && prompt.versionCode in 1..ignored) {
+                Timber.i("${prompt.versionName} 已被用户忽略（标记 $ignored），不弹提示")
+                prompt = null
             }
 
             if (prompt != null) {
@@ -260,6 +270,21 @@ class UpdateViewModel(
      * 强制更新时**直接忽略** —— 这是"死更新"的最后一环：按钮不给、
      * 点外面不关、返回键也不关，就算误触发也会被这里挡住。
      */
+    /**
+     * 忽略当前提示的版本：记下 versionCode，之后不再提示这个版本。
+     *
+     * 下个版本发布时 manifest.versionCode 更大，照常弹窗。
+     */
+    fun ignoreAppUpdatePrompt() {
+        val prompt = _appUpdatePrompt.value ?: return
+        if (prompt.forced || prompt.versionCode <= 0) return
+        viewModelScope.launch {
+            appSettingsManager.setIgnoredUpdateVersionCode(prompt.versionCode)
+            Timber.i("已忽略版本 ${prompt.versionName}（versionCode ${prompt.versionCode}）")
+            _appUpdatePrompt.value = null
+        }
+    }
+
     fun dismissAppUpdatePrompt() {
         val prompt = _appUpdatePrompt.value ?: return
         if (prompt.forced) {

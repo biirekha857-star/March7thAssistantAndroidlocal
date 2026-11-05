@@ -6,38 +6,28 @@
 
 ## Current Version
 
-**1.0.3**
+**1.0.4**
 
 ---
 
 ## What's New
 
-**1.0.3** — bigger task packs work, and launching no longer grabs the wrong game.
+**1.0.4** — the coordinate picker goes landscape, and can now measure swipes and regions
 
-⚠️ **Optional update.** But two of these fix things that look like "the app is broken".
+**New · coordinate picker: landscape, swipe, region**
 
-**Fixed · task pack limit 20MB → 500MB**
+- Opens in landscape
+- Three modes at the top:
+  - Tap: same as before, one tap gives x and y
+  - Swipe: drag a line to get fromX / fromY / toX / toY, matching the swipe parameters
+  - Region: drag a rectangle to get [x, y, w, h], matching region
+- Output uses the same parameter names as the task file, so it pastes straight in
 
-- Packs over 20MB simply wouldn't install. Raising the number alone wasn't enough — unpacking used to read the whole archive into memory and expand it into a second buffer, so a large pack would kill the app outright (not an error, a crash)
-- Unpacking now streams to disk, keeping only a few hundred KB in memory. Validation still happens before anything lands on disk. Per-file limit 6MB → 64MB
+**New · update prompt can skip a version**
 
-**Fixed · launching pulled a game that isn't installed**
-
-- The client choice in "Launch game" can get reset to the default official build, while the phone actually has cloud gaming installed — so after a timeout it would dutifully launch `com.miHoYo.hkrpg`, fail, retry, fail again, and the log only ever said "launch timed out"
-- It now cross-checks: if the declared package isn't installed but this session's target is, it uses that and says so in the log
-
-**Changed · screen-anomaly repair threshold 50s → 60s**
-
-- Cloud gaming takes a while to set up its stream; 50s occasionally mistook "still loading" for "the picture is broken" and forced a pointless relayout
-
-**Changed · import notice can be dismissed permanently**
-
-- A "don't show this again" checkbox at the bottom of the disclaimer
-
-**Performance**
-
-- Task execution: 6 spots where the same frame was OCR'd twice, or polling was tighter than the work itself
-- UI: touch markers no longer recompose the whole screen; the screensaver no longer recomposes 4× per second
+- A "Skip this version" action at the bottom of the dialog
+- Once used, that version stops prompting
+- Not offered when the update is forced
 
 ### Core Features
 

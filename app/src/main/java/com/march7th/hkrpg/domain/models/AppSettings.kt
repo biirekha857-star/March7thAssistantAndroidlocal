@@ -20,6 +20,10 @@ data class AppSettings(
     @PrefKey(default = "false")
     val debugMode: String = "false",
 
+    /** 用户点过「忽略此版本」的 versionCode，低于它的更新照常提示。 */
+    @PrefKey(default = "0")
+    val ignoredUpdateVersionCode: String = "0",
+
     /**
      * 导入任务包时是否跳过免责声明。
      *

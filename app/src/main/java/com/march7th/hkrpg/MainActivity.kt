@@ -146,6 +146,7 @@ class MainActivity : AppCompatActivity(), PipHost {
                                     prompt = prompt,
                                     onUpdate = updateViewModel::openAppUpdateDownload,
                                     onLater = updateViewModel::dismissAppUpdatePrompt,
+                                    onIgnore = updateViewModel::ignoreAppUpdatePrompt,
                                 )
                             }
                         }
