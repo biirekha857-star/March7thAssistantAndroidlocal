@@ -40,6 +40,19 @@
       "sha256": "c947bf25ecc39dbe6fb83d9b54e11c958178b5143edb7fd048c93a746d80ca6b",
       "size": 1326,
       "minAppVersionCode": 11
+    },
+    {
+      "id": "qs.updateimagequality",
+      "name": "升画质",
+      "author": "浅帅",
+      "version": "1.0.4.6",
+      "description": "一个升画质的任务包",
+      "stepCount": 18,
+      "url": "https://m7a.pages.dev/taskpacks/qs.updateimagequality.m7atask",
+      "urlFallback": "https://raw.githubusercontent.com/biirekha857-star/March7thAssistantAndroidlocal/main/site/taskpacks/qs.updateimagequality.m7atask",
+      "sha256": "4717676a7d91946b6183bfefb2a3c336b63c5cf9a8c81a79489fae729968305a",
+      "size": 2086,
+      "minAppVersionCode": 11
     }
   ]
 }
