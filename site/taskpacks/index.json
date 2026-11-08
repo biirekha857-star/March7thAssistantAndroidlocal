@@ -53,6 +53,19 @@
       "sha256": "4717676a7d91946b6183bfefb2a3c336b63c5cf9a8c81a79489fae729968305a",
       "size": 2086,
       "minAppVersionCode": 11
+    },
+    {
+      "id": "qs.accountswitching",
+      "name": "切换账号",
+      "author": "浅帅",
+      "version": "1.0.4.6",
+      "description": "一个切换账号的任务包，警告：如果账号超过3个，有可能无法正常用，我这里无法测试",
+      "stepCount": 24,
+      "url": "https://m7a.pages.dev/taskpacks/qs.accountswitching.m7atask",
+      "urlFallback": "https://raw.githubusercontent.com/biirekha857-star/March7thAssistantAndroidlocal/main/site/taskpacks/qs.accountswitching.m7atask",
+      "sha256": "ac50cbf3009014d79fd820092160a8781774caf2eaae4de10a542289f1f80c8c",
+      "size": 1443,
+      "minAppVersionCode": 16
     }
   ]
 }
