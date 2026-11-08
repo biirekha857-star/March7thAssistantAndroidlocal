@@ -99,6 +99,16 @@ object OcrEngine {
      */
     private const val DET_MAX_SIDE = 960
 
+    /**
+     * 检测输入的最长边下限。
+     *
+     * 原来只缩不放：200×60 的小区域原样送进 det，里面 12px 高的数字
+     * 根本不够看 —— det 对短文本本来就弱，数字常常整条漏掉。
+     * 小区域放大到这条线后，数字有 30 多像素高。放大的结果仍不超过
+     * DET_MAX_SIDE，全屏 OCR 的开销不受影响。
+     */
+    private const val DET_MIN_SIDE = 640
+
     /** 检测输入边长需为 32 的倍数（DB 网络下采样要求）。 */
     private const val DET_SIZE_DIVISOR = 32
 
@@ -299,13 +309,96 @@ object OcrEngine {
      * 在副本准备页按下去等于重新进副本。
      */
     fun findText(image: Mat, target: String, region: Rect? = null): OcrResult? {
-        val norm = target.replace(" ", "").replace("\u3000", "")
+        val norm = target.replace(" ", "").replace("　", "")
         val all = run(image, region)
-        return all.firstOrNull { it.normalized() == norm }
-            ?: all.firstOrNull { it.normalized().contains(norm) }
-            ?: all.firstOrNull {
-                it.normalized().length >= 3 && norm.contains(it.normalized())
+
+        // ①~③ 精确 / 包含 / 反向包含 —— 逐字符比，一个字都不许错
+        all.firstOrNull { it.normalized() == norm }?.let { return it }
+        all.firstOrNull { it.normalized().contains(norm) }?.let { return it }
+        all.firstOrNull {
+            it.normalized().length >= 3 && norm.contains(it.normalized())
+        }?.let { return it }
+
+        // ④ 模糊：OCR 认错一个字符时上面三级全落空。
+        //    实测 `188******23` 被认成 `188******2B`（3→B），星号部分更是每次都不同。
+        //    只比骨架 + 编辑距离，把这种差异吃掉。
+        val targetKey = fuzzyKey(target)
+        if (targetKey.length >= 5) {
+            val limit = allowedEdits(targetKey.length)
+            if (limit > 0) {
+                var best: OcrResult? = null
+                var bestDist = limit + 1
+                for (r in all) {
+                    val key = fuzzyKey(r.text)
+                    if (key.length < 3) continue
+                    val d = editDistance(key, targetKey, limit)
+                    if (d < bestDist) {
+                        bestDist = d
+                        best = r
+                    }
+                }
+                if (best != null) return best
             }
+        }
+        return null
+    }
+
+    /**
+     * 模糊匹配用的骨架串：只留字母数字，统一小写。
+     *
+     * ```
+     * 188******23      →  18823
+     * 188******2B      →  1882b    ← 差一个字符，编辑距离 1
+     * 188* * * * * *23 →  18823    ← 星号间插了空格，骨架一样
+     * ```
+     */
+    private fun fuzzyKey(raw: String): String {
+        val sb = StringBuilder(raw.length)
+        for (c in raw) {
+            if (c.isLetterOrDigit()) sb.append(c.lowercaseChar())
+        }
+        return sb.toString()
+    }
+
+    /**
+     * 允许的编辑距离 —— 短串从严，长串放宽。
+     *
+     * 4 字以内必须完全一致：`12` 和 `13` 差一位就是两回事，这个长度上
+     * 模糊匹配只会把错误放大。5 个字起容 1 位，10 个字起容 2 位。
+     */
+    private fun allowedEdits(len: Int): Int = when {
+        len < 5 -> 0
+        len < 10 -> 1
+        else -> 2
+    }
+
+    /**
+     * Levenshtein 距离，超过 limit 提前返回 limit + 1。
+     *
+     * 只需要知道「在阈值内 / 不在」，不必算完整值，所以每行结束检查一次行最小值。
+     */
+    private fun editDistance(a: String, b: String, limit: Int): Int {
+        if (a == b) return 0
+        if (a.isEmpty()) return b.length
+        if (b.isEmpty()) return a.length
+        if (kotlin.math.abs(a.length - b.length) > limit) return limit + 1
+
+        var prev = IntArray(b.length + 1) { it }
+        var cur = IntArray(b.length + 1)
+        for (i in 1..a.length) {
+            cur[0] = i
+            var rowMin = cur[0]
+            for (j in 1..b.length) {
+                val cost = if (a[i - 1] == b[j - 1]) 0 else 1
+                cur[j] = minOf(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost)
+                if (cur[j] < rowMin) rowMin = cur[j]
+            }
+            if (rowMin > limit) return limit + 1
+            val tmp = prev
+            prev = cur
+            cur = tmp
+        }
+        return prev[b.length]
     }
 
     /**
@@ -343,7 +436,13 @@ object OcrEngine {
         val d = det ?: return emptyList()
         val e = env ?: return emptyList()
 
-        val scale = minOf(1.0, DET_MAX_SIDE.toDouble() / maxOf(src.width(), src.height()))
+        // 大图缩、小图放：只在缩小的话，小区域里的数字不足一个字符高
+        val longest = maxOf(src.width(), src.height())
+        val scale = when {
+            longest > DET_MAX_SIDE -> DET_MAX_SIDE.toDouble() / longest
+            longest < DET_MIN_SIDE -> DET_MIN_SIDE.toDouble() / longest
+            else -> 1.0
+        }
         var w = (src.width() * scale).toInt()
         var h = (src.height() * scale).toInt()
         w = maxOf(DET_SIZE_DIVISOR, (w / DET_SIZE_DIVISOR) * DET_SIZE_DIVISOR)
@@ -352,7 +451,10 @@ object OcrEngine {
         val ratioY = src.height().toDouble() / h
 
         val resized = Mat()
-        Imgproc.resize(src, resized, Size(w.toDouble(), h.toDouble()), 0.0, 0.0, Imgproc.INTER_AREA)
+        Imgproc.resize(
+            src, resized, Size(w.toDouble(), h.toDouble()), 0.0, 0.0,
+            if (scale > 1.0) Imgproc.INTER_LINEAR else Imgproc.INTER_AREA,
+        )
 
         // 归一化：(x/255 - mean) / std，ImageNet 均值方差。
         //

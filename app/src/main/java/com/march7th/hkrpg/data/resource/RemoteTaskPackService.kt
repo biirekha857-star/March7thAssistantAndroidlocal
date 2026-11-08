@@ -290,21 +290,32 @@ class RemoteTaskPackService(
             head.startsWith("<?xml", ignoreCase = true)
     }
 
-    /** SHA256withECDSA 验签。任何异常都当失败 —— 不抛，只返回 false。 */
-    private fun verify(content: ByteArray, signatureBase64: String): Boolean = runCatching {
-        val keyBytes = Base64.decode(M7aApi.TASKPACK_INDEX_PUBKEY, Base64.NO_WRAP)
-        val pub = KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(keyBytes))
-        val verifier = Signature.getInstance("SHA256withECDSA")
-        verifier.initVerify(pub)
-        verifier.update(content)
-        val sigBytes = Base64.decode(
-            signatureBase64.filterNot { it.isWhitespace() },
-            Base64.NO_WRAP,
-        )
-        verifier.verify(sigBytes)
-    }.onFailure {
-        Timber.tag(TAG).w(it, "验签异常")
-    }.getOrDefault(false)
+    /**
+     * SHA256withECDSA 验签。任何异常都当失败 —— 不抛，只返回 false。
+     *
+     * 逐把公钥试：私钥丢过一次，换新钥匙之后，用旧钥匙签的存量索引
+     * 还得能验过，否则升级到新版本的人反而装不了现有的包。
+     */
+    private fun verify(content: ByteArray, signatureBase64: String): Boolean {
+        val sigBytes = runCatching {
+            Base64.decode(signatureBase64.filterNot { it.isWhitespace() }, Base64.NO_WRAP)
+        }.getOrNull() ?: return false
+
+        return M7aApi.TASKPACK_INDEX_PUBKEYS.any { b64 ->
+            runCatching {
+                val keyBytes = Base64.decode(b64, Base64.NO_WRAP)
+                val pub = KeyFactory.getInstance("EC")
+                    .generatePublic(X509EncodedKeySpec(keyBytes))
+                Signature.getInstance("SHA256withECDSA").run {
+                    initVerify(pub)
+                    update(content)
+                    verify(sigBytes)
+                }
+            }.onFailure {
+                Timber.tag(TAG).w(it, "验签异常")
+            }.getOrDefault(false)
+        }
+    }
 
     private fun sha256Hex(bytes: ByteArray): String {
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes)

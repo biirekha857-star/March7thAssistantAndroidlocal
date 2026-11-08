@@ -56,3 +56,4 @@ tmp.txt
 
 # Kotlin 增量编译缓存
 .kotlin/
+*.pem

@@ -30,6 +30,8 @@ enum class CoreTaskType(val value: String) {
     REDEEM("Redeem"),
     // 忘却之庭 · 混沌回忆
     FORGOTTEN_HALL("ForgottenHall"),
+    // 无名勋礼（通行证奖励）
+    NAMELESS_HONOR("NamelessHonor"),
 
     // ==================== 明日方舟任务（保留，崩铁内核不支持）====================
     // 日常任务

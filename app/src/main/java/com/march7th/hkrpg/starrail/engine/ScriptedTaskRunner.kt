@@ -209,13 +209,26 @@ class ScriptedTaskRunner(
         log("变量 $key = $shown")
     }
 
-    /** 求值表达式。语法错 / 变量无值都当步骤失败，不崩。 */
+    /**
+     * 求值表达式。语法错 / 变量无值都当步骤失败，不崩。
+     *
+     * 作用域是「参数 + 运行期变量」。只给 vars 的话，`account == 'A'` 这种
+     * 直接写参数名的表达式会报「用了还没有值的变量」—— 参数存在 params 里，
+     * 进不了 vars。同名时运行期变量优先，setVar 写进去的值更新。
+     */
     private fun evalExpr(step: PackStep, label: String): PackExpr.Value {
         val src = subst(step.expr)
         if (src.isNullOrBlank()) throw StepFailure("缺少 expr")
-        return PackExpr.eval(src, vars)
+        val scope = HashMap<String, PackExpr.Value>(params.size + vars.size)
+        params.forEach { (k, v) -> scope[k] = paramValue(v) }
+        scope.putAll(vars)
+        return PackExpr.eval(src, scope)
             ?: throw StepFailure("表达式算不出来：$src（语法错，或用了还没有值的变量）")
     }
+
+    /** 参数值是文本：能转数字就当数字，否则当字符串。 */
+    private fun paramValue(text: String): PackExpr.Value =
+        text.trim().toLongOrNull()?.let { PackExpr.Value.Num(it) } ?: PackExpr.Value.Str(text)
 
     // ==================== 步骤树 ====================
 
@@ -288,12 +301,18 @@ class ScriptedTaskRunner(
             }
 
             "waitText" -> {
-                if (!waitText(step)) throw StepFailure("等不到文字「${subst(step.text)}」")
+                if (!waitText(step)) {
+                    dumpOnMiss("waitText", subst(step.text))
+                    throw StepFailure("等不到文字「${subst(step.text)}」")
+                }
             }
 
             "tapText" -> {
                 val text = subst(step.text).orEmpty()
-                if (!waitText(step)) throw StepFailure("等不到文字「$text」")
+                if (!waitText(step)) {
+                    dumpOnMiss("tapText", text)
+                    throw StepFailure("等不到文字「$text」")
+                }
                 if (!nav.clickText(text, cropOf(step))) {
                     throw StepFailure("点击文字「$text」失败")
                 }
@@ -302,6 +321,7 @@ class ScriptedTaskRunner(
             "assertText" -> {
                 val text = subst(step.text).orEmpty()
                 if (!nav.hasText(text, cropOf(step))) {
+                    dumpOnMiss("assertText", text)
                     throw StepFailure("画面里没有「$text」")
                 }
             }
@@ -497,6 +517,19 @@ class ScriptedTaskRunner(
         val cy = ((r.y + r.templateHeight * r.scale / 2) / sf).toInt() +
             ((offsetY ?: 0.0) * auto.height).toInt()
         return cx to cy
+    }
+
+    /**
+     * 等不到文字时把**当时画面上所有认出来的文字**打进日志。
+     *
+     * 没有这一步，失败之后只能在「OCR 漏检」和「界面根本不对」之间反复猜 ——
+     * 实测就踩过：`等不到文字「188」`，看不出是列表没展开、目标在屏幕外，
+     * 还是那行字被认成了别的。dump 一次全屏结果，日志里直接就有答案。
+     *
+     * 只在失败路径调用，不影响正常流程的耗时。
+     */
+    private fun dumpOnMiss(op: String, text: String?) {
+        nav.dumpCurrentScreenText("$op 等不到「${text ?: ""}」")
     }
 
     private fun waitText(step: PackStep): Boolean {

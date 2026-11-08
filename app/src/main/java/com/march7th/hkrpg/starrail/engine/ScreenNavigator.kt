@@ -614,14 +614,24 @@ class ScreenNavigator(
         /**
          * 子界面左上角的「返回」。
          *
-         * 崩铁所有二级界面的返回按钮**长得一样、位置也一样**（左上角），
-         * 所以不需要为每个页面单独裁模板 —— 直接点固定坐标即可。
+         * 多数二级界面的返回在左上角，直接点固定坐标。但**不是所有** ——
+         * 委托界面、部分活动页把返回放在右上角，见 [BACK_ARROW_RIGHT]。
          *
          * 它是 BACK 键的正确替代品：BACK 在游戏里只会弹「是否退出游戏」，
          * 而这里点的是真按钮，点空最多是没反应，不会把游戏退掉。
          */
         val BACK_ARROW = NormRect(
             24f / 1920f, 26f / 1080f, 68f / 1920f, 64f / 1080f,
+        )
+
+        /**
+         * 右上角的「返回」。
+         *
+         * 委托界面用的是这个（弧形箭头，在右上角），左上角是标题区，
+         * 点那儿没有任何反应 —— 日志里「委托派遣完成」之后卡住就是这个原因。
+         */
+        val BACK_ARROW_RIGHT = NormRect(
+            1809f / 1920f, 27f / 1080f, 80f / 1920f, 72f / 1080f,
         )
 
         /**
@@ -1750,16 +1760,23 @@ class ScreenNavigator(
                 return isAt(Screen.MAIN)
             }
 
-            // ③.6 还是找不到 ✕ —— 点左上角的「返回」
+            // ③.6 还是找不到 ✕ —— 试「返回」按钮
             //
-            //    这里原本是 BACK 的位置。崩铁每个子界面的返回按钮都是同一个
-            //    位置（左上角），点它等于按 BACK 想做的事，但不会弹退出框。
+            //    这里原本是 BACK 的位置。点真按钮等于按 BACK 想做的事，
+            //    但不会弹退出框。多数界面的返回在左上，委托这类在右上，
+            //    两个位置都点一次。
             //
             //    只在第一轮点（第二轮已经全屏扫过 ✕，再点也没新信息）。
             if (i == 0) {
-                Ln.i("$TAG: 未见可点的 ✕，点左上角「返回」")
-                clickCrop(Hotspot.BACK_ARROW, "左上返回")
-                if (awaitMain(SETTLE_MS)) return true
+                // 返回按钮不都在左上：委托界面在右上。两处都试，都不行交给上层
+                Ln.i("$TAG: 未见可点的 ✕，依次试左上、右上的「返回」")
+                for ((spot, n) in listOf(
+                    Hotspot.BACK_ARROW to "左上返回",
+                    Hotspot.BACK_ARROW_RIGHT to "右上返回",
+                )) {
+                    clickCrop(spot, n)
+                    if (awaitMain(SETTLE_MS)) return true
+                }
                 trace("close_back_arrow")
             }
 

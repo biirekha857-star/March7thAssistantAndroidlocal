@@ -41,7 +41,8 @@ val gitVersionCode: Int by lazy {
     //  13  → 1.0.2       指南页标签/✕ 修复 + OCR 误点「挑战」+ 委托奖励弹窗 + 云游戏包名 + 取坐标工具
     //  14  → 1.0.3       任务包 500MB（流式解压）+ 启动别拉没装的包 + 画面自愈 60s + 导入提示可跳过 + 两轮性能优化
     //  15  → 1.0.4       取坐标支持横屏 / 滑动 / 框选；更新提示可忽略某个版本
-    15
+    //  16  → 1.0.5       无名勋礼任务 + OCR 模糊匹配 + 启动不再静默换服 + 失败自动导出识别结果
+    16
 }
 
 val gitVersionName: String by lazy {
@@ -53,7 +54,7 @@ val gitVersionName: String by lazy {
     // 不动，只在本地加个后缀，发版时把这个键删掉就恢复干净。
     val suffix = (findProperty("maa.versionSuffix") as String?)?.trim().orEmpty()
         .ifEmpty { localProperties.getProperty("maa.versionSuffix", "").trim() }
-    if (suffix.isEmpty()) "1.0.4" else "1.0.4-$suffix"
+    if (suffix.isEmpty()) "1.0.5" else "1.0.5-$suffix"
 }
 
 // 本机默认只编 arm64、关 LTO；CI=true 保持双 ABI + LTO

@@ -350,6 +350,7 @@ class StarRailTasks(
             "Power" -> power(params)
             // ---- 每日实训 ----
             "Daily" -> daily(params)
+            "NamelessHonor" -> namelessHonor()
             // ---- 忘却之庭 · 混沌回忆 ----
             "ForgottenHall" -> forgottenHall(params)
             // ---- 兑换码 ----
@@ -435,25 +436,32 @@ class StarRailTasks(
         // 而不是两个独立任务。
         //
         // 默认 LOCAL —— 老配置（没有这个字段）行为完全不变。
-        val client = StartUpTaskConfig.GameClient.fromWire(
-            Regex("\"client\"\\s*:\\s*\"([^\"]*)\"").find(params)?.groupValues?.get(1),
-        )
-        val declaredPkg = Regex("\"packageName\"\\s*:\\s*\"([^\"]*)\"")
+        val clientWire = Regex("\"client\"\\s*:\\s*\"([^\"]*)\"").find(params)
+            ?.groupValues?.get(1)
+        val client = StartUpTaskConfig.GameClient.fromWire(clientWire)
+
+        // 传了 client 但认不出来 —— 不能悄悄退回官服。
+        // fromWire 对 null（老配置没这字段）给 LOCAL 是合理的，但"写了个
+        // 不存在的客户端名"是配置坏了，静默启动官服只会让用户在一小时后
+        // 才发现账号全错。
+        if (clientWire != null && clientWire.isNotBlank() && client.wireName != clientWire) {
+            val hint = "启动游戏：无法识别的客户端「$clientWire」，可选值 " +
+                StartUpTaskConfig.GameClient.entries.joinToString("/") { it.wireName }
+            Ln.e("$TAG: $hint")
+            return TaskResult("StartUp", false, hint)
+        }
+
+        // 显式声明就只认那个包，**不再回退到会话目标包**。
+        //
+        // 以前这里有段「声明包没装 → 改用会话包（通常官服）」的兜底，
+        // 结果选了国际服却启动国服：日志只有一行 warn，任务照样"成功"，
+        // 用户以为切了服，实际在国服跑完整条流程。
+        // 没装就报错 —— 下面 isInstalled 那段会给出明确提示。
+        val effectivePkg = Regex("\"packageName\"\\s*:\\s*\"([^\"]*)\"")
             .find(params)?.groupValues?.get(1)
             ?.takeIf { it.isNotBlank() }
             ?: client.packageName
 
-        // 「启动游戏」节点里的客户端可能被重置回默认官服，而机器上装的是别的服。
-        // 声明的包没装、会话目标包（setPackage 传入）装了，就用会话包。
-        val effectivePkg = if (declaredPkg != pkg &&
-            !GameLauncher.isInstalled(declaredPkg) &&
-            GameLauncher.isInstalled(pkg)
-        ) {
-            Ln.w("$TAG: 启动任务声明 $declaredPkg 但没装，改用本次会话的目标包 $pkg")
-            pkg
-        } else {
-            declaredPkg
-        }
         val timeoutOverride = Regex("\"timeoutSec\"\\s*:\\s*(\\d+)")
             .find(params)?.groupValues?.get(1)?.toIntOrNull()
 
@@ -1659,7 +1667,7 @@ class StarRailTasks(
         val parsed = parseDailyParams(params)
         Ln.i(
             "$TAG: 每日实训参数 instance=${parsed.instance} " +
-                "委托=${parsed.doDispatch} 拍照=${parsed.doPhoto} 合成=${parsed.doSynthesize} 秘技=${parsed.doTechnique} 体力=${parsed.doPower} 领奖=${parsed.doClaim}",
+                "委托=${parsed.doDispatch} 拍照=${parsed.doPhoto} 合成=${parsed.doSynthesize} 秘技=${parsed.doTechnique} 体力=${parsed.doPower} 领奖=${parsed.doClaim} 无名勋礼=${parsed.doNamelessHonor}",
         )
 
         val task = DailyTask(auto, nav, parsed)
@@ -1672,6 +1680,40 @@ class StarRailTasks(
         } catch (e: Exception) {
             Ln.e("$TAG: 每日实训异常: ${e.message}")
             TaskResult("Daily", false, "异常: ${e.message}")
+        }
+    }
+
+    // ============ 无名勋礼 ============
+
+    /**
+     * 领取「无名勋礼」的任务奖励和等级奖励。
+     *
+     * 和每日实训里的同名子项是同一套逻辑（[DailyTask.claimNamelessHonor]），
+     * 这里只是给它一个独立的任务入口 —— 只想要周常收益、不想跑整套日常时用。
+     */
+    private fun namelessHonor(): TaskResult {
+        val nav = navigator
+            ?: return TaskResult("NamelessHonor", false, "导航器未就绪")
+
+        if (!ensureMainMenu(nav)) {
+            return TaskResult("NamelessHonor", false, "无法回到大厅")
+        }
+
+        // 这个任务不看 Daily 的参数，给一份空壳即可
+        val params = DailyTaskParams(instance = "", targetPower = 0)
+        val task = DailyTask(auto, nav, params)
+        return try {
+            val ok = task.claimNamelessHonor()
+            TaskResult(
+                "NamelessHonor",
+                ok,
+                if (ok) "无名勋礼已处理" else "无名勋礼没有可领取的内容",
+            )
+        } catch (e: ScreenNavigator.StopRequested) {
+            TaskResult("NamelessHonor", false, "任务已被用户停止")
+        } catch (e: Exception) {
+            Ln.e("$TAG: 无名勋礼异常: ${e.message}")
+            TaskResult("NamelessHonor", false, "异常: ${e.message}")
         }
     }
 
@@ -1780,6 +1822,7 @@ class StarRailTasks(
             doTechnique = bool("doTechnique", true),
             doPower = bool("doPower", false),
             doClaim = bool("doClaim", true),
+            doNamelessHonor = bool("doNamelessHonor", false),
             instance = str("instance", com.march7th.hkrpg.data.model.PowerInstance.CALYX_CRIMSON.wireName),
             targetPower = int("targetPower", 120),
         )

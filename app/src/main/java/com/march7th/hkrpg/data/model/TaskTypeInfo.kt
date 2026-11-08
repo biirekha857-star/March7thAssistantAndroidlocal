@@ -83,6 +83,11 @@ enum class TaskTypeInfo(
         nameRes = R.string.task_type_daily,
         defaultConfig = { DailyTaskConfig() },
     ),
+    NAMELESS_HONOR(
+        taskType = "NamelessHonor",
+        nameRes = R.string.task_type_nameless_honor,
+        defaultConfig = { StarRailTaskConfig("NamelessHonor") },
+    ),
     FORGOTTEN_HALL(
         taskType = "ForgottenHall",
         nameRes = R.string.task_type_forgotten_hall,

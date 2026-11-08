@@ -504,7 +504,7 @@ private fun taskSummary(node: TaskChainNode): String = when (val cfg = node.conf
     is DailyTaskConfig -> {
         val picked = listOf(
             cfg.doDispatch, cfg.doPhoto, cfg.doSynthesize,
-            cfg.doTechnique, cfg.doPower, cfg.doClaim,
+            cfg.doTechnique, cfg.doPower, cfg.doClaim, cfg.doNamelessHonor,
         ).count { it }
         if (picked == 0) {
             stringResource(R.string.panel_task_card_summary_daily_none)

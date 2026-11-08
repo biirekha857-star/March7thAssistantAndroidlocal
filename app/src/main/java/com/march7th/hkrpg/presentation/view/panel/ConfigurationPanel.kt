@@ -648,6 +648,12 @@ private fun DailyConfigPanel(
             onCheckedChange = { onConfigChange(config.copy(doTechnique = it)) }
         )
         DailyCheckItem(
+            title = stringResource(R.string.panel_daily_item_nameless),
+            score = 0,
+            checked = config.doNamelessHonor,
+            onCheckedChange = { onConfigChange(config.copy(doNamelessHonor = it)) }
+        )
+        DailyCheckItem(
             title = stringResource(R.string.panel_daily_item_power),
             score = 200,
             checked = config.doPower,
@@ -971,7 +977,7 @@ private fun DailyCheckItem(
             modifier = Modifier.weight(1f)
         )
         Text(
-            text = "+$score",
+            text = if (score > 0) "+$score" else stringResource(R.string.panel_daily_score_weekly),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.primary
         )
@@ -986,6 +992,7 @@ internal fun taskTypeLabel(typeInfo: TaskTypeInfo): String {
         TaskTypeInfo.MAIL -> stringResource(R.string.panel_task_type_mail)
         TaskTypeInfo.POWER -> stringResource(R.string.panel_task_type_power)
         TaskTypeInfo.DAILY -> stringResource(R.string.panel_task_type_daily)
+        TaskTypeInfo.NAMELESS_HONOR -> stringResource(R.string.task_type_nameless_honor)
         TaskTypeInfo.FORGOTTEN_HALL -> stringResource(R.string.panel_task_type_forgotten_hall)
         TaskTypeInfo.REDEEM -> stringResource(R.string.panel_task_type_redeem)
         TaskTypeInfo.CLOSE_DOWN -> stringResource(R.string.panel_task_type_close_down)

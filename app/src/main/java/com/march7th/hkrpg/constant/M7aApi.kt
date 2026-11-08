@@ -193,13 +193,21 @@ object M7aApi {
         "https://raw.githubusercontent.com/$APP_GITHUB_OWNER/$APP_GITHUB_REPO/main/site/taskpacks/index.json.sig"
 
     /**
-     * 索引验签公钥（X.509 SubjectPublicKeyInfo 的 Base64，单行）。
+     * 索引验签公钥（X.509 SubjectPublicKeyInfo 的 Base64）。
      *
-     * 对应私钥：`m7a-keystore/taskpack-signing-key.pem`（不入库）。
-     * 换了私钥就要改这里 + 发新版 App，老用户才不会因为验签失败装不了包。
+     * **是多把而不是一把。** ECDSA 私钥一旦丢失只能换新的，可已经发出去的
+     * 老版本 App 只认它内置的那一把。把新旧并列放在这里，新版 App 就能同时
+     * 验过「旧密钥签的存量索引」和「新密钥签的未来索引」 —— 换钥匙不会
+     * 让包商店整体瘫痪。
+     *
+     * 顺序无所谓，验签是逐把试。新钥匙往后加即可。
      */
-    const val TASKPACK_INDEX_PUBKEY =
-        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEBV7DxGojv+uWib45GMhSNH2jF+7gOscw+Djf4lnJQpbI8IUVixpoWSmxM/jC5rpYQsYmGFzWE02/uBXJSugVyA=="
+    val TASKPACK_INDEX_PUBKEYS: List<String> = listOf(
+        // 旧密钥（私钥于 2026-11-07 丢失）。存量 index.json 仍由它签名。
+        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEBV7DxGojv+uWib45GMhSNH2jF+7gOscw+Djf4lnJQpbI8IUVixpoWSmxM/jC5rpYQsYmGFzWE02/uBXJSugVyA==",
+        // 新密钥，2026-11-07 重签时启用。
+        "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEcFL/MdxPOHfFKoe3tQVtUMxRbtCoV9x8vr41I2FEj8EM+Eqyo9hDpJk9vkMM+9yt9/29L0hxIuuq4eAf1Glzlg==",
+    )
 
     // ==================== 反馈 ====================
 

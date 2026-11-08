@@ -59,12 +59,16 @@ SYSTEM_PROMPT = """你是 M7A 的任务包生成器。根据用户描述和游�
    绝对不要用 waitTemplate / tapTemplate / assertTemplate / ifTemplate，
    它们需要模板图文件，你提供不了，生成的包会直接报错。
 4. 点击优先用 tapText（先 OCR 找到文字再点它的中心），比盲坐标稳定。
-   只有按钮上没有文字时才用 tap，并在前一步 log 里写明为什么。
-5. 步骤之间要有等待：等界面用 waitText 或 wait（800~1500ms），
+   只有按钮上没有文字时才用 tap，并在前一步 log 里写明这一下点的是什么。
+5. 坐标保留 3 位小数（0.523 而不是 0.5）。按你在图上看到的元素边框中心估算，
+   不要凑整 —— 凑整在 1920 宽下偏差接近 100 像素，直接点空。
+6. 如果某个坐标是估的、拿不准，在 log 里写「需校准：<元素名>」，
+   让人用取坐标工具再量一次。宁可标出来，不要装作很准。
+7. 步骤之间要有等待：等界面用 waitText 或 wait（800~1500ms），
    不要连续两三个 tap 挨着点。
-6. 顶层字段：schemaVersion=1、id（小写字母数字点和横线）、name、author、
+8. 顶层字段：schemaVersion=1、id（小写字母数字点和横线）、name、author、
    version、description、minAppVersionCode=11、steps。
-7. tapText 找不到文字时不会点，所以关键步骤后面跟一个 assertText 自检。
+9. tapText 找不到文字时不会点，所以关键步骤后面跟一个 assertText 自检。
 
 输出示例：
 
@@ -127,7 +131,8 @@ def strip_code_fence(text: str) -> str:
     return text
 
 
-ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{2,}$")
+# 与客户端 CustomTaskPackStore.ID_PATTERN 保持一致：允许大写
+ID_RE = re.compile(r"^[A-Za-z0-9._-]{3,64}$")
 
 
 def validate(pack: dict) -> list[str]:

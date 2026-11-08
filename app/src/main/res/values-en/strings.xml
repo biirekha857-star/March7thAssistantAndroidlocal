@@ -2694,6 +2694,7 @@ Without a build target, it grinds the first domain in the default order.</string
         <string name="task_type_mail">Mail</string>
 <string name="task_type_power">Spend Power</string>
 <string name="task_type_daily">Daily Training</string>
+    <string name="task_type_nameless_honor">Nameless Honor</string>
 <string name="task_type_redeem">Redeem Codes</string>
 <string name="task_type_custom">Custom Task</string>
 <string name="panel_daily_checklist_hint">Check the training items to do today. They run in order, returning to the lobby after each, then rewards are claimed at the end.</string>
@@ -2702,6 +2703,8 @@ Without a build target, it grinds the first domain in the default order.</string
 <string name="panel_daily_item_photo">Take 1 photo</string>
 <string name="panel_daily_item_synthesize">Use the Omni-Synthesizer once</string>
 <string name="panel_daily_item_technique">Use Technique twice</string>
+    <string name="panel_daily_item_nameless">Claim Nameless Honor rewards</string>
+    <string name="panel_daily_score_weekly">Weekly</string>
 <string name="panel_daily_item_power">Consume 120 Trailblaze Power</string>
 <string name="panel_task_type_redeem">Redeem Codes</string>
 <string name="panel_custom_pick_title">Select a task pack</string>

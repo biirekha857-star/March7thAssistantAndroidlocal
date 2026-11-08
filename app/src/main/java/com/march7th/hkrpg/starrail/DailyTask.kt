@@ -78,6 +78,7 @@ internal data class DailyTaskParams(
     val doTechnique: Boolean = true,
     val doPower: Boolean = false,
     val doClaim: Boolean = true,
+    val doNamelessHonor: Boolean = false,
     val instance: String,
     val targetPower: Int,
 )
@@ -127,8 +128,27 @@ internal class DailyTask(
         /** 「获得物品」弹窗的搜索区（标题在正中上方）。 */
 
         /** 奖励弹窗的关闭点击位置（「点击空白处关闭」，点屏幕下方空白）。 */
+        // ---- 无名勋礼 ----
+        // 左侧竖排图标：第一个是「无名客的赠礼」（奖励），第二个是「任务」
+        private const val NAMELESS_GIFT_X = 90
+        private const val NAMELESS_GIFT_Y = 162
+        private const val NAMELESS_TASK_X = 90
+        private const val NAMELESS_TASK_Y = 360
+        /** 无名勋礼内页切换的等待时间。页面有淡入动画，短了会采样到过渡帧。 */
+        private const val WAIT_PAGE_SWITCH_MS = 3_000L
+
+        // 右上角 ✕
+        private const val NAMELESS_CLOSE_X = 1840
+        private const val NAMELESS_CLOSE_Y = 63
+
+        /** 底部按钮带，「一键领取」都在这一条上。 */
+        private val CROP_ONE_KEY_CLAIM = ScreenNavigator.NormRect(
+            0.50f, 0.85f, 0.48f, 0.15f,
+        )
+
         private const val REWARD_DISMISS_X = 960
-        private const val REWARD_DISMISS_Y = 950
+        // 950 落在材料格子和「保存委托」上，点了等于在编辑委托，弹窗不动
+        private const val REWARD_DISMISS_Y = 780
 
         /**
          * 奖励弹窗的特征文字，命中任一条即认为弹窗还开着。
@@ -196,7 +216,8 @@ internal class DailyTask(
         /** 委托页里表示"没有可领"的提示。 */
         private const val TEXT_DISPATCH_IDLE = "委托派遣中"
 
-        // ==================== 拍照 ====================
+
+    // ==================== 拍照 ====================
 
         /**
          * 相机取景区**快门按钮**的中心（白色圆形）。
@@ -382,6 +403,9 @@ internal class DailyTask(
         }
         if (params.doTechnique) {
             runStep("施放秘技") { useTechnique() }
+        }
+        if (params.doNamelessHonor) {
+            runStep("无名勋礼") { claimNamelessHonor() }
         }
 
         // 刷副本单独处理（它自己会进出大厅多次）
@@ -734,8 +758,14 @@ internal class DailyTask(
         repeat(4) {
             if (!isRewardPopupOpen()) return closed
             note("关闭奖励弹窗")
-            auto.tap(REWARD_DISMISS_X, REWARD_DISMISS_Y, durationMs = 80L)
-            Thread.sleep(900)
+            // 奖励明细先出「点击空白处继续」的过场框，点掉它才露出发放清单。
+            // 这里不能点固定坐标：原来的 (960,950) 在委托页上正好压在材料格子
+            // 和「保存委托」一带，点下去等于在编辑委托（日志 11-07 13:38
+            // 连点 4 次，界面纹丝不动，后面退出也退不掉）。
+            if (!nav.dismissBlankTapPrompt()) {
+                auto.tap(REWARD_DISMISS_X, REWARD_DISMISS_Y, durationMs = 80L)
+                Thread.sleep(900)
+            }
             closed = true
         }
         return closed
@@ -825,6 +855,83 @@ internal class DailyTask(
         note("手机菜单里没找到「委托」")
         return false
     }
+
+    // ==================== 无名勋礼 ====================
+
+    /**
+     * 领取「无名勋礼」的任务奖励和等级奖励。
+     *
+     * ```
+     * 手机 → 无名勋礼 → 奖励页
+     *   → 左侧第二个图标（任务）→ 任务页
+     *   → 左下「一键领取」            ← 没命中就退：任务没做完，后面也没奖可领
+     *   → 左侧第一个图标（回奖励页）
+     *   → 「解锁无名客的荣勋」旁的「一键领取」  ← 没命中同样退
+     *   → 弹窗点空白处
+     *   → 右上角 ✕ 回手机 → 再点一次回主界面
+     * ```
+     *
+     * 两个「一键领取」都用 OCR 找文字。找不到就说明这一环没有可领的东西 ——
+     * 此时**不能点空白处**，那时屏幕上没有弹窗，点下去会误触别的按钮。
+     */
+    internal fun claimNamelessHonor(): Boolean {
+        if (!nav.openPhoneMenu()) return false
+        if (!nav.clickTextAndVerify("无名勋礼", null, pageChanged = true)) {
+            note("手机菜单里没找到「无名勋礼」")
+            return false
+        }
+        Thread.sleep(1_500)
+
+        // 左侧第二个图标 = 任务页。页面切换有淡入，1.2 秒采样容易落在半透明帧上
+        auto.tap(NAMELESS_TASK_X, NAMELESS_TASK_Y)
+        Thread.sleep(WAIT_PAGE_SWITCH_MS)
+
+        val taskClaim = findOneKeyClaim()
+        if (taskClaim == null) {
+            note("任务页没有「一键领取」，任务没做完，直接返回")
+            return false
+        }
+        note("任务页一键领取 @(${taskClaim.cx},${taskClaim.cy})")
+        auto.tap(taskClaim.cx, taskClaim.cy)
+        Thread.sleep(1_000)
+
+        // 领完会弹奖励明细，盖住左侧图标 —— 不关掉的话下一步点图标全落空，
+        // 界面还停在任务页，后面自然找不到奖励页的「一键领取」
+        // （日志 11-07 20:55：任务页点到了，奖励页那一环"没有一键领取"）
+        if (nav.dismissBlankTapPrompt()) {
+            note("关闭任务页奖励弹窗")
+            Thread.sleep(800)
+        }
+
+        // 左侧第一个图标 = 回奖励页
+        auto.tap(NAMELESS_GIFT_X, NAMELESS_GIFT_Y)
+        Thread.sleep(WAIT_PAGE_SWITCH_MS)
+
+        val rewardClaim = findOneKeyClaim()
+        if (rewardClaim == null) {
+            note("奖励页没有「一键领取」，跳过弹窗处理")
+        } else {
+            note("奖励页一键领取 @(${rewardClaim.cx},${rewardClaim.cy})")
+            auto.tap(rewardClaim.cx, rewardClaim.cy)
+            Thread.sleep(1_200)
+            if (nav.dismissBlankTapPrompt()) note("关闭奖励弹窗")
+            Thread.sleep(600)
+        }
+
+        // 右上角 ✕ 回手机，再点一次回主界面
+        auto.tap(NAMELESS_CLOSE_X, NAMELESS_CLOSE_Y)
+        Thread.sleep(800)
+        auto.tap(NAMELESS_CLOSE_X, NAMELESS_CLOSE_Y)
+        Thread.sleep(800)
+        return true
+    }
+
+    /** 在底部按钮带里找「一键领取」；找不到返回 null，代表这一环没东西可领。 */
+    private fun findOneKeyClaim(): OcrEngine.OcrResult? =
+        nav.withFrameOcrRegion(CROP_ONE_KEY_CLAIM) { mat, region ->
+            OcrEngine.findText(mat, "一键领取", region)
+        }
+
 
     // ==================== 拍照 ====================
 

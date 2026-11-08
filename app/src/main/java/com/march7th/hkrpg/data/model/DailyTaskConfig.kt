@@ -62,6 +62,14 @@ data class DailyTaskConfig(
     /** 累计消耗120点开拓力（+200）—— 复用清体力刷本 */
     val doPower: Boolean = false,
 
+    /**
+     * 领取「无名勋礼」的任务奖励。
+     *
+     * 不在活跃度 500 的计分行列里，是独立的周常收益（任务 + 等级奖励）。
+     * 默认关：只有开了通行证的玩家才有可领的东西，没任务时整条流程会空跑。
+     */
+    val doNamelessHonor: Boolean = false,
+
     // ==================== 刷本参数（仅 doPower 生效）====================
 
     /**
@@ -106,6 +114,7 @@ data class DailyTaskConfig(
             append(""","doTechnique":$doTechnique""")
             append(""","doPower":$doPower""")
             append(""","doClaim":$doClaim""")
+            append(""","doNamelessHonor":$doNamelessHonor""")
             append(""","instance":""")
             append('"').append(instance.replace("\\", "\\\\").replace("\"", "\\\"")).append('"')
             append(""","targetPower":$TARGET_POWER""")

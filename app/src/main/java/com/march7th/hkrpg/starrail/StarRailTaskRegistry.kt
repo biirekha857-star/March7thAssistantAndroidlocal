@@ -63,6 +63,7 @@ object StarRailTaskRegistry {
         TaskDef("Mail", "邮件", "tasks/reward/mail.py", true),
         TaskDef("Power", "清体力", "tasks/power/power.py", false, needOcr = true),
         TaskDef("Daily", "每日实训", "tasks/daily/daily.py", false, needOcr = true),
+        TaskDef("NamelessHonor", "无名勋礼", "", false, needOcr = true),
         TaskDef(
             "ForgottenHall",
             "忘却之庭",

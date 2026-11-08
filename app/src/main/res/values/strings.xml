@@ -2753,6 +2753,7 @@ MAA 不会因为取消勾选此选项而提前在局内结束探索</string>
         <string name="task_type_mail">邮件</string>
 <string name="task_type_power">清体力</string>
 <string name="task_type_daily">每日实训</string>
+    <string name="task_type_nameless_honor">无名勋礼</string>
 <string name="task_type_redeem">兑换码</string>
 <string name="task_type_custom">自定义任务</string>
 <string name="panel_daily_checklist_hint">勾选今天要做的实训项目。程序会按顺序执行，每项做完回大厅确认，最后统一领取奖励。</string>
@@ -2761,6 +2762,8 @@ MAA 不会因为取消勾选此选项而提前在局内结束探索</string>
 <string name="panel_daily_item_photo">拍照1次</string>
 <string name="panel_daily_item_synthesize">使用1次「万能合成机」</string>
 <string name="panel_daily_item_technique">累计施放2次秘技</string>
+    <string name="panel_daily_item_nameless">领取无名勋礼奖励</string>
+    <string name="panel_daily_score_weekly">周常</string>
 <string name="panel_daily_item_power">累计消耗120点开拓力</string>
 <string name="panel_task_type_redeem">兑换码</string>
 <string name="panel_custom_pick_title">选择任务包</string>
